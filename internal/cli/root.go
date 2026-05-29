@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/itspriddle/snatcher/internal/commands"
 	"github.com/itspriddle/snatcher/internal/version"
 )
 
@@ -28,6 +29,9 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&showVersion, "version", false, "Print version information and exit")
+
+	cmd.AddCommand(commands.NewAuthCmd())
+	cmd.AddCommand(commands.NewStatsCmd())
 
 	return cmd
 }
