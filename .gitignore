@@ -5,3 +5,9 @@ coverage.html
 /dist
 /.envrc
 /CLAUDE.local.md
+*.exe
+*.so
+*.dylib
+.DS_Store
+/.idea
+/.vscode

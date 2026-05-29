@@ -1,0 +1,2 @@
+CMD snatcher
+FLAG snatcher --version type=bool

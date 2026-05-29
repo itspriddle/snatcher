@@ -1,0 +1,7 @@
+brew "go"
+brew "golangci-lint"
+brew "govulncheck"
+brew "jq"
+brew "gitleaks"
+brew "actionlint"
+brew "goreleaser"

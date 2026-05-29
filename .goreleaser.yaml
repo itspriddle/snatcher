@@ -1,0 +1,32 @@
+version: 2
+
+project_name: snatcher
+
+builds:
+  - main: ./cmd/snatcher
+    binary: snatcher
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/itspriddle/snatcher/internal/version.Version={{.Version}}
+      - -X github.com/itspriddle/snatcher/internal/version.Commit={{.Commit}}
+      - -X github.com/itspriddle/snatcher/internal/version.Date={{.Date}}
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+changelog:
+  use: github-native
+
+release:
+  github:
+    owner: itspriddle
+    name: snatcher
+  draft: false
+  prerelease: auto
+  replace_existing_artifacts: true
+  name_template: "{{.ProjectName}} v{{.Version}}"
