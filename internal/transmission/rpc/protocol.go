@@ -40,6 +40,9 @@ const (
 
 	methodSessionStatsJSONRPC = "session_stats"
 	methodSessionStatsBespoke = "session-stats"
+
+	methodTorrentGetJSONRPC = "torrent_get"
+	methodTorrentGetBespoke = "torrent-get"
 )
 
 // ErrRPC signals that the server accepted the request at the transport level but
@@ -113,6 +116,89 @@ type SessionStats struct {
 	CurrentStats StatsSnapshot `json:"current_stats"`
 }
 
+// Torrent is the canonical, protocol-neutral result of one torrent in a
+// TorrentGet call. Each Protocol implementation reads the correct per-scheme
+// field names and fills this shared shape, which the Transmission adapter maps
+// to the neutral torrent.Torrent. ErrorCode is Transmission's numeric error
+// field (0 = OK) and Error is the human-readable error string; the adapter uses
+// both to promote a torrent's status to "error".
+type Torrent struct {
+	// ID is the server's session-scoped numeric identifier.
+	ID int64 `json:"id"`
+
+	// Hash is the torrent's info-hash string (hashString/hash_string).
+	Hash string `json:"hash"`
+
+	// Name is the torrent's display name.
+	Name string `json:"name"`
+
+	// Status is Transmission's raw status int (0–6).
+	Status int `json:"status"`
+
+	// PercentDone is the download completion fraction in the range 0–1.
+	PercentDone float64 `json:"percent_done"`
+
+	// TotalSize is the total size of the torrent's contents, in bytes.
+	TotalSize int64 `json:"total_size"`
+
+	// SizeWhenDone is the number of bytes the selected files occupy when done.
+	SizeWhenDone int64 `json:"size_when_done"`
+
+	// LeftUntilDone is the number of bytes still to download.
+	LeftUntilDone int64 `json:"left_until_done"`
+
+	// RateDownload is the current download rate, in bytes/second.
+	RateDownload int64 `json:"rate_download"`
+
+	// RateUpload is the current upload rate, in bytes/second.
+	RateUpload int64 `json:"rate_upload"`
+
+	// UploadRatio is the ratio of bytes uploaded to bytes downloaded.
+	UploadRatio float64 `json:"upload_ratio"`
+
+	// ETA is the estimated seconds until download completes (negative = unknown).
+	ETA int64 `json:"eta"`
+
+	// PeersConnected is the number of peers currently connected.
+	PeersConnected int64 `json:"peers_connected"`
+
+	// PeersSendingToUs is the number of connected peers sending data to us.
+	PeersSendingToUs int64 `json:"peers_sending_to_us"`
+
+	// PeersGettingFromUs is the number of connected peers downloading from us.
+	PeersGettingFromUs int64 `json:"peers_getting_from_us"`
+
+	// AddedDate is the Unix timestamp (seconds) the torrent was added.
+	AddedDate int64 `json:"added_date"`
+
+	// DoneDate is the Unix timestamp (seconds) the torrent finished downloading.
+	DoneDate int64 `json:"done_date"`
+
+	// ActivityDate is the Unix timestamp (seconds) of the most recent activity.
+	ActivityDate int64 `json:"activity_date"`
+
+	// DownloadDir is the directory the torrent's data is downloaded into.
+	DownloadDir string `json:"download_dir"`
+
+	// ErrorCode is Transmission's numeric error field (0 = OK).
+	ErrorCode int `json:"error_code"`
+
+	// Error is the human-readable error string (errorString/error_string).
+	Error string `json:"error"`
+
+	// Labels are the user-assigned labels on the torrent.
+	Labels []string `json:"labels"`
+
+	// QueuePosition is the torrent's position in the server's queue.
+	QueuePosition int64 `json:"queue_position"`
+
+	// IsFinished reports whether seeding is complete.
+	IsFinished bool `json:"is_finished"`
+
+	// IsStalled reports whether the torrent has stalled.
+	IsStalled bool `json:"is_stalled"`
+}
+
 // transport is the subset of *Transport a Protocol needs to perform a request.
 // Defining it as an interface keeps the protocol implementations testable in
 // isolation from the HTTP layer.
@@ -134,6 +220,11 @@ type Protocol interface {
 	// SessionStats calls the server's session-stats/session_stats method and
 	// returns canonical SessionStats.
 	SessionStats(ctx context.Context, t transport) (SessionStats, error)
+
+	// TorrentGet calls the server's torrent-get/torrent_get method and returns
+	// the canonical Torrents. A nil or empty ids slice requests all torrents;
+	// otherwise the server filters to the given numeric ids.
+	TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error)
 }
 
 // jsonrpcProtocol implements the JSON-RPC 2.0 scheme.
@@ -187,6 +278,52 @@ type jsonrpcStatsResult struct {
 	UploadSpeed        int64                `json:"upload_speed"`
 	CumulativeStats    jsonrpcStatsSnapshot `json:"cumulative_stats"`
 	CurrentStats       jsonrpcStatsSnapshot `json:"current_stats"`
+}
+
+// jsonrpcTorrent is the snake_case torrent_get torrent shape.
+type jsonrpcTorrent struct {
+	ID                 int64    `json:"id"`
+	Hash               string   `json:"hash_string"`
+	Name               string   `json:"name"`
+	Status             int      `json:"status"`
+	PercentDone        float64  `json:"percent_done"`
+	TotalSize          int64    `json:"total_size"`
+	SizeWhenDone       int64    `json:"size_when_done"`
+	LeftUntilDone      int64    `json:"left_until_done"`
+	RateDownload       int64    `json:"rate_download"`
+	RateUpload         int64    `json:"rate_upload"`
+	UploadRatio        float64  `json:"upload_ratio"`
+	ETA                int64    `json:"eta"`
+	PeersConnected     int64    `json:"peers_connected"`
+	PeersSendingToUs   int64    `json:"peers_sending_to_us"`
+	PeersGettingFromUs int64    `json:"peers_getting_from_us"`
+	AddedDate          int64    `json:"added_date"`
+	DoneDate           int64    `json:"done_date"`
+	ActivityDate       int64    `json:"activity_date"`
+	DownloadDir        string   `json:"download_dir"`
+	ErrorCode          int      `json:"error"`
+	Error              string   `json:"error_string"`
+	Labels             []string `json:"labels"`
+	QueuePosition      int64    `json:"queue_position"`
+	IsFinished         bool     `json:"is_finished"`
+	IsStalled          bool     `json:"is_stalled"`
+}
+
+// jsonrpcTorrentResult is the snake_case torrent_get result shape.
+type jsonrpcTorrentResult struct {
+	Torrents []jsonrpcTorrent `json:"torrents"`
+}
+
+// torrentGetFieldsJSONRPC lists the snake_case torrent_get fields snatcher
+// requests, keeping payloads small. The error code uses Transmission's bare
+// "error" field; the human-readable message is "error_string".
+var torrentGetFieldsJSONRPC = []string{
+	"id", "hash_string", "name", "status", "percent_done", "total_size",
+	"size_when_done", "left_until_done", "rate_download", "rate_upload",
+	"upload_ratio", "eta", "peers_connected", "peers_sending_to_us",
+	"peers_getting_from_us", "added_date", "done_date", "activity_date",
+	"download_dir", "error", "error_string", "labels", "queue_position",
+	"is_finished", "is_stalled",
 }
 
 func (jsonrpcProtocol) Name() string { return ProtocolJSONRPC }
@@ -272,6 +409,51 @@ func (p jsonrpcProtocol) SessionStats(ctx context.Context, t transport) (Session
 	}, nil
 }
 
+func (p jsonrpcProtocol) TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error) {
+	params := map[string]any{"fields": torrentGetFieldsJSONRPC}
+	if len(ids) > 0 {
+		params["ids"] = ids
+	}
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodTorrentGetJSONRPC,
+		Params:  params,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse("torrent_get", respBody, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	var result jsonrpcTorrentResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return nil, fmt.Errorf("rpc: decoding torrent_get result: %w", err)
+	}
+
+	torrents := make([]Torrent, len(result.Torrents))
+	for i, raw := range result.Torrents {
+		torrents[i] = Torrent(raw)
+	}
+
+	return torrents, nil
+}
+
 // bespokeProtocol implements the legacy bespoke scheme.
 type bespokeProtocol struct{}
 
@@ -316,6 +498,52 @@ type bespokeStatsArguments struct {
 	UploadSpeed        int64                `json:"uploadSpeed"`
 	CumulativeStats    bespokeStatsSnapshot `json:"cumulative-stats"`
 	CurrentStats       bespokeStatsSnapshot `json:"current-stats"`
+}
+
+// bespokeTorrent is the camelCase torrent-get torrent shape.
+type bespokeTorrent struct {
+	ID                 int64    `json:"id"`
+	Hash               string   `json:"hashString"`
+	Name               string   `json:"name"`
+	Status             int      `json:"status"`
+	PercentDone        float64  `json:"percentDone"`
+	TotalSize          int64    `json:"totalSize"`
+	SizeWhenDone       int64    `json:"sizeWhenDone"`
+	LeftUntilDone      int64    `json:"leftUntilDone"`
+	RateDownload       int64    `json:"rateDownload"`
+	RateUpload         int64    `json:"rateUpload"`
+	UploadRatio        float64  `json:"uploadRatio"`
+	ETA                int64    `json:"eta"`
+	PeersConnected     int64    `json:"peersConnected"`
+	PeersSendingToUs   int64    `json:"peersSendingToUs"`
+	PeersGettingFromUs int64    `json:"peersGettingFromUs"`
+	AddedDate          int64    `json:"addedDate"`
+	DoneDate           int64    `json:"doneDate"`
+	ActivityDate       int64    `json:"activityDate"`
+	DownloadDir        string   `json:"downloadDir"`
+	ErrorCode          int      `json:"error"`
+	Error              string   `json:"errorString"`
+	Labels             []string `json:"labels"`
+	QueuePosition      int64    `json:"queuePosition"`
+	IsFinished         bool     `json:"isFinished"`
+	IsStalled          bool     `json:"isStalled"`
+}
+
+// bespokeTorrentArguments is the kebab-case torrent-get arguments shape.
+type bespokeTorrentArguments struct {
+	Torrents []bespokeTorrent `json:"torrents"`
+}
+
+// torrentGetFieldsBespoke lists the camelCase torrent-get fields snatcher
+// requests, keeping payloads small. The error code uses Transmission's bare
+// "error" field; the human-readable message is "errorString".
+var torrentGetFieldsBespoke = []string{
+	"id", "hashString", "name", "status", "percentDone", "totalSize",
+	"sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload",
+	"uploadRatio", "eta", "peersConnected", "peersSendingToUs",
+	"peersGettingFromUs", "addedDate", "doneDate", "activityDate",
+	"downloadDir", "error", "errorString", "labels", "queuePosition",
+	"isFinished", "isStalled",
 }
 
 func (bespokeProtocol) Name() string { return ProtocolBespoke }
@@ -420,6 +648,50 @@ func (p bespokeProtocol) SessionStats(ctx context.Context, t transport) (Session
 		CumulativeStats:    StatsSnapshot(args.CumulativeStats),
 		CurrentStats:       StatsSnapshot(args.CurrentStats),
 	}, nil
+}
+
+func (p bespokeProtocol) TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error) {
+	arguments := map[string]any{"fields": torrentGetFieldsBespoke}
+	if len(ids) > 0 {
+		arguments["ids"] = ids
+	}
+
+	req := bespokeRequest{
+		Method:    methodTorrentGetBespoke,
+		Arguments: arguments,
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse("torrent-get", respBody, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return nil, fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	var args bespokeTorrentArguments
+	if err := json.Unmarshal(resp.Arguments, &args); err != nil {
+		return nil, fmt.Errorf("rpc: decoding torrent-get arguments: %w", err)
+	}
+
+	torrents := make([]Torrent, len(args.Torrents))
+	for i, raw := range args.Torrents {
+		torrents[i] = Torrent(raw)
+	}
+
+	return torrents, nil
 }
 
 // marshalRequest encodes a request envelope, wrapping any error in a clear,

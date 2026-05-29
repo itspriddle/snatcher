@@ -101,6 +101,58 @@ func (b *Backend) Stats(ctx context.Context) (torrent.Stats, error) {
 	}, nil
 }
 
+// ListTorrents performs a TorrentGet round-trip and returns the neutral
+// Torrents. A nil or empty ids slice returns all torrents; otherwise the server
+// filters to the given numeric ids. RPC failures are mapped to the neutral
+// sentinels. The returned slice is non-nil on success, empty when there are no
+// matching torrents.
+func (b *Backend) ListTorrents(ctx context.Context, ids []int64) ([]torrent.Torrent, error) {
+	raw, err := b.client.TorrentGet(ctx, ids)
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	torrents := make([]torrent.Torrent, len(raw))
+	for i, rt := range raw {
+		torrents[i] = mapTorrent(rt)
+	}
+
+	return torrents, nil
+}
+
+// mapTorrent converts a canonical rpc.Torrent into the neutral torrent.Torrent,
+// translating Transmission's raw status int and error fields into the neutral
+// Status (a non-zero error code or non-empty error string promotes to
+// StatusError).
+func mapTorrent(t rpc.Torrent) torrent.Torrent {
+	return torrent.Torrent{
+		ID:                 t.ID,
+		Hash:               t.Hash,
+		Name:               t.Name,
+		Status:             torrent.StatusFromTransmission(t.Status, t.ErrorCode, t.Error),
+		PercentDone:        t.PercentDone,
+		TotalSize:          t.TotalSize,
+		SizeWhenDone:       t.SizeWhenDone,
+		LeftUntilDone:      t.LeftUntilDone,
+		RateDownload:       t.RateDownload,
+		RateUpload:         t.RateUpload,
+		UploadRatio:        t.UploadRatio,
+		ETA:                t.ETA,
+		PeersConnected:     t.PeersConnected,
+		PeersSendingToUs:   t.PeersSendingToUs,
+		PeersGettingFromUs: t.PeersGettingFromUs,
+		AddedDate:          t.AddedDate,
+		DoneDate:           t.DoneDate,
+		ActivityDate:       t.ActivityDate,
+		DownloadDir:        t.DownloadDir,
+		Error:              t.Error,
+		Labels:             t.Labels,
+		QueuePosition:      t.QueuePosition,
+		IsFinished:         t.IsFinished,
+		IsStalled:          t.IsStalled,
+	}
+}
+
 // mapError translates an rpc-layer error into a neutral sentinel while
 // preserving the original error in the wrap chain (so errors.Is against the rpc
 // sentinels still works and the server message is retained). An rpc.ErrAuth
