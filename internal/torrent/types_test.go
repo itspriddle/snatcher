@@ -27,6 +27,79 @@ func TestStatusString(t *testing.T) {
 	}
 }
 
+func TestStatusSlug(t *testing.T) {
+	cases := map[torrent.Status]string{
+		torrent.StatusStopped:          "stopped",
+		torrent.StatusQueuedToVerify:   "queued-to-verify",
+		torrent.StatusVerifying:        "verifying",
+		torrent.StatusQueuedToDownload: "queued-to-download",
+		torrent.StatusDownloading:      "downloading",
+		torrent.StatusQueuedToSeed:     "queued-to-seed",
+		torrent.StatusSeeding:          "seeding",
+		torrent.StatusError:            "error",
+		torrent.Status(99):             "unknown",
+	}
+
+	for status, want := range cases {
+		assert.Equal(t, want, status.Slug())
+	}
+}
+
+// TestStatusTextRoundTrip verifies that MarshalText followed by UnmarshalText
+// yields the original Status for every canonical state.
+func TestStatusTextRoundTrip(t *testing.T) {
+	states := []torrent.Status{
+		torrent.StatusStopped,
+		torrent.StatusQueuedToVerify,
+		torrent.StatusVerifying,
+		torrent.StatusQueuedToDownload,
+		torrent.StatusDownloading,
+		torrent.StatusQueuedToSeed,
+		torrent.StatusSeeding,
+		torrent.StatusError,
+	}
+
+	for _, want := range states {
+		t.Run(want.Slug(), func(t *testing.T) {
+			text, err := want.MarshalText()
+			require.NoError(t, err)
+			assert.Equal(t, want.Slug(), string(text))
+
+			var got torrent.Status
+			require.NoError(t, got.UnmarshalText(text))
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+// TestStatusMarshalTextNeverErrors confirms an out-of-range Status marshals as
+// "unknown" rather than failing, so JSON list output can't fail mid-render.
+func TestStatusMarshalTextNeverErrors(t *testing.T) {
+	text, err := torrent.Status(99).MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, "unknown", string(text))
+}
+
+func TestStatusUnmarshalText(t *testing.T) {
+	t.Run("case insensitive", func(t *testing.T) {
+		var got torrent.Status
+		require.NoError(t, got.UnmarshalText([]byte("Downloading")))
+		assert.Equal(t, torrent.StatusDownloading, got)
+	})
+
+	t.Run("unknown slug errors", func(t *testing.T) {
+		var got torrent.Status
+		err := got.UnmarshalText([]byte("bogus"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "bogus")
+	})
+
+	t.Run("integers are rejected", func(t *testing.T) {
+		var got torrent.Status
+		require.Error(t, got.UnmarshalText([]byte("4")))
+	})
+}
+
 func TestStatusFromTransmission(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -70,7 +143,7 @@ func TestStatusFromTransmission(t *testing.T) {
 }
 
 // TestStatusConstantValues pins the iota ordering so a reorder that would shift
-// the JSON integer contract is caught.
+// the slug mapping or the Transmission status mapping is caught.
 func TestStatusConstantValues(t *testing.T) {
 	assert.Equal(t, torrent.StatusStopped, torrent.Status(0))
 	assert.Equal(t, torrent.StatusQueuedToVerify, torrent.Status(1))
@@ -83,7 +156,7 @@ func TestStatusConstantValues(t *testing.T) {
 }
 
 // TestTorrentJSONContract locks the stable scripting surface: the json field
-// names and that Status serializes as its underlying integer.
+// names and that Status serializes as its canonical lowercase slug.
 func TestTorrentJSONContract(t *testing.T) {
 	tor := torrent.Torrent{
 		ID:                 7,
@@ -130,8 +203,10 @@ func TestTorrentJSONContract(t *testing.T) {
 		assert.Contains(t, got, key, "missing json key %q", key)
 	}
 
-	// Status serializes as its underlying integer (US-003 handles display).
-	assert.InDelta(t, float64(torrent.StatusDownloading), got["status"], 0)
+	// Status serializes as its canonical lowercase slug, a quoted JSON string
+	// (US-003 handles display labels).
+	assert.Equal(t, "downloading", got["status"])
+	assert.Contains(t, string(raw), `"status":"downloading"`)
 	assert.Equal(t, "abc123", got["hash"])
 	assert.Equal(t, float64(7), got["id"])
 }

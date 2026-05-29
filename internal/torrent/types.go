@@ -1,10 +1,15 @@
 package torrent
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Status is the vendor-neutral lifecycle state of a torrent. It abstracts over
 // each backend's own status representation (Transmission's 0–6 status int, for
 // example) so commands and output modes share one stable set of states. In JSON
-// it serializes as its underlying integer; human-readable rendering goes through
-// String().
+// it serializes as a stable lowercase slug (see Slug); human-readable rendering
+// goes through String().
 type Status int
 
 const (
@@ -62,6 +67,69 @@ func (s Status) String() string {
 	default:
 		return "Unknown"
 	}
+}
+
+// Slug returns the canonical lowercase, hyphenated token for the status. It is
+// the single source of truth for the status vocabulary: it backs the JSON
+// scripting contract (see MarshalText) and is reused by --filter. Unknown
+// values render as "unknown".
+func (s Status) Slug() string {
+	switch s {
+	case StatusStopped:
+		return "stopped"
+	case StatusQueuedToVerify:
+		return "queued-to-verify"
+	case StatusVerifying:
+		return "verifying"
+	case StatusQueuedToDownload:
+		return "queued-to-download"
+	case StatusDownloading:
+		return "downloading"
+	case StatusQueuedToSeed:
+		return "queued-to-seed"
+	case StatusSeeding:
+		return "seeding"
+	case StatusError:
+		return "error"
+	default:
+		return "unknown"
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler so Status serializes as its
+// canonical slug in JSON (and any other text-based encoding). It never errors:
+// out-of-range values marshal as "unknown" so list output can't fail
+// mid-render.
+func (s Status) MarshalText() ([]byte, error) {
+	return []byte(s.Slug()), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler, parsing one of the eight
+// canonical slugs (case-insensitively) back into a Status. Integers are not
+// accepted. An unrecognized slug returns an error.
+func (s *Status) UnmarshalText(b []byte) error {
+	switch strings.ToLower(string(b)) {
+	case "stopped":
+		*s = StatusStopped
+	case "queued-to-verify":
+		*s = StatusQueuedToVerify
+	case "verifying":
+		*s = StatusVerifying
+	case "queued-to-download":
+		*s = StatusQueuedToDownload
+	case "downloading":
+		*s = StatusDownloading
+	case "queued-to-seed":
+		*s = StatusQueuedToSeed
+	case "seeding":
+		*s = StatusSeeding
+	case "error":
+		*s = StatusError
+	default:
+		return fmt.Errorf("torrent: unknown status %q", string(b))
+	}
+
+	return nil
 }
 
 // Transmission's raw torrent-get "status" field values (0–6). They are named
