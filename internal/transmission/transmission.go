@@ -24,11 +24,47 @@ type Backend struct {
 // Compile-time assertion that *Backend satisfies torrent.Backend.
 var _ torrent.Backend = (*Backend)(nil)
 
+// Option configures a Backend built by New. It is a neutral wrapper over the
+// rpc package's options, so callers (commands) never need to import the rpc
+// package to configure the backend. Each Option contributes the rpc.Option it
+// wraps via the unexported rpcOption accessor.
+type Option interface {
+	rpcOption() rpc.Option
+}
+
+// optionFunc adapts an rpc.Option into a transmission.Option.
+type optionFunc func() rpc.Option
+
+func (f optionFunc) rpcOption() rpc.Option { return f() }
+
+// WithBasicAuth enables HTTP Basic Auth with the given credentials, wrapping
+// rpc.WithBasicAuth. When username is empty, requests are sent without an
+// Authorization header.
+func WithBasicAuth(username, password string) Option {
+	return optionFunc(func() rpc.Option {
+		return rpc.WithBasicAuth(username, password)
+	})
+}
+
+// WithHTTPClient overrides the HTTP client used for requests, wrapping
+// rpc.WithHTTPClient. Primarily useful in tests.
+func WithHTTPClient(client rpc.HTTPDoer) Option {
+	return optionFunc(func() rpc.Option {
+		return rpc.WithHTTPClient(client)
+	})
+}
+
 // New returns a Backend that talks to the Transmission server at rpcURL,
-// forwarding opts to the underlying rpc.Client (e.g. rpc.WithBasicAuth,
-// rpc.WithHTTPClient).
-func New(rpcURL string, opts ...rpc.Option) *Backend {
-	return &Backend{client: rpc.NewClient(rpcURL, opts...)}
+// applying the supplied neutral options. Callers configure the backend through
+// transmission.Option (e.g. transmission.WithBasicAuth) and never need to touch
+// the rpc package directly.
+func New(rpcURL string, opts ...Option) *Backend {
+	rpcOpts := make([]rpc.Option, len(opts))
+	for i, opt := range opts {
+		rpcOpts[i] = opt.rpcOption()
+	}
+
+	return &Backend{client: rpc.NewClient(rpcURL, rpcOpts...)}
 }
 
 // ServerInfo performs a SessionGet round-trip and returns the neutral

@@ -20,7 +20,6 @@ import (
 	"github.com/itspriddle/snatcher/internal/secrets"
 	"github.com/itspriddle/snatcher/internal/torrent"
 	"github.com/itspriddle/snatcher/internal/transmission"
-	"github.com/itspriddle/snatcher/internal/transmission/rpc"
 )
 
 // NewAuthCmd builds the "auth" parent command and its set/show/test/remove
@@ -290,7 +289,7 @@ func dial(configPath string) (torrent.Backend, string, error) {
 		return nil, "", err
 	}
 
-	backend := transmission.New(cfg.ServerURL, rpc.WithBasicAuth(cfg.Username, password))
+	backend := transmission.New(cfg.ServerURL, transmission.WithBasicAuth(cfg.Username, password))
 
 	return backend, cfg.ServerURL, nil
 }
