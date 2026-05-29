@@ -42,6 +42,17 @@ func (c *Client) SessionGet(ctx context.Context) (Session, error) {
 	return proto.SessionGet(ctx, c.transport)
 }
 
+// SessionStats detects the protocol (once) and returns the server's canonical
+// SessionStats.
+func (c *Client) SessionStats(ctx context.Context) (SessionStats, error) {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return SessionStats{}, err
+	}
+
+	return proto.SessionStats(ctx, c.transport)
+}
+
 // Protocol returns the negotiated protocol name, detecting it if necessary. It
 // is primarily useful for diagnostics; typed calls detect on their own.
 func (c *Client) Protocol(ctx context.Context) (string, error) {

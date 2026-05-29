@@ -133,6 +133,38 @@ func TestClientDetectsOncePerClient(t *testing.T) {
 	assert.Equal(t, int32(1), probes.Load())
 }
 
+func TestClientSessionStatsDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	// After the CSRF probe (which carries no rpc-version header), the client
+	// negotiates bespoke and SessionStats decodes the camelCase/kebab payload.
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		sessionResponse: `{
+			"arguments": {
+				"activeTorrentCount": 4,
+				"pausedTorrentCount": 1,
+				"torrentCount": 5,
+				"downloadSpeed": 2048,
+				"uploadSpeed": 256,
+				"cumulative-stats": {"uploadedBytes": 9, "downloadedBytes": 8, "filesAdded": 7, "sessionCount": 6, "secondsActive": 5},
+				"current-stats": {"uploadedBytes": 4, "downloadedBytes": 3, "filesAdded": 2, "sessionCount": 1, "secondsActive": 0}
+			},
+			"result": "success",
+			"tag": 1
+		}`,
+	}.handler())
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	stats, err := c.SessionStats(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), stats.ActiveTorrentCount)
+	assert.Equal(t, int64(5), stats.TorrentCount)
+	assert.Equal(t, int64(2048), stats.DownloadSpeed)
+	assert.Equal(t, int64(9), stats.CumulativeStats.UploadedBytes)
+	assert.Equal(t, int64(4), stats.CurrentStats.UploadedBytes)
+}
+
 func TestClientDetectSurfacesTransportError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
