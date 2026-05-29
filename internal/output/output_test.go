@@ -72,6 +72,47 @@ func TestSpeed(t *testing.T) {
 	}
 }
 
+func TestPercent(t *testing.T) {
+	tests := []struct {
+		name     string
+		fraction float64
+		want     string
+	}{
+		{"zero", 0, "0%"},
+		{"complete", 1, "100%"},
+		{"two thirds rounds", 0.731, "73%"},
+		{"rounds up", 0.999, "100%"},
+		{"rounds to nearest", 0.255, "26%"},
+		{"clamps negative", -0.5, "0%"},
+		{"clamps over one", 1.5, "100%"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, Percent(tt.fraction))
+		})
+	}
+}
+
+func TestRatio(t *testing.T) {
+	tests := []struct {
+		name  string
+		ratio float64
+		want  string
+	}{
+		{"zero", 0, "0.00"},
+		{"one and a half", 1.5, "1.50"},
+		{"two decimals", 1.234, "1.23"},
+		{"unknown is inf", -1, "Inf"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, Ratio(tt.ratio))
+		})
+	}
+}
+
 func TestDuration(t *testing.T) {
 	tests := []struct {
 		name    string

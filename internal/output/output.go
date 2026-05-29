@@ -136,6 +136,32 @@ func iecUnit(n int64) string {
 	return byteUnits[exp]
 }
 
+// Percent formats a 0–1 completion fraction as a whole-number percentage with a
+// trailing "%" (e.g. 0.731 -> "73%"). Values are clamped to the 0–100 range and
+// rounded to the nearest whole percent.
+func Percent(fraction float64) string {
+	pct := fraction * 100
+
+	switch {
+	case pct < 0:
+		pct = 0
+	case pct > 100:
+		pct = 100
+	}
+
+	return fmt.Sprintf("%d%%", int(math.Round(pct)))
+}
+
+// Ratio formats an upload ratio with two decimal places (e.g. 1.5 -> "1.50").
+// A negative ratio (Transmission's "unknown" sentinel) renders as "Inf".
+func Ratio(ratio float64) string {
+	if ratio < 0 {
+		return "Inf"
+	}
+
+	return fmt.Sprintf("%.2f", ratio)
+}
+
 // Duration formats a number of seconds as a compact "Nd Nh Nm Ns" string,
 // omitting leading zero units (e.g. 273905 -> "3d 4h 5m 5s"). Zero yields "0s".
 func Duration(seconds int64) string {

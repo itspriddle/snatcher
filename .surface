@@ -4,6 +4,7 @@ CMD snatcher auth remove
 CMD snatcher auth set
 CMD snatcher auth show
 CMD snatcher auth test
+CMD snatcher list
 CMD snatcher stats
 FLAG snatcher --version type=bool
 FLAG snatcher auth remove --config type=string
@@ -15,6 +16,9 @@ FLAG snatcher auth show --config type=string
 FLAG snatcher auth show --json type=bool
 FLAG snatcher auth test --config type=string
 FLAG snatcher auth test --json type=bool
+FLAG snatcher list --config type=string
+FLAG snatcher list --jq type=string
+FLAG snatcher list --json type=bool
 FLAG snatcher stats --config type=string
 FLAG snatcher stats --jq type=string
 FLAG snatcher stats --json type=bool
