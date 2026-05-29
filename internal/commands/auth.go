@@ -74,6 +74,18 @@ func newAuthSetCmd() *cobra.Command {
 				return err
 			}
 
+			// When rekeying to a different server URL, drop the old URL's keyring
+			// entry so no orphaned secret is left behind. A missing entry is fine.
+			existing, _, err := loadConfig(configPath)
+			if err != nil {
+				return err
+			}
+			if existing.ServerURL != "" && existing.ServerURL != serverURL {
+				if err := secrets.Delete(existing.ServerURL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+					return err
+				}
+			}
+
 			if err := config.Save(config.Config{ServerURL: serverURL, Username: username}, configPath); err != nil {
 				return err
 			}
@@ -360,6 +372,12 @@ func validateURL(raw string) error {
 
 	if u.Host == "" {
 		return fmt.Errorf("invalid --url %q: missing host", raw)
+	}
+
+	// Embedded userinfo (e.g. https://user:pass@host) would persist credentials
+	// into config.json; passwords must live only in the OS keyring.
+	if u.User != nil {
+		return fmt.Errorf("invalid --url %q: must not contain embedded credentials (user:pass@); set --username and the password separately", raw)
 	}
 
 	return nil

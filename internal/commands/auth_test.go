@@ -141,6 +141,80 @@ func TestAuthSetRejectsInvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "scheme must be http or https")
 }
 
+func TestAuthSetRejectsEmbeddedCredentials(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runAuth(t, "pw\n",
+		"set",
+		"--config", cfgPath,
+		"--url", "http://user:pass@host:9091/transmission/rpc",
+		"--password-stdin",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "embedded credentials")
+
+	// Nothing should have been persisted to config when the URL is rejected.
+	_, loadErr := config.Load(cfgPath)
+	require.ErrorIs(t, loadErr, config.ErrNotConfigured)
+}
+
+func TestAuthSetRekeyRemovesOldSecret(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const oldURL = "http://old:9091/transmission/rpc"
+	const newURL = "http://new:9091/transmission/rpc"
+
+	require.NoError(t, config.Save(config.Config{ServerURL: oldURL, Username: "alice"}, cfgPath))
+	require.NoError(t, secrets.Set(oldURL, "oldpw"))
+
+	_, _, err := runAuth(t, "newpw\n",
+		"set",
+		"--config", cfgPath,
+		"--url", newURL,
+		"--username", "bob",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+
+	// New URL's secret is stored.
+	pw, getErr := secrets.Get(newURL)
+	require.NoError(t, getErr)
+	assert.Equal(t, "newpw", pw)
+
+	// Old URL's secret is deleted (no orphan).
+	_, oldErr := secrets.Get(oldURL)
+	require.ErrorIs(t, oldErr, secrets.ErrNotFound)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, newURL, cfg.ServerURL)
+}
+
+func TestAuthSetSameURLKeepsSecret(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/transmission/rpc"
+
+	require.NoError(t, config.Save(config.Config{ServerURL: url, Username: "alice"}, cfgPath))
+	require.NoError(t, secrets.Set(url, "oldpw"))
+
+	_, _, err := runAuth(t, "newpw\n",
+		"set",
+		"--config", cfgPath,
+		"--url", url,
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+
+	// Re-setting the same URL overwrites the password in place.
+	pw, getErr := secrets.Get(url)
+	require.NoError(t, getErr)
+	assert.Equal(t, "newpw", pw)
+}
+
 func TestAuthShowPlaintext(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
