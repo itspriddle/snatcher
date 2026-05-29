@@ -1,0 +1,7 @@
+/bin/
+coverage.out
+coverage.html
+/.claude/settings.local.json
+/dist
+/.envrc
+/CLAUDE.local.md
