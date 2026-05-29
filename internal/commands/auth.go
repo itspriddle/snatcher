@@ -90,6 +90,19 @@ func newAuthSetCmd() *cobra.Command {
 				return err
 			}
 
+			// An empty password means "no stored secret" (e.g. a server with auth
+			// disabled). Don't write an empty keyring entry; drop any existing one
+			// for this URL so a previously stored password isn't silently reused.
+			if password == "" {
+				if err := secrets.Delete(serverURL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+					return err
+				}
+
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved %s with no password stored\n", serverURL)
+
+				return nil
+			}
+
 			if err := secrets.Set(serverURL, password); err != nil {
 				return err
 			}
@@ -349,7 +362,34 @@ func readPassword(cmd *cobra.Command, passwordStdin bool) (string, error) {
 		return "", errors.New("no terminal available for password prompt; use --password-stdin")
 	}
 
-	_, _ = fmt.Fprint(cmd.OutOrStdout(), "Password: ")
+	password, err := promptHidden(cmd, in, "Password: ")
+	if err != nil {
+		return "", err
+	}
+
+	// An empty password is a valid choice (a server with auth disabled); the
+	// caller reports it and skips storing a secret, so there is nothing to
+	// confirm.
+	if password == "" {
+		return "", nil
+	}
+
+	confirm, err := promptHidden(cmd, in, "Confirm password: ")
+	if err != nil {
+		return "", err
+	}
+
+	if confirm != password {
+		return "", errors.New("passwords do not match")
+	}
+
+	return password, nil
+}
+
+// promptHidden writes label to the command's output and reads a line from the
+// terminal without echoing it.
+func promptHidden(cmd *cobra.Command, in *os.File, label string) (string, error) {
+	_, _ = fmt.Fprint(cmd.OutOrStdout(), label)
 	data, err := term.ReadPassword(int(in.Fd()))
 	_, _ = fmt.Fprintln(cmd.OutOrStdout())
 	if err != nil {

@@ -15,6 +15,7 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -209,8 +210,8 @@ func (p jsonrpcProtocol) SessionGet(ctx context.Context, t transport) (Session, 
 	}
 
 	var resp jsonrpcResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return Session{}, fmt.Errorf("rpc: decoding session_get response: %w", err)
+	if err := decodeResponse("session_get", respBody, &resp); err != nil {
+		return Session{}, err
 	}
 
 	if resp.Error != nil {
@@ -247,8 +248,8 @@ func (p jsonrpcProtocol) SessionStats(ctx context.Context, t transport) (Session
 	}
 
 	var resp jsonrpcResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return SessionStats{}, fmt.Errorf("rpc: decoding session_stats response: %w", err)
+	if err := decodeResponse("session_stats", respBody, &resp); err != nil {
+		return SessionStats{}, err
 	}
 
 	if resp.Error != nil {
@@ -337,8 +338,8 @@ func (p bespokeProtocol) SessionGet(ctx context.Context, t transport) (Session, 
 	}
 
 	var resp bespokeResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return Session{}, fmt.Errorf("rpc: decoding session-get response: %w", err)
+	if err := decodeResponse("session-get", respBody, &resp); err != nil {
+		return Session{}, err
 	}
 
 	if resp.Result != bespokeResultSuccess {
@@ -355,6 +356,29 @@ func (p bespokeProtocol) SessionGet(ctx context.Context, t transport) (Session, 
 		RPCVersionSemver: args.RPCVersionSemver,
 		Protocol:         ProtocolBespoke,
 	}, nil
+}
+
+// decodeResponse unmarshals an RPC response body into v, labeling failures with
+// method. When the body is not JSON at all — most often an HTML error or login
+// page from a reverse proxy, or a non-RPC URL (missing the /transmission/rpc
+// path) — it returns an actionable hint instead of the raw json syntax error.
+func decodeResponse(method string, body []byte, v any) error {
+	if err := json.Unmarshal(body, v); err != nil {
+		if looksLikeHTML(body) {
+			return fmt.Errorf("rpc: %s: server returned an HTML page, not JSON — check the URL includes the RPC path (e.g. /transmission/rpc) and that any reverse-proxy auth is configured: %w", method, err)
+		}
+		return fmt.Errorf("rpc: decoding %s response: %w", method, err)
+	}
+
+	return nil
+}
+
+// looksLikeHTML reports whether body appears to be HTML (or XML) rather than a
+// JSON document: its first non-whitespace byte is '<'.
+func looksLikeHTML(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+
+	return len(trimmed) > 0 && trimmed[0] == '<'
 }
 
 func (p bespokeProtocol) SessionStats(ctx context.Context, t transport) (SessionStats, error) {
@@ -374,8 +398,8 @@ func (p bespokeProtocol) SessionStats(ctx context.Context, t transport) (Session
 	}
 
 	var resp bespokeResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return SessionStats{}, fmt.Errorf("rpc: decoding session-stats response: %w", err)
+	if err := decodeResponse("session-stats", respBody, &resp); err != nil {
+		return SessionStats{}, err
 	}
 
 	if resp.Result != bespokeResultSuccess {

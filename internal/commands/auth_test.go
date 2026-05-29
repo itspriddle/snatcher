@@ -215,6 +215,51 @@ func TestAuthSetSameURLKeepsSecret(t *testing.T) {
 	assert.Equal(t, "newpw", pw)
 }
 
+func TestAuthSetEmptyPasswordStoresNoSecret(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	out, _, err := runAuth(t, "",
+		"set",
+		"--config", cfgPath,
+		"--url", "http://host:9091/transmission/rpc",
+		"--username", "alice",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, out, "no password stored")
+
+	// Config is saved, but no keyring secret is written for an empty password.
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, "http://host:9091/transmission/rpc", cfg.ServerURL)
+	assert.Equal(t, "alice", cfg.Username)
+
+	_, getErr := secrets.Get(cfg.ServerURL)
+	require.ErrorIs(t, getErr, secrets.ErrNotFound)
+}
+
+func TestAuthSetEmptyPasswordDropsExistingSecret(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/transmission/rpc"
+	require.NoError(t, config.Save(config.Config{ServerURL: url, Username: "alice"}, cfgPath))
+	require.NoError(t, secrets.Set(url, "oldpw"))
+
+	_, _, err := runAuth(t, "",
+		"set",
+		"--config", cfgPath,
+		"--url", url,
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+
+	// Clearing the password removes the stored secret rather than reusing it.
+	_, getErr := secrets.Get(url)
+	require.ErrorIs(t, getErr, secrets.ErrNotFound)
+}
+
 func TestAuthShowPlaintext(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
@@ -340,6 +385,26 @@ func TestAuthTestConnectionFailure(t *testing.T) {
 	_, _, err := runAuth(t, "", "test", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), srv.URL)
+}
+
+func TestAuthTestHTMLResponseHint(t *testing.T) {
+	keyring.MockInit()
+	srv := httptest.NewServer(transmissionStub{
+		responses: map[string]string{
+			"session-get": "<!DOCTYPE html><html><body>login</body></html>",
+		},
+	}.handler())
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+
+	_, _, err := runAuth(t, "", "test", "--config", cfgPath)
+	require.Error(t, err)
+	// A non-RPC endpoint that answers with HTML yields an actionable hint, not a
+	// raw json syntax error.
+	assert.Contains(t, err.Error(), "HTML page")
+	assert.Contains(t, err.Error(), "/transmission/rpc")
 }
 
 func TestAuthRemoveClearsConfigAndKeyring(t *testing.T) {
