@@ -22,6 +22,11 @@ import (
 // returns (with the correct value) alongside an HTTP 409 response.
 const sessionIDHeader = "X-Transmission-Session-Id"
 
+// rpcVersionHeader is the header Transmission >= 4.1.0 returns (carrying its
+// rpc-version-semver) in the CSRF HTTP 409 response, letting clients pick the
+// RPC scheme without an extra request. It rides the same 409 as the session id.
+const rpcVersionHeader = "X-Transmission-Rpc-Version"
+
 // contentType is the request body media type for the RPC endpoint.
 const contentType = "application/json"
 
@@ -47,8 +52,9 @@ type Transport struct {
 	username   string
 	password   string
 
-	mu        sync.Mutex
-	sessionID string
+	mu         sync.Mutex
+	sessionID  string
+	rpcVersion string
 }
 
 // Option configures a Transport built by NewTransport.
@@ -121,7 +127,9 @@ func (t *Transport) do(ctx context.Context, body []byte, retryOn409 bool) ([]byt
 
 	if resp.StatusCode == http.StatusConflict && retryOn409 {
 		if id := resp.Header.Get(sessionIDHeader); id != "" {
-			t.setSessionID(id)
+			// The 409 also carries X-Transmission-Rpc-Version on servers >= 4.1.0;
+			// capture it now since it does not ride later (non-409) responses.
+			t.captureCSRF(id, resp.Header.Get(rpcVersionHeader))
 			// Drain and close the 409 body before retrying so the connection can
 			// be reused.
 			_, _ = io.Copy(io.Discard, resp.Body)
@@ -175,10 +183,22 @@ func (t *Transport) getSessionID() string {
 	return t.sessionID
 }
 
-// setSessionID caches the CSRF session id under the mutex.
-func (t *Transport) setSessionID(id string) {
+// captureCSRF caches the CSRF session id and the rpc-version header seen on the
+// 409 response under the mutex. The version may be empty (older servers).
+func (t *Transport) captureCSRF(sessionID, rpcVersion string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.sessionID = id
+	t.sessionID = sessionID
+	t.rpcVersion = rpcVersion
+}
+
+// RPCVersion returns the rpc-version-semver captured from the CSRF 409 response,
+// or "" if none was seen yet (or the server did not send the header). Callers
+// must perform a request first so the CSRF handshake has run.
+func (t *Transport) RPCVersion() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.rpcVersion
 }
