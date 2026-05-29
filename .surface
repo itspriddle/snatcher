@@ -1,2 +1,16 @@
 CMD snatcher
+CMD snatcher auth
+CMD snatcher auth remove
+CMD snatcher auth set
+CMD snatcher auth show
+CMD snatcher auth test
 FLAG snatcher --version type=bool
+FLAG snatcher auth remove --config type=string
+FLAG snatcher auth set --config type=string
+FLAG snatcher auth set --password-stdin type=bool
+FLAG snatcher auth set --url type=string
+FLAG snatcher auth set --username type=string
+FLAG snatcher auth show --config type=string
+FLAG snatcher auth show --json type=bool
+FLAG snatcher auth test --config type=string
+FLAG snatcher auth test --json type=bool
