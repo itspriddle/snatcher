@@ -167,6 +167,19 @@ func (c *Client) Call(ctx context.Context, method string, args json.RawMessage) 
 	return proto.Call(ctx, c.transport, method, args)
 }
 
+// PortTest detects the protocol (once) and checks whether the configured peer
+// port is reachable from outside, returning the canonical PortTestResult. The
+// JSON-RPC 2.0 scheme also reports the IP protocol the test ran on; the bespoke
+// scheme returns only the open flag.
+func (c *Client) PortTest(ctx context.Context) (PortTestResult, error) {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return PortTestResult{}, err
+	}
+
+	return proto.PortTest(ctx, c.transport)
+}
+
 // Protocol returns the negotiated protocol name, detecting it if necessary. It
 // is primarily useful for diagnostics; typed calls detect on their own.
 func (c *Client) Protocol(ctx context.Context) (string, error) {

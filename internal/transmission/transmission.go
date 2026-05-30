@@ -264,6 +264,22 @@ func (b *Backend) SetSession(ctx context.Context, changes map[string]any) error 
 	return mapError(b.client.SessionSet(ctx, settings))
 }
 
+// TestPort performs a PortTest round-trip and maps the canonical
+// rpc.PortTestResult to the neutral torrent.PortTest. A reachable-but-closed
+// port is reported via PortTest.Open == false (not a Go error); RPC failures are
+// mapped to the neutral sentinels.
+func (b *Backend) TestPort(ctx context.Context) (torrent.PortTest, error) {
+	result, err := b.client.PortTest(ctx)
+	if err != nil {
+		return torrent.PortTest{}, mapError(err)
+	}
+
+	return torrent.PortTest{
+		Open:       result.Open,
+		IPProtocol: result.IPProtocol,
+	}, nil
+}
+
 // CallAPI issues an arbitrary RPC method with raw arguments and returns the
 // normalized APIResponse. Transport and auth failures are mapped to the neutral
 // sentinels via mapError; an RPC-level non-success is *not* mapped to a Go error

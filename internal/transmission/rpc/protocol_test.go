@@ -1591,3 +1591,131 @@ func TestBespokeProtocolSessionSetMapsNonSuccessResult(t *testing.T) {
 	require.ErrorIs(t, err, ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
+
+func TestJSONRPCProtocolPortTest(t *testing.T) {
+	var rawBody []byte
+
+	// Snake_case result keys matching docs/transmission/rpc-spec-411.md.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"port_is_open": true, "ip_protocol": "ipv6"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := jsonrpcProtocol{}.PortTest(context.Background(), tr)
+	require.NoError(t, err)
+
+	assert.True(t, result.Open)
+	assert.Equal(t, "ipv6", result.IPProtocol)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// JSON-RPC 2.0 envelope: snake_case method, jsonrpc/id present, no tag.
+	assert.Equal(t, "2.0", gotBody["jsonrpc"])
+	assert.Equal(t, "port_test", gotBody["method"])
+	assert.Contains(t, gotBody, "id")
+	assert.NotContains(t, gotBody, "tag")
+}
+
+func TestJSONRPCProtocolPortTestClosed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"port_is_open": false, "ip_protocol": "ipv4"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := jsonrpcProtocol{}.PortTest(context.Background(), tr)
+	require.NoError(t, err)
+
+	assert.False(t, result.Open)
+	assert.Equal(t, "ipv4", result.IPProtocol)
+}
+
+func TestBespokeProtocolPortTest(t *testing.T) {
+	var rawBody []byte
+
+	// Kebab-case result keys matching docs/transmission/rpc-spec-406.md; the
+	// bespoke scheme has no ip-protocol field.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"arguments": {"port-is-open": true},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := bespokeProtocol{}.PortTest(context.Background(), tr)
+	require.NoError(t, err)
+
+	assert.True(t, result.Open)
+	assert.Empty(t, result.IPProtocol, "the bespoke scheme reports no ip protocol")
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// Bespoke envelope: kebab-case method, tag present, no jsonrpc.
+	assert.Equal(t, "port-test", gotBody["method"])
+	assert.Contains(t, gotBody, "tag")
+	assert.NotContains(t, gotBody, "jsonrpc")
+}
+
+func TestBespokeProtocolPortTestClosed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"arguments": {"port-is-open": false}, "result": "success", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := bespokeProtocol{}.PortTest(context.Background(), tr)
+	require.NoError(t, err)
+
+	assert.False(t, result.Open)
+	assert.Empty(t, result.IPProtocol)
+}
+
+func TestJSONRPCProtocolPortTestMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": 7, "message": "Couldn't test port"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := jsonrpcProtocol{}.PortTest(context.Background(), tr)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "Couldn't test port")
+}
+
+func TestBespokeProtocolPortTestMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "no such session", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := bespokeProtocol{}.PortTest(context.Background(), tr)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "no such session")
+}
