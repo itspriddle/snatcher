@@ -3,6 +3,8 @@ ARG snatcher settings get 0 key
 ARG snatcher settings reset 0 key
 ARG snatcher settings set 0 key
 ARG snatcher settings set 1 value
+ARG snatcher torrent move 0 id|hash
+ARG snatcher torrent move 1 location
 CMD snatcher
 CMD snatcher api
 CMD snatcher auth
@@ -21,6 +23,7 @@ CMD snatcher settings set
 CMD snatcher stats
 CMD snatcher torrent
 CMD snatcher torrent list
+CMD snatcher torrent move
 CMD snatcher torrent reannounce
 CMD snatcher torrent remove
 CMD snatcher torrent start
@@ -79,6 +82,10 @@ FLAG snatcher torrent list --json type=bool
 FLAG snatcher torrent list --reverse type=bool
 FLAG snatcher torrent list --search type=string
 FLAG snatcher torrent list --sort type=string
+FLAG snatcher torrent move --config type=string
+FLAG snatcher torrent move --in-place type=bool
+FLAG snatcher torrent move --jq type=string
+FLAG snatcher torrent move --json type=bool
 FLAG snatcher torrent reannounce --all type=bool
 FLAG snatcher torrent reannounce --config type=string
 FLAG snatcher torrent reannounce --jq type=string

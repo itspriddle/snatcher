@@ -333,6 +333,19 @@ waiting for the next scheduled announce interval. Besides the common options:
 Reannounce every torrent.
 .RE
 .TP
+.B snatcher torrent move \fR[\fIoptions\fR] \fIid | hash\fR \fIlocation\fR
+.RB ( mv )
+Move a single torrent's download location. Select the torrent by numeric id or
+40-character SHA1 hash. By default the existing files are relocated to
+.IR location .
+Besides the common options:
+.RS
+.TP
+.B \-\-in\-place
+Repoint Transmission at a path where the files already exist (after a manual
+move) without relocating them.
+.RE
+.TP
 .B snatcher torrent remove \fR[\fIoptions\fR] [\fIid | hash\fR]...
 Remove the selected torrents from the session. Removal is destructive and
 requires confirmation: on a terminal it prompts
