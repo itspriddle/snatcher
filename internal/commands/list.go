@@ -91,6 +91,15 @@ var defaultFieldKeys = []string{
 	"id", "name", "status", "done", "size", "down", "up", "ratio", "eta",
 }
 
+// allFieldKeys is every selectable field key in registry order. It is the
+// canonical ordering of listFields, shared by the --fields help text, the man
+// page, and the info command's default (which shows the complete set rather
+// than list's smaller defaultFieldKeys).
+var allFieldKeys = []string{
+	"id", "hash", "name", "status", "done", "size", "down", "up", "ratio",
+	"eta", "peers", "added", "download_dir", "error", "labels",
+}
+
 // validFieldKeys returns every selectable --fields key in sorted order, for the
 // error message listing the valid keys.
 func validFieldKeys() string {
@@ -104,11 +113,11 @@ func validFieldKeys() string {
 }
 
 // parseFields resolves a --fields value into the ordered columns to render. An
-// empty value selects the default column set. An unknown key returns an error
-// listing the valid keys. Keys are matched case-insensitively after trimming
-// whitespace.
-func parseFields(spec string) ([]listColumn, error) {
-	keys := defaultFieldKeys
+// empty value selects defaults (list passes defaultFieldKeys, info passes the
+// full allFieldKeys). An unknown key returns an error listing the valid keys.
+// Keys are matched case-insensitively after trimming whitespace.
+func parseFields(spec string, defaults []string) ([]listColumn, error) {
+	keys := defaults
 	if strings.TrimSpace(spec) != "" {
 		keys = nil
 		for _, raw := range strings.Split(spec, ",") {
@@ -168,7 +177,7 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			columns, err := parseFields(fieldsFlag)
+			columns, err := parseFields(fieldsFlag, defaultFieldKeys)
 			if err != nil {
 				return err
 			}

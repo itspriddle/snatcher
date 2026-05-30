@@ -59,7 +59,7 @@ Use "snatcher [command] --help" for more information about a command.
 - [ ] `snatcher server blocklist ...` - 
 - [x] `snatcher port get|set|test` - show or change listening port
 - [ ] `snatcher free-space ...` - show free space on disk (merge in with stats?)
-- [^] `snatcher torrent info <hash|id> ...` - show torrent info
+- [x] `snatcher torrent info <hash|id> ...` - show torrent info
 - [ ] `snatcher search ...` - search for torrents with Prowlarr
 
 ### Aliases

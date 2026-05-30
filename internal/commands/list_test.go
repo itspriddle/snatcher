@@ -194,7 +194,7 @@ func TestWriteListTableAligned(t *testing.T) {
 		{ID: 200, Name: "debian", Status: torrent.StatusSeeding, PercentDone: 1.0, TotalSize: 4096, RateUpload: 256, UploadRatio: 2.0, ETA: -1},
 	}
 
-	cols, err := parseFields("")
+	cols, err := parseFields("", defaultFieldKeys)
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -221,7 +221,7 @@ func TestWriteListTableAligned(t *testing.T) {
 }
 
 func TestWriteListTableEmpty(t *testing.T) {
-	cols, err := parseFields("")
+	cols, err := parseFields("", defaultFieldKeys)
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -235,7 +235,7 @@ func TestWriteListTableSanitizesControlChars(t *testing.T) {
 		{ID: 1, Name: "\x1b[2Jmalicious", Status: torrent.StatusDownloading},
 	}
 
-	cols, err := parseFields("")
+	cols, err := parseFields("", defaultFieldKeys)
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -259,7 +259,7 @@ func TestWriteListPipedSanitizesControlChars(t *testing.T) {
 		},
 	}
 
-	cols, err := parseFields("name,download_dir,error,labels")
+	cols, err := parseFields("name,download_dir,error,labels", defaultFieldKeys)
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -284,7 +284,7 @@ func TestWriteListPipedLeavesOrdinaryTextIntact(t *testing.T) {
 		},
 	}
 
-	cols, err := parseFields("name,labels")
+	cols, err := parseFields("name,labels", defaultFieldKeys)
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -340,7 +340,7 @@ func TestListFieldsInvalidKeyErrors(t *testing.T) {
 }
 
 func TestParseFieldsDefault(t *testing.T) {
-	cols, err := parseFields("")
+	cols, err := parseFields("", defaultFieldKeys)
 	require.NoError(t, err)
 	require.Len(t, cols, len(defaultFieldKeys))
 
@@ -350,7 +350,7 @@ func TestParseFieldsDefault(t *testing.T) {
 }
 
 func TestParseFieldsTrimsAndLowercases(t *testing.T) {
-	cols, err := parseFields(" ID , Name ")
+	cols, err := parseFields(" ID , Name ", defaultFieldKeys)
 	require.NoError(t, err)
 	require.Len(t, cols, 2)
 	assert.Equal(t, "ID", cols[0].header)
@@ -362,7 +362,7 @@ func TestWriteListTableTruncatesName(t *testing.T) {
 		{ID: 1, Name: "this-is-a-very-long-torrent-name-that-will-not-fit", Status: torrent.StatusSeeding},
 	}
 
-	cols, err := parseFields("")
+	cols, err := parseFields("", defaultFieldKeys)
 	require.NoError(t, err)
 
 	var buf bytes.Buffer

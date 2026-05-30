@@ -249,13 +249,42 @@ is a distinct non-zero exit that renders no result. Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR list ", " start ", " stop ", " verify ", " reannounce ", " remove ", and " upload .
+.BR info ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " remove ", and " upload .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
 .BR \-\-all ;
 at least one selector is required, so a bare invocation is an error, not a
 no-op. Every subcommand accepts the common options.
+.TP
+.B snatcher torrent info \fR[\fIoptions\fR] \fIid | hash\fR
+Show the full set of fields for a single torrent, identified by its numeric id
+or 40-character SHA1 info-hash. Exactly one selector is required. On a terminal
+the output is an aligned
+.IR key ": " value
+block; when piped (or when
+.B NO_COLOR
+is set) it is
+.IR key <TAB> value
+lines with no header \(em a stable scripting contract. With
+.B \-\-json
+the torrent is emitted as a single JSON object (not an array), and
+.B \-\-jq
+filters that object. Besides the common options:
+.RS
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated fields to show in the plaintext output, in the given order.
+When omitted the full field set is shown. Available fields:
+.BR id ", " hash ", " name ", " status ", " done ", " size ", " down ,
+.BR up ", " ratio ", " eta ", " peers ", " added ", " download_dir ,
+.BR error ", " labels .
+This affects plaintext only:
+.B \-\-json
+always emits the full object and
+.B \-\-jq
+selects fields itself.
+.RE
 .TP
 .B snatcher torrent list \fR[\fIoptions\fR]
 List torrents. On a terminal the output is an aligned table with a header; when
