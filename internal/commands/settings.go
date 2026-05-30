@@ -424,6 +424,7 @@ func NewSettingsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to keys containing this text (case-insensitive)")
 
 	cmd.AddCommand(newSettingsGetCmd())
+	cmd.AddCommand(newSettingsSetCmd())
 
 	return cmd
 }
@@ -487,6 +488,130 @@ func newSettingsGetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
 	return cmd
+}
+
+// newSettingsSetCmd builds "settings set <key> <value> [<key> <value>...]",
+// which writes one or more settings in a single call. Pairs are validated
+// all-or-nothing before any network write: unknown keys, the read-only
+// blocklist-size, and type/enum parse failures are collected and reported
+// together, so an invalid pair aborts the whole command with no partial write.
+// On success it writes via backend.SetSession, re-fetches via GetSession, and
+// reports the server's actual post-set values (key: value per line on
+// plaintext; the {key, category, value} array on --json/--jq).
+func newSettingsSetCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+	)
+
+	cmd := &cobra.Command{
+		Use:           "set <key> <value> [<key> <value>...]",
+		Short:         "Set one or more settings",
+		Args:          cobra.MinimumNArgs(2),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			defs, changes, err := parseSettingAssignments(args)
+			if err != nil {
+				return err
+			}
+
+			backend, serverURL, err := dial(configPath)
+			if err != nil {
+				return err
+			}
+
+			if err := backend.SetSession(cmd.Context(), changes); err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			session, err := backend.GetSession(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			if jqExpr != "" {
+				return output.JQ(cmd.OutOrStdout(), settingRows(defs, session), jqExpr)
+			}
+
+			if asJSON {
+				return output.JSON(cmd.OutOrStdout(), settingRows(defs, session))
+			}
+
+			out := cmd.OutOrStdout()
+			for _, def := range defs {
+				_, _ = fmt.Fprintf(out, "%s: %s\n", def.key, settingCell(def, session))
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
+	return cmd
+}
+
+// parseSettingAssignments turns the positional key/value arguments into the
+// ordered definitions to report and the neutral-key change map to write. It
+// validates all-or-nothing: an odd argument count, unknown keys, the read-only
+// blocklist-size, and per-value parse failures are all collected and returned
+// together as a single error so nothing is sent on any failure. The returned
+// defs preserve argument order; a key repeated on the command line takes its
+// last value (and is reported once).
+func parseSettingAssignments(args []string) ([]settingDef, map[string]any, error) {
+	if len(args)%2 != 0 {
+		return nil, nil, fmt.Errorf("set requires an even number of arguments (key value pairs); got %d", len(args))
+	}
+
+	var (
+		problems []string
+		order    []string
+		defs     = make(map[string]settingDef)
+		changes  = make(map[string]any)
+	)
+
+	for i := 0; i < len(args); i += 2 {
+		key, raw := args[i], args[i+1]
+
+		def, ok := lookupSetting(key)
+		if !ok {
+			problems = append(problems, fmt.Sprintf("unknown setting %q", key))
+			continue
+		}
+
+		if def.readOnly {
+			problems = append(problems, fmt.Sprintf("setting %q is read-only", key))
+			continue
+		}
+
+		value, err := def.parseSettingValue(raw)
+		if err != nil {
+			problems = append(problems, err.Error())
+			continue
+		}
+
+		if _, seen := defs[key]; !seen {
+			order = append(order, key)
+		}
+		defs[key] = def
+		changes[key] = value
+	}
+
+	if len(problems) > 0 {
+		return nil, nil, fmt.Errorf("invalid settings: %s\nvalid settings are %s",
+			strings.Join(problems, "; "), strings.Join(allSettingKeys(), ", "))
+	}
+
+	ordered := make([]settingDef, len(order))
+	for i, key := range order {
+		ordered[i] = defs[key]
+	}
+
+	return ordered, changes, nil
 }
 
 // settingRows builds the {key, category, value} JSON rows for the given

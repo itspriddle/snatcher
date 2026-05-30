@@ -3,6 +3,8 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -415,6 +417,238 @@ func TestSettingsGetNotConfigured(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
 	_, _, err := runSettings(t, "get", "peer-port", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
+
+// capturedSettingsServer stands up a transmission stub on the bespoke path that
+// records every request body (so a test can assert what session-set sent) and
+// answers session-get with the canned bespoke payload. The stub is stateless:
+// the re-fetch after a write returns the same payload, which is sufficient to
+// exercise the command's "report the server's values" flow.
+func capturedSettingsServer(t *testing.T, captured *[]string) (string, func()) {
+	t.Helper()
+
+	keyring.MockInit()
+
+	srv := httptest.NewServer(func() http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(sessionIDHeader) == "" {
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+
+			body, _ := io.ReadAll(r.Body)
+			*captured = append(*captured, string(body))
+
+			var envelope struct {
+				Method string `json:"method"`
+			}
+			_ = json.Unmarshal(body, &envelope)
+
+			if envelope.Method == "session-get" {
+				_, _ = w.Write([]byte(bespokeSessionResponse))
+				return
+			}
+
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}
+	}())
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+
+	return cfgPath, srv.Close
+}
+
+func TestSettingsSetWritesAndReportsServerValues(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// peer-port and dht-enabled are written in a single call; the command
+	// re-fetches and reports the server's actual post-set values.
+	out, _, err := runSettings(t, "set", "peer-port", "12345", "dht-enabled", "false", "--config", cfgPath)
+	require.NoError(t, err)
+
+	// Plaintext reports "key: value" per pair, in argument order, with the
+	// server-confirmed values from the re-fetch (peer-port=31129, dht=true here).
+	assert.Equal(t, "peer-port: 31129\ndht-enabled: true\n", out)
+
+	// A session-set carrying the parsed typed values was sent before any read.
+	var setBody string
+	for _, body := range captured {
+		if strings.Contains(body, "session-set") {
+			setBody = body
+			break
+		}
+	}
+	require.NotEmpty(t, setBody, "a session-set request was sent")
+	assert.Contains(t, setBody, "peer-port", "the kebab-case key reaches the wire")
+	assert.Contains(t, setBody, "12345", "the parsed int value is sent")
+	assert.Contains(t, setBody, "dht-enabled")
+
+	// The write precedes the re-fetch. (The bespoke protocol's detection probe
+	// issues an initial session-get, so the re-fetch is the *last* session-get.)
+	setIdx, refetchIdx := -1, -1
+	for i, body := range captured {
+		if setIdx == -1 && strings.Contains(body, "session-set") {
+			setIdx = i
+		}
+		if strings.Contains(body, "session-get") {
+			refetchIdx = i
+		}
+	}
+	require.GreaterOrEqual(t, setIdx, 0)
+	require.GreaterOrEqual(t, refetchIdx, 0)
+	assert.Less(t, setIdx, refetchIdx, "session-set is sent before the re-fetch session-get")
+}
+
+func TestSettingsSetEnumValue(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// An enum value is normalized to its canonical lowercase form on the way out.
+	_, _, err := runSettings(t, "set", "encryption", "REQUIRED", "--config", cfgPath)
+	require.NoError(t, err)
+
+	var setBody string
+	for _, body := range captured {
+		if strings.Contains(body, "session-set") {
+			setBody = body
+			break
+		}
+	}
+	require.NotEmpty(t, setBody)
+	assert.Contains(t, setBody, "required", "the canonical enum value reaches the wire")
+}
+
+func TestSettingsSetJSON(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	out, _, err := runSettings(t, "set", "peer-port", "12345", "dht-enabled", "false", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var got []struct {
+		Key      string          `json:"key"`
+		Category string          `json:"category"`
+		Value    json.RawMessage `json:"value"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 2, "only the two affected settings are reported")
+
+	assert.Equal(t, "peer-port", got[0].Key)
+	assert.Equal(t, "network", got[0].Category)
+	assert.JSONEq(t, "31129", string(got[0].Value), "value is the native re-fetched number")
+	assert.Equal(t, "dht-enabled", got[1].Key)
+	assert.JSONEq(t, "true", string(got[1].Value))
+}
+
+func TestSettingsSetJQ(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	out, _, err := runSettings(t, "set", "peer-port", "12345",
+		"--config", cfgPath, "--jq", ".[0].value")
+	require.NoError(t, err)
+	assert.Equal(t, "31129", strings.TrimSpace(out))
+}
+
+func TestSettingsSetSanitizesServerDerivedString(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// The re-fetched download-dir (server-derived) is sanitized on the plaintext
+	// path, even though it was the setting we wrote.
+	out, _, err := runSettings(t, "set", "download-dir", "/tmp/dl", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.NotContains(t, out, "\x1b", "raw ESC from the re-fetched download-dir must not reach plaintext")
+	assert.Equal(t, "download-dir: /data[2Jdownloads\n", out)
+}
+
+func TestSettingsSetRequiresEvenArgs(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// An odd argument count is rejected before any network call.
+	_, _, err := runSettings(t, "set", "peer-port", "12345", "dht-enabled", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "even number of arguments")
+	assert.Empty(t, captured, "no request is made when the arg count is odd")
+}
+
+func TestSettingsSetRequiresAtLeastOnePair(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	_, _, err := runSettings(t, "set", "--config", cfgPath)
+	require.Error(t, err, "zero pairs is an error")
+	assert.Empty(t, captured, "no request is made with zero pairs")
+}
+
+func TestSettingsSetUnknownKeyAbortsWithoutWrite(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	_, _, err := runSettings(t, "set", "bogus-key", "1", "peer-port", "12345", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown setting "bogus-key"`)
+	assert.Contains(t, err.Error(), "valid settings are", "the error lists the valid keys")
+	assert.Empty(t, captured, "an invalid pair aborts before any write")
+}
+
+func TestSettingsSetReadOnlyKeyAbortsWithoutWrite(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	_, _, err := runSettings(t, "set", "blocklist-size", "10", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `setting "blocklist-size" is read-only`)
+	assert.Empty(t, captured, "a read-only key aborts before any write")
+}
+
+func TestSettingsSetCollectsAllProblems(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// Every invalid pair is reported together (all-or-nothing), not just the
+	// first: an unknown key, a bad int, a read-only key, and a bad enum.
+	_, _, err := runSettings(t, "set",
+		"bogus-key", "1",
+		"peer-port", "notanumber",
+		"blocklist-size", "10",
+		"encryption", "bogus",
+		"--config", cfgPath,
+	)
+	require.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, `unknown setting "bogus-key"`)
+	assert.Contains(t, msg, "peer-port", "the bad int is reported")
+	assert.Contains(t, msg, "must be an integer")
+	assert.Contains(t, msg, `setting "blocklist-size" is read-only`)
+	assert.Contains(t, msg, "encryption", "the bad enum is reported")
+	assert.Contains(t, msg, "must be one of")
+	assert.Empty(t, captured, "no write happens when any pair is invalid")
+}
+
+func TestSettingsSetNotConfigured(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	// Validation passes, but there is no server configured, so dial fails before
+	// any network write.
+	_, _, err := runSettings(t, "set", "peer-port", "12345", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
 }
