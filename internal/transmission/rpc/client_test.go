@@ -332,6 +332,61 @@ func TestClientTorrentRemoveDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	assert.Contains(t, captured, `"delete-local-data":true`)
 }
 
+func TestClientSessionSetDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	t.Run("jsonrpc", func(t *testing.T) {
+		var captured string
+
+		// The CSRF probe carries a 6.0.0 header, so the client negotiates JSON-RPC
+		// 2.0 and SessionSet sends snake_case method and keys verbatim.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(sessionIDHeader) == "" {
+				w.Header().Set(rpcVersionHeader, "6.0.0")
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+
+			body, _ := io.ReadAll(r.Body)
+			captured = string(body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		c := NewClient(srv.URL)
+
+		err := c.SessionSet(context.Background(), map[string]any{"peer_port": 12345})
+		require.NoError(t, err)
+		assert.Contains(t, captured, `"method":"session_set"`)
+		assert.Contains(t, captured, `"peer_port":12345`)
+	})
+
+	t.Run("bespoke", func(t *testing.T) {
+		var captured string
+
+		// The CSRF probe carries no rpc-version header, so the client negotiates
+		// bespoke and SessionSet remaps the snake_case key to kebab-case.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(sessionIDHeader) == "" {
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+
+			body, _ := io.ReadAll(r.Body)
+			captured = string(body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		c := NewClient(srv.URL)
+
+		err := c.SessionSet(context.Background(), map[string]any{"peer_port": 12345})
+		require.NoError(t, err)
+		assert.Contains(t, captured, `"method":"session-set"`)
+		assert.Contains(t, captured, `"peer-port":12345`)
+	})
+}
+
 func TestSemverMajor(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -908,3 +908,198 @@ func TestBackendCallAPIMapsTransportError(t *testing.T) {
 	require.ErrorIs(t, err, rpc.ErrTransport)
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }
+
+func TestBackendGetSessionJSONRPC(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"session_get": `{
+				"jsonrpc": "2.0",
+				"result": {
+					"download_dir": "/downloads",
+					"start_added_torrents": true,
+					"incomplete_dir": "/incomplete",
+					"seed_ratio_limit": 2.5,
+					"cache_size_mb": 8,
+					"peer_port": 51413,
+					"encryption": "required",
+					"peer_limit_global": 240,
+					"dht_enabled": true,
+					"speed_limit_down": 1500,
+					"alt_speed_up": 75,
+					"alt_speed_time_begin": 540,
+					"download_queue_size": 5,
+					"queue_stalled_minutes": 30
+				},
+				"id": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	settings, err := b.GetSession(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, "/downloads", settings.DownloadDir)
+	assert.True(t, settings.StartAddedTorrents)
+	assert.Equal(t, "/incomplete", settings.IncompleteDir)
+	assert.InEpsilon(t, 2.5, settings.SeedRatioLimit, 1e-9)
+	assert.Equal(t, 8, settings.CacheSizeMiB)
+	assert.Equal(t, 51413, settings.PeerPort)
+	assert.Equal(t, "required", settings.Encryption)
+	assert.Equal(t, 240, settings.PeerLimitGlobal)
+	assert.True(t, settings.DHTEnabled)
+	assert.Equal(t, int64(1500), settings.SpeedLimitDown)
+	assert.Equal(t, int64(75), settings.AltSpeedUp)
+	assert.Equal(t, 540, settings.AltSpeedTimeBegin)
+	assert.Equal(t, 5, settings.DownloadQueueSize)
+	assert.Equal(t, 30, settings.QueueStalledMinutes)
+
+	// Fields the server omitted flatten to their zero value.
+	assert.False(t, settings.PexEnabled)
+	assert.Empty(t, settings.BlocklistURL)
+}
+
+func TestBackendGetSessionBespoke(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // bespoke
+		responses: map[string]string{
+			"session-get": `{
+				"arguments": {
+					"download-dir": "/data",
+					"peer-port": 12345,
+					"encryption": "tolerated",
+					"seedRatioLimit": 1.5,
+					"cache-size-mb": 16,
+					"speed-limit-up": 200
+				},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	settings, err := b.GetSession(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, "/data", settings.DownloadDir)
+	assert.Equal(t, 12345, settings.PeerPort)
+	// The bespoke wire's "tolerated" is normalized to the canonical "allowed"
+	// by the rpc layer before the adapter sees it.
+	assert.Equal(t, "allowed", settings.Encryption)
+	assert.InEpsilon(t, 1.5, settings.SeedRatioLimit, 1e-9)
+	assert.Equal(t, 16, settings.CacheSizeMiB)
+	assert.Equal(t, int64(200), settings.SpeedLimitUp)
+}
+
+func TestBackendGetSessionMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.GetSession(context.Background())
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, rpc.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendSetSessionTranslatesKeys(t *testing.T) {
+	tests := []struct {
+		name       string
+		rpcVersion string
+		// wantWire are wire-key fragments expected in the captured request body
+		// (snake_case for JSON-RPC, kebab-case for bespoke).
+		wantWire []string
+	}{
+		{
+			name:       "jsonrpc",
+			rpcVersion: "6.0.0",
+			wantWire: []string{
+				`"method":"session_set"`,
+				`"peer_port":12345`,
+				`"dht_enabled":false`,
+			},
+		},
+		{
+			name:       "bespoke",
+			rpcVersion: "",
+			wantWire: []string{
+				`"method":"session-set"`,
+				`"peer-port":12345`,
+				`"dht-enabled":false`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			err := b.SetSession(context.Background(), map[string]any{
+				"peer-port":   12345,
+				"dht-enabled": false,
+			})
+			require.NoError(t, err)
+
+			for _, want := range tt.wantWire {
+				assert.Contains(t, captured, want)
+			}
+		})
+	}
+}
+
+func TestBackendSetSessionTranslatesCacheSizeKey(t *testing.T) {
+	// The neutral "cache-size-mib" key translates to the rpc canonical
+	// "cache_size_mib", which the rpc layer then maps to the real wire key
+	// ("cache_size_mb" / "cache-size-mb").
+	tests := []struct {
+		name       string
+		rpcVersion string
+		wantWire   string
+	}{
+		{name: "jsonrpc", rpcVersion: "6.0.0", wantWire: `"cache_size_mb":8`},
+		{name: "bespoke", rpcVersion: "", wantWire: `"cache-size-mb":8`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			err := b.SetSession(context.Background(), map[string]any{"cache-size-mib": 8})
+			require.NoError(t, err)
+			assert.Contains(t, captured, tt.wantWire)
+		})
+	}
+}
+
+func TestBackendSetSessionMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.SetSession(context.Background(), map[string]any{"peer-port": 12345})
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, rpc.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}

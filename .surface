@@ -1,4 +1,8 @@
 ARG snatcher api 0 method
+ARG snatcher settings get 0 key
+ARG snatcher settings reset 0 key
+ARG snatcher settings set 0 key
+ARG snatcher settings set 1 value
 CMD snatcher
 CMD snatcher api
 CMD snatcher auth
@@ -8,6 +12,10 @@ CMD snatcher auth show
 CMD snatcher auth test
 CMD snatcher list
 CMD snatcher remove
+CMD snatcher settings
+CMD snatcher settings get
+CMD snatcher settings reset
+CMD snatcher settings set
 CMD snatcher start
 CMD snatcher stats
 CMD snatcher stop
@@ -43,6 +51,20 @@ FLAG snatcher remove --delete-data type=bool
 FLAG snatcher remove --jq type=string
 FLAG snatcher remove --json type=bool
 FLAG snatcher remove --yes type=bool
+FLAG snatcher settings --category type=string
+FLAG snatcher settings --config type=string
+FLAG snatcher settings --jq type=string
+FLAG snatcher settings --json type=bool
+FLAG snatcher settings --search type=string
+FLAG snatcher settings get --config type=string
+FLAG snatcher settings get --jq type=string
+FLAG snatcher settings get --json type=bool
+FLAG snatcher settings reset --config type=string
+FLAG snatcher settings reset --jq type=string
+FLAG snatcher settings reset --json type=bool
+FLAG snatcher settings set --config type=string
+FLAG snatcher settings set --jq type=string
+FLAG snatcher settings set --json type=bool
 FLAG snatcher start --all type=bool
 FLAG snatcher start --config type=string
 FLAG snatcher start --jq type=string

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/itspriddle/snatcher/internal/torrent"
 	"github.com/itspriddle/snatcher/internal/transmission/rpc"
@@ -230,6 +231,32 @@ func (b *Backend) AddTorrent(ctx context.Context, req torrent.AddRequest) (torre
 	}, nil
 }
 
+// GetSession performs a SessionGet round-trip and maps the canonical rpc.Session
+// to the neutral torrent.SessionSettings. RPC failures are mapped to the neutral
+// sentinels.
+func (b *Backend) GetSession(ctx context.Context) (torrent.SessionSettings, error) {
+	session, err := b.client.SessionGet(ctx)
+	if err != nil {
+		return torrent.SessionSettings{}, mapError(err)
+	}
+
+	return mapSession(session), nil
+}
+
+// SetSession writes session settings. The changes map is keyed by neutral
+// kebab-case setting key with typed values; each key is translated to the
+// snake_case rpc key (a mechanical "-"->"_" replacement) before forwarding to
+// rpc.Client.SessionSet, which owns the per-wire-scheme translation. RPC
+// failures are mapped to the neutral sentinels.
+func (b *Backend) SetSession(ctx context.Context, changes map[string]any) error {
+	settings := make(map[string]any, len(changes))
+	for key, value := range changes {
+		settings[rpcSettingKey(key)] = value
+	}
+
+	return mapError(b.client.SessionSet(ctx, settings))
+}
+
 // CallAPI issues an arbitrary RPC method with raw arguments and returns the
 // normalized APIResponse. Transport and auth failures are mapped to the neutral
 // sentinels via mapError; an RPC-level non-success is *not* mapped to a Go error
@@ -282,6 +309,79 @@ func mapTorrent(t rpc.Torrent) torrent.Torrent {
 		IsFinished:         t.IsFinished,
 		IsStalled:          t.IsStalled,
 	}
+}
+
+// mapSession converts a canonical rpc.Session into the neutral
+// torrent.SessionSettings. The rpc settings fields are pointers (an absent field
+// is distinguishable from a zero value); the neutral type flattens them,
+// substituting the zero value when the server omitted a field.
+func mapSession(s rpc.Session) torrent.SessionSettings {
+	return torrent.SessionSettings{
+		DownloadDir:             deref(s.DownloadDir),
+		StartAddedTorrents:      deref(s.StartAddedTorrents),
+		RenamePartialFiles:      deref(s.RenamePartialFiles),
+		IncompleteDirEnabled:    deref(s.IncompleteDirEnabled),
+		IncompleteDir:           deref(s.IncompleteDir),
+		SeedRatioLimited:        deref(s.SeedRatioLimited),
+		SeedRatioLimit:          deref(s.SeedRatioLimit),
+		IdleSeedingLimitEnabled: deref(s.IdleSeedingLimitEnabled),
+		IdleSeedingLimit:        deref(s.IdleSeedingLimit),
+		CacheSizeMiB:            deref(s.CacheSizeMiB),
+
+		PeerPort:              deref(s.PeerPort),
+		PeerPortRandomOnStart: deref(s.PeerPortRandomOnStart),
+		PortForwardingEnabled: deref(s.PortForwardingEnabled),
+		Encryption:            deref(s.Encryption),
+		PeerLimitGlobal:       deref(s.PeerLimitGlobal),
+		PeerLimitPerTorrent:   deref(s.PeerLimitPerTorrent),
+		PexEnabled:            deref(s.PexEnabled),
+		DHTEnabled:            deref(s.DHTEnabled),
+		LPDEnabled:            deref(s.LPDEnabled),
+		UTPEnabled:            deref(s.UTPEnabled),
+		BlocklistEnabled:      deref(s.BlocklistEnabled),
+		BlocklistURL:          deref(s.BlocklistURL),
+		BlocklistSize:         deref(s.BlocklistSize),
+
+		SpeedLimitDownEnabled: deref(s.SpeedLimitDownEnabled),
+		SpeedLimitDown:        deref(s.SpeedLimitDown),
+		SpeedLimitUpEnabled:   deref(s.SpeedLimitUpEnabled),
+		SpeedLimitUp:          deref(s.SpeedLimitUp),
+		AltSpeedEnabled:       deref(s.AltSpeedEnabled),
+		AltSpeedDown:          deref(s.AltSpeedDown),
+		AltSpeedUp:            deref(s.AltSpeedUp),
+		AltSpeedTimeEnabled:   deref(s.AltSpeedTimeEnabled),
+		AltSpeedTimeBegin:     deref(s.AltSpeedTimeBegin),
+		AltSpeedTimeEnd:       deref(s.AltSpeedTimeEnd),
+		AltSpeedTimeDay:       deref(s.AltSpeedTimeDay),
+
+		DownloadQueueEnabled: deref(s.DownloadQueueEnabled),
+		DownloadQueueSize:    deref(s.DownloadQueueSize),
+		SeedQueueEnabled:     deref(s.SeedQueueEnabled),
+		SeedQueueSize:        deref(s.SeedQueueSize),
+		QueueStalledEnabled:  deref(s.QueueStalledEnabled),
+		QueueStalledMinutes:  deref(s.QueueStalledMinutes),
+	}
+}
+
+// deref returns the value pointed to by p, or the zero value of T when p is nil.
+// It flattens the rpc.Session's pointer settings fields into the neutral
+// SessionSettings' plain typed fields.
+func deref[T any](p *T) T {
+	if p == nil {
+		var zero T
+		return zero
+	}
+
+	return *p
+}
+
+// rpcSettingKey translates a neutral kebab-case setting key into the snake_case
+// key the rpc client expects (its canonical input contract). The translation is
+// a mechanical "-"->"_" replacement; the rpc layer owns any further per-wire-
+// scheme key remapping (e.g. cache-size-mib's wire spelling) and the encryption
+// enum normalization.
+func rpcSettingKey(key string) string {
+	return strings.ReplaceAll(key, "-", "_")
 }
 
 // mapError translates an rpc-layer error into a neutral sentinel while

@@ -39,6 +39,9 @@ const (
 	methodSessionGetJSONRPC = "session_get"
 	methodSessionGetBespoke = "session-get"
 
+	methodSessionSetJSONRPC = "session_set"
+	methodSessionSetBespoke = "session-set"
+
 	methodSessionStatsJSONRPC = "session_stats"
 	methodSessionStatsBespoke = "session-stats"
 
@@ -76,6 +79,13 @@ const bespokeResultSuccess = "success"
 // Session is the canonical, protocol-neutral result of a SessionGet call. Each
 // Protocol implementation reads the correct per-scheme field names and fills
 // this shared shape.
+//
+// The version/protocol fields are always populated. The session-settings fields
+// are modeled as pointers so an absent field (a server that omits it) is
+// distinguishable from a zero value; each Protocol decodes the per-scheme wire
+// keys (snake_case for JSON-RPC 2.0, kebab-case for the bespoke scheme) into
+// these shared fields. The settings carry snake_case JSON tags so the canonical
+// shape is uniform regardless of the negotiated wire dialect.
 type Session struct {
 	// Version is the long Transmission version string, e.g. "4.0.6 (38c164933e)".
 	Version string `json:"version"`
@@ -86,6 +96,136 @@ type Session struct {
 	// Protocol is the negotiated protocol name (ProtocolJSONRPC or
 	// ProtocolBespoke).
 	Protocol string `json:"protocol"`
+
+	// Download settings.
+
+	// DownloadDir is the default download directory.
+	DownloadDir *string `json:"download_dir,omitempty"`
+
+	// StartAddedTorrents reports whether torrents start automatically when added.
+	StartAddedTorrents *bool `json:"start_added_torrents,omitempty"`
+
+	// RenamePartialFiles reports whether incomplete files get a ".part" suffix.
+	RenamePartialFiles *bool `json:"rename_partial_files,omitempty"`
+
+	// IncompleteDirEnabled reports whether incomplete torrents use a separate dir.
+	IncompleteDirEnabled *bool `json:"incomplete_dir_enabled,omitempty"`
+
+	// IncompleteDir is the directory for incomplete torrents.
+	IncompleteDir *string `json:"incomplete_dir,omitempty"`
+
+	// SeedRatioLimited reports whether the global seed-ratio limit is enforced.
+	SeedRatioLimited *bool `json:"seed_ratio_limited,omitempty"`
+
+	// SeedRatioLimit is the global seed-ratio limit.
+	SeedRatioLimit *float64 `json:"seed_ratio_limit,omitempty"`
+
+	// IdleSeedingLimitEnabled reports whether idle seeds are stopped after a limit.
+	IdleSeedingLimitEnabled *bool `json:"idle_seeding_limit_enabled,omitempty"`
+
+	// IdleSeedingLimit is the idle-seeding limit, in minutes.
+	IdleSeedingLimit *int `json:"idle_seeding_limit,omitempty"`
+
+	// CacheSizeMiB is the disk cache size, in MiB.
+	CacheSizeMiB *int `json:"cache_size_mib,omitempty"`
+
+	// Network settings.
+
+	// PeerPort is the port for incoming peer connections.
+	PeerPort *int `json:"peer_port,omitempty"`
+
+	// PeerPortRandomOnStart reports whether the peer port is randomized at start.
+	PeerPortRandomOnStart *bool `json:"peer_port_random_on_start,omitempty"`
+
+	// PortForwardingEnabled reports whether UPnP/NAT-PMP port forwarding is on.
+	PortForwardingEnabled *bool `json:"port_forwarding_enabled,omitempty"`
+
+	// Encryption is the peer-encryption mode: "allowed", "preferred", or
+	// "required" (canonical). The bespoke scheme spells "allowed" as "tolerated"
+	// on the wire; the protocol normalizes it in both directions.
+	Encryption *string `json:"encryption,omitempty"`
+
+	// PeerLimitGlobal is the global limit on connected peers.
+	PeerLimitGlobal *int `json:"peer_limit_global,omitempty"`
+
+	// PeerLimitPerTorrent is the per-torrent limit on connected peers.
+	PeerLimitPerTorrent *int `json:"peer_limit_per_torrent,omitempty"`
+
+	// PexEnabled reports whether Peer Exchange is enabled.
+	PexEnabled *bool `json:"pex_enabled,omitempty"`
+
+	// DHTEnabled reports whether the Distributed Hash Table is enabled.
+	DHTEnabled *bool `json:"dht_enabled,omitempty"`
+
+	// LPDEnabled reports whether Local Peer Discovery is enabled.
+	LPDEnabled *bool `json:"lpd_enabled,omitempty"`
+
+	// UTPEnabled reports whether uTP (Micro Transport Protocol) is enabled.
+	UTPEnabled *bool `json:"utp_enabled,omitempty"`
+
+	// BlocklistEnabled reports whether the peer blocklist is enabled.
+	BlocklistEnabled *bool `json:"blocklist_enabled,omitempty"`
+
+	// BlocklistURL is the URL the blocklist is fetched from.
+	BlocklistURL *string `json:"blocklist_url,omitempty"`
+
+	// BlocklistSize is the number of rules in the blocklist (read-only).
+	BlocklistSize *int `json:"blocklist_size,omitempty"`
+
+	// Bandwidth settings.
+
+	// SpeedLimitDownEnabled reports whether the global download limit is enforced.
+	SpeedLimitDownEnabled *bool `json:"speed_limit_down_enabled,omitempty"`
+
+	// SpeedLimitDown is the global download speed limit, in KB/s.
+	SpeedLimitDown *int64 `json:"speed_limit_down,omitempty"`
+
+	// SpeedLimitUpEnabled reports whether the global upload limit is enforced.
+	SpeedLimitUpEnabled *bool `json:"speed_limit_up_enabled,omitempty"`
+
+	// SpeedLimitUp is the global upload speed limit, in KB/s.
+	SpeedLimitUp *int64 `json:"speed_limit_up,omitempty"`
+
+	// AltSpeedEnabled reports whether the alternate speed limits are active.
+	AltSpeedEnabled *bool `json:"alt_speed_enabled,omitempty"`
+
+	// AltSpeedDown is the alternate download speed limit, in KB/s.
+	AltSpeedDown *int64 `json:"alt_speed_down,omitempty"`
+
+	// AltSpeedUp is the alternate upload speed limit, in KB/s.
+	AltSpeedUp *int64 `json:"alt_speed_up,omitempty"`
+
+	// AltSpeedTimeEnabled reports whether scheduled alt-speed times are used.
+	AltSpeedTimeEnabled *bool `json:"alt_speed_time_enabled,omitempty"`
+
+	// AltSpeedTimeBegin is when alt speeds turn on (minutes after midnight).
+	AltSpeedTimeBegin *int `json:"alt_speed_time_begin,omitempty"`
+
+	// AltSpeedTimeEnd is when alt speeds turn off (minutes after midnight).
+	AltSpeedTimeEnd *int `json:"alt_speed_time_end,omitempty"`
+
+	// AltSpeedTimeDay is the day bitmask for the alt-speed schedule.
+	AltSpeedTimeDay *int `json:"alt_speed_time_day,omitempty"`
+
+	// Queue settings.
+
+	// DownloadQueueEnabled reports whether the download queue is enabled.
+	DownloadQueueEnabled *bool `json:"download_queue_enabled,omitempty"`
+
+	// DownloadQueueSize is the maximum number of simultaneously downloading torrents.
+	DownloadQueueSize *int `json:"download_queue_size,omitempty"`
+
+	// SeedQueueEnabled reports whether the seed queue is enabled.
+	SeedQueueEnabled *bool `json:"seed_queue_enabled,omitempty"`
+
+	// SeedQueueSize is the maximum number of simultaneously seeding torrents.
+	SeedQueueSize *int `json:"seed_queue_size,omitempty"`
+
+	// QueueStalledEnabled reports whether stalled torrents are ignored by the queue.
+	QueueStalledEnabled *bool `json:"queue_stalled_enabled,omitempty"`
+
+	// QueueStalledMinutes is the idle time before a torrent counts as stalled.
+	QueueStalledMinutes *int `json:"queue_stalled_minutes,omitempty"`
 }
 
 // StatsSnapshot is the canonical, protocol-neutral shape of the cumulative and
@@ -313,6 +453,14 @@ type Protocol interface {
 	// canonical Session.
 	SessionGet(ctx context.Context, t transport) (Session, error)
 
+	// SessionSet calls the server's session-set/session_set method to write
+	// session settings. settings is a snake_case-keyed map of canonical setting
+	// keys to typed values; each implementation translates the keys to its wire
+	// scheme (verbatim snake_case for JSON-RPC 2.0, snake→kebab for the bespoke
+	// scheme) and normalizes the encryption enum. The method carries no response
+	// payload, so the call only confirms success.
+	SessionSet(ctx context.Context, t transport, settings map[string]any) error
+
 	// SessionStats calls the server's session-stats/session_stats method and
 	// returns canonical SessionStats.
 	SessionStats(ctx context.Context, t transport) (SessionStats, error)
@@ -391,10 +539,76 @@ type jsonrpcResponse struct {
 	ID      int             `json:"id"`
 }
 
-// jsonrpcSessionResult is the snake_case session_get result shape.
+// jsonrpcSessionResult is the snake_case session_get result shape. The settings
+// fields share the snake_case JSON tags of canonical Session, so the result
+// unmarshals directly into the corresponding canonical fields.
 type jsonrpcSessionResult struct {
 	Version          string `json:"version"`
 	RPCVersionSemver string `json:"rpc_version_semver"`
+
+	DownloadDir             *string  `json:"download_dir"`
+	StartAddedTorrents      *bool    `json:"start_added_torrents"`
+	RenamePartialFiles      *bool    `json:"rename_partial_files"`
+	IncompleteDirEnabled    *bool    `json:"incomplete_dir_enabled"`
+	IncompleteDir           *string  `json:"incomplete_dir"`
+	SeedRatioLimited        *bool    `json:"seed_ratio_limited"`
+	SeedRatioLimit          *float64 `json:"seed_ratio_limit"`
+	IdleSeedingLimitEnabled *bool    `json:"idle_seeding_limit_enabled"`
+	IdleSeedingLimit        *int     `json:"idle_seeding_limit"`
+	CacheSizeMiB            *int     `json:"cache_size_mb"`
+
+	PeerPort              *int    `json:"peer_port"`
+	PeerPortRandomOnStart *bool   `json:"peer_port_random_on_start"`
+	PortForwardingEnabled *bool   `json:"port_forwarding_enabled"`
+	Encryption            *string `json:"encryption"`
+	PeerLimitGlobal       *int    `json:"peer_limit_global"`
+	PeerLimitPerTorrent   *int    `json:"peer_limit_per_torrent"`
+	PexEnabled            *bool   `json:"pex_enabled"`
+	DHTEnabled            *bool   `json:"dht_enabled"`
+	LPDEnabled            *bool   `json:"lpd_enabled"`
+	UTPEnabled            *bool   `json:"utp_enabled"`
+	BlocklistEnabled      *bool   `json:"blocklist_enabled"`
+	BlocklistURL          *string `json:"blocklist_url"`
+	BlocklistSize         *int    `json:"blocklist_size"`
+
+	SpeedLimitDownEnabled *bool  `json:"speed_limit_down_enabled"`
+	SpeedLimitDown        *int64 `json:"speed_limit_down"`
+	SpeedLimitUpEnabled   *bool  `json:"speed_limit_up_enabled"`
+	SpeedLimitUp          *int64 `json:"speed_limit_up"`
+	AltSpeedEnabled       *bool  `json:"alt_speed_enabled"`
+	AltSpeedDown          *int64 `json:"alt_speed_down"`
+	AltSpeedUp            *int64 `json:"alt_speed_up"`
+	AltSpeedTimeEnabled   *bool  `json:"alt_speed_time_enabled"`
+	AltSpeedTimeBegin     *int   `json:"alt_speed_time_begin"`
+	AltSpeedTimeEnd       *int   `json:"alt_speed_time_end"`
+	AltSpeedTimeDay       *int   `json:"alt_speed_time_day"`
+
+	DownloadQueueEnabled *bool `json:"download_queue_enabled"`
+	DownloadQueueSize    *int  `json:"download_queue_size"`
+	SeedQueueEnabled     *bool `json:"seed_queue_enabled"`
+	SeedQueueSize        *int  `json:"seed_queue_size"`
+	QueueStalledEnabled  *bool `json:"queue_stalled_enabled"`
+	QueueStalledMinutes  *int  `json:"queue_stalled_minutes"`
+}
+
+// sessionGetFieldsJSONRPC lists the snake_case session_get fields snatcher
+// requests: the two version/protocol fields plus every session-settings key.
+var sessionGetFieldsJSONRPC = []string{
+	"version", "rpc_version_semver",
+	"download_dir", "start_added_torrents", "rename_partial_files",
+	"incomplete_dir_enabled", "incomplete_dir", "seed_ratio_limited",
+	"seed_ratio_limit", "idle_seeding_limit_enabled", "idle_seeding_limit",
+	"cache_size_mb",
+	"peer_port", "peer_port_random_on_start", "port_forwarding_enabled",
+	"encryption", "peer_limit_global", "peer_limit_per_torrent", "pex_enabled",
+	"dht_enabled", "lpd_enabled", "utp_enabled", "blocklist_enabled",
+	"blocklist_url", "blocklist_size",
+	"speed_limit_down_enabled", "speed_limit_down", "speed_limit_up_enabled",
+	"speed_limit_up", "alt_speed_enabled", "alt_speed_down", "alt_speed_up",
+	"alt_speed_time_enabled", "alt_speed_time_begin", "alt_speed_time_end",
+	"alt_speed_time_day",
+	"download_queue_enabled", "download_queue_size", "seed_queue_enabled",
+	"seed_queue_size", "queue_stalled_enabled", "queue_stalled_minutes",
 }
 
 // jsonrpcStatsSnapshot is the snake_case nested stats object shape.
@@ -495,7 +709,7 @@ func (p jsonrpcProtocol) SessionGet(ctx context.Context, t transport) (Session, 
 	req := jsonrpcRequest{
 		JSONRPC: "2.0",
 		Method:  methodSessionGetJSONRPC,
-		Params:  map[string]any{"fields": []string{"version", "rpc_version_semver"}},
+		Params:  map[string]any{"fields": sessionGetFieldsJSONRPC},
 		ID:      1,
 	}
 
@@ -527,7 +741,90 @@ func (p jsonrpcProtocol) SessionGet(ctx context.Context, t transport) (Session, 
 		Version:          result.Version,
 		RPCVersionSemver: result.RPCVersionSemver,
 		Protocol:         ProtocolJSONRPC,
+
+		DownloadDir:             result.DownloadDir,
+		StartAddedTorrents:      result.StartAddedTorrents,
+		RenamePartialFiles:      result.RenamePartialFiles,
+		IncompleteDirEnabled:    result.IncompleteDirEnabled,
+		IncompleteDir:           result.IncompleteDir,
+		SeedRatioLimited:        result.SeedRatioLimited,
+		SeedRatioLimit:          result.SeedRatioLimit,
+		IdleSeedingLimitEnabled: result.IdleSeedingLimitEnabled,
+		IdleSeedingLimit:        result.IdleSeedingLimit,
+		CacheSizeMiB:            result.CacheSizeMiB,
+
+		PeerPort:              result.PeerPort,
+		PeerPortRandomOnStart: result.PeerPortRandomOnStart,
+		PortForwardingEnabled: result.PortForwardingEnabled,
+		Encryption:            result.Encryption,
+		PeerLimitGlobal:       result.PeerLimitGlobal,
+		PeerLimitPerTorrent:   result.PeerLimitPerTorrent,
+		PexEnabled:            result.PexEnabled,
+		DHTEnabled:            result.DHTEnabled,
+		LPDEnabled:            result.LPDEnabled,
+		UTPEnabled:            result.UTPEnabled,
+		BlocklistEnabled:      result.BlocklistEnabled,
+		BlocklistURL:          result.BlocklistURL,
+		BlocklistSize:         result.BlocklistSize,
+
+		SpeedLimitDownEnabled: result.SpeedLimitDownEnabled,
+		SpeedLimitDown:        result.SpeedLimitDown,
+		SpeedLimitUpEnabled:   result.SpeedLimitUpEnabled,
+		SpeedLimitUp:          result.SpeedLimitUp,
+		AltSpeedEnabled:       result.AltSpeedEnabled,
+		AltSpeedDown:          result.AltSpeedDown,
+		AltSpeedUp:            result.AltSpeedUp,
+		AltSpeedTimeEnabled:   result.AltSpeedTimeEnabled,
+		AltSpeedTimeBegin:     result.AltSpeedTimeBegin,
+		AltSpeedTimeEnd:       result.AltSpeedTimeEnd,
+		AltSpeedTimeDay:       result.AltSpeedTimeDay,
+
+		DownloadQueueEnabled: result.DownloadQueueEnabled,
+		DownloadQueueSize:    result.DownloadQueueSize,
+		SeedQueueEnabled:     result.SeedQueueEnabled,
+		SeedQueueSize:        result.SeedQueueSize,
+		QueueStalledEnabled:  result.QueueStalledEnabled,
+		QueueStalledMinutes:  result.QueueStalledMinutes,
 	}, nil
+}
+
+// SessionSet writes session settings via session_set. The snake_case canonical
+// keys are sent as params verbatim except for the documented "mib"->"mb" cache
+// size discrepancy, which is normalized to the real wire key. The method returns
+// no result arguments, so only the error object is inspected.
+func (jsonrpcProtocol) SessionSet(ctx context.Context, t transport, settings map[string]any) error {
+	params := make(map[string]any, len(settings))
+	for key, value := range settings {
+		params[jsonrpcSettingKey(key)] = value
+	}
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodSessionSetJSONRPC,
+		Params:  params,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodSessionSetJSONRPC, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	return nil
 }
 
 func (p jsonrpcProtocol) SessionStats(ctx context.Context, t transport) (SessionStats, error) {
@@ -842,10 +1139,76 @@ type bespokeResponse struct {
 	Tag       int             `json:"tag"`
 }
 
-// bespokeSessionArguments is the kebab-case session-get arguments shape.
+// bespokeSessionArguments is the kebab-case session-get arguments shape. The
+// settings keys are kebab-case on the wire (e.g. download-dir) and decode into
+// the canonical Session's pointer fields.
 type bespokeSessionArguments struct {
 	Version          string `json:"version"`
 	RPCVersionSemver string `json:"rpc-version-semver"`
+
+	DownloadDir             *string  `json:"download-dir"`
+	StartAddedTorrents      *bool    `json:"start-added-torrents"`
+	RenamePartialFiles      *bool    `json:"rename-partial-files"`
+	IncompleteDirEnabled    *bool    `json:"incomplete-dir-enabled"`
+	IncompleteDir           *string  `json:"incomplete-dir"`
+	SeedRatioLimited        *bool    `json:"seedRatioLimited"`
+	SeedRatioLimit          *float64 `json:"seedRatioLimit"`
+	IdleSeedingLimitEnabled *bool    `json:"idle-seeding-limit-enabled"`
+	IdleSeedingLimit        *int     `json:"idle-seeding-limit"`
+	CacheSizeMiB            *int     `json:"cache-size-mb"`
+
+	PeerPort              *int    `json:"peer-port"`
+	PeerPortRandomOnStart *bool   `json:"peer-port-random-on-start"`
+	PortForwardingEnabled *bool   `json:"port-forwarding-enabled"`
+	Encryption            *string `json:"encryption"`
+	PeerLimitGlobal       *int    `json:"peer-limit-global"`
+	PeerLimitPerTorrent   *int    `json:"peer-limit-per-torrent"`
+	PexEnabled            *bool   `json:"pex-enabled"`
+	DHTEnabled            *bool   `json:"dht-enabled"`
+	LPDEnabled            *bool   `json:"lpd-enabled"`
+	UTPEnabled            *bool   `json:"utp-enabled"`
+	BlocklistEnabled      *bool   `json:"blocklist-enabled"`
+	BlocklistURL          *string `json:"blocklist-url"`
+	BlocklistSize         *int    `json:"blocklist-size"`
+
+	SpeedLimitDownEnabled *bool  `json:"speed-limit-down-enabled"`
+	SpeedLimitDown        *int64 `json:"speed-limit-down"`
+	SpeedLimitUpEnabled   *bool  `json:"speed-limit-up-enabled"`
+	SpeedLimitUp          *int64 `json:"speed-limit-up"`
+	AltSpeedEnabled       *bool  `json:"alt-speed-enabled"`
+	AltSpeedDown          *int64 `json:"alt-speed-down"`
+	AltSpeedUp            *int64 `json:"alt-speed-up"`
+	AltSpeedTimeEnabled   *bool  `json:"alt-speed-time-enabled"`
+	AltSpeedTimeBegin     *int   `json:"alt-speed-time-begin"`
+	AltSpeedTimeEnd       *int   `json:"alt-speed-time-end"`
+	AltSpeedTimeDay       *int   `json:"alt-speed-time-day"`
+
+	DownloadQueueEnabled *bool `json:"download-queue-enabled"`
+	DownloadQueueSize    *int  `json:"download-queue-size"`
+	SeedQueueEnabled     *bool `json:"seed-queue-enabled"`
+	SeedQueueSize        *int  `json:"seed-queue-size"`
+	QueueStalledEnabled  *bool `json:"queue-stalled-enabled"`
+	QueueStalledMinutes  *int  `json:"queue-stalled-minutes"`
+}
+
+// sessionGetFieldsBespoke lists the kebab-case session-get fields snatcher
+// requests: the two version/protocol fields plus every session-settings key.
+var sessionGetFieldsBespoke = []string{
+	"version", "rpc-version-semver",
+	"download-dir", "start-added-torrents", "rename-partial-files",
+	"incomplete-dir-enabled", "incomplete-dir", "seedRatioLimited",
+	"seedRatioLimit", "idle-seeding-limit-enabled", "idle-seeding-limit",
+	"cache-size-mb",
+	"peer-port", "peer-port-random-on-start", "port-forwarding-enabled",
+	"encryption", "peer-limit-global", "peer-limit-per-torrent", "pex-enabled",
+	"dht-enabled", "lpd-enabled", "utp-enabled", "blocklist-enabled",
+	"blocklist-url", "blocklist-size",
+	"speed-limit-down-enabled", "speed-limit-down", "speed-limit-up-enabled",
+	"speed-limit-up", "alt-speed-enabled", "alt-speed-down", "alt-speed-up",
+	"alt-speed-time-enabled", "alt-speed-time-begin", "alt-speed-time-end",
+	"alt-speed-time-day",
+	"download-queue-enabled", "download-queue-size", "seed-queue-enabled",
+	"seed-queue-size", "queue-stalled-enabled", "queue-stalled-minutes",
 }
 
 // bespokeStatsSnapshot is the camelCase nested stats object shape.
@@ -948,7 +1311,7 @@ func (bespokeProtocol) Name() string { return ProtocolBespoke }
 func (p bespokeProtocol) SessionGet(ctx context.Context, t transport) (Session, error) {
 	req := bespokeRequest{
 		Method:    methodSessionGetBespoke,
-		Arguments: map[string]any{"fields": []string{"version", "rpc-version-semver"}},
+		Arguments: map[string]any{"fields": sessionGetFieldsBespoke},
 		Tag:       1,
 	}
 
@@ -976,11 +1339,107 @@ func (p bespokeProtocol) SessionGet(ctx context.Context, t transport) (Session, 
 		return Session{}, fmt.Errorf("rpc: decoding session-get arguments: %w", err)
 	}
 
+	// The bespoke wire spells canonical "allowed" encryption as "tolerated";
+	// normalize it to the canonical value on the way in.
+	encryption := args.Encryption
+	if encryption != nil {
+		normalized := normalizeEncryptionFromWire(*encryption)
+		encryption = &normalized
+	}
+
 	return Session{
 		Version:          args.Version,
 		RPCVersionSemver: args.RPCVersionSemver,
 		Protocol:         ProtocolBespoke,
+
+		DownloadDir:             args.DownloadDir,
+		StartAddedTorrents:      args.StartAddedTorrents,
+		RenamePartialFiles:      args.RenamePartialFiles,
+		IncompleteDirEnabled:    args.IncompleteDirEnabled,
+		IncompleteDir:           args.IncompleteDir,
+		SeedRatioLimited:        args.SeedRatioLimited,
+		SeedRatioLimit:          args.SeedRatioLimit,
+		IdleSeedingLimitEnabled: args.IdleSeedingLimitEnabled,
+		IdleSeedingLimit:        args.IdleSeedingLimit,
+		CacheSizeMiB:            args.CacheSizeMiB,
+
+		PeerPort:              args.PeerPort,
+		PeerPortRandomOnStart: args.PeerPortRandomOnStart,
+		PortForwardingEnabled: args.PortForwardingEnabled,
+		Encryption:            encryption,
+		PeerLimitGlobal:       args.PeerLimitGlobal,
+		PeerLimitPerTorrent:   args.PeerLimitPerTorrent,
+		PexEnabled:            args.PexEnabled,
+		DHTEnabled:            args.DHTEnabled,
+		LPDEnabled:            args.LPDEnabled,
+		UTPEnabled:            args.UTPEnabled,
+		BlocklistEnabled:      args.BlocklistEnabled,
+		BlocklistURL:          args.BlocklistURL,
+		BlocklistSize:         args.BlocklistSize,
+
+		SpeedLimitDownEnabled: args.SpeedLimitDownEnabled,
+		SpeedLimitDown:        args.SpeedLimitDown,
+		SpeedLimitUpEnabled:   args.SpeedLimitUpEnabled,
+		SpeedLimitUp:          args.SpeedLimitUp,
+		AltSpeedEnabled:       args.AltSpeedEnabled,
+		AltSpeedDown:          args.AltSpeedDown,
+		AltSpeedUp:            args.AltSpeedUp,
+		AltSpeedTimeEnabled:   args.AltSpeedTimeEnabled,
+		AltSpeedTimeBegin:     args.AltSpeedTimeBegin,
+		AltSpeedTimeEnd:       args.AltSpeedTimeEnd,
+		AltSpeedTimeDay:       args.AltSpeedTimeDay,
+
+		DownloadQueueEnabled: args.DownloadQueueEnabled,
+		DownloadQueueSize:    args.DownloadQueueSize,
+		SeedQueueEnabled:     args.SeedQueueEnabled,
+		SeedQueueSize:        args.SeedQueueSize,
+		QueueStalledEnabled:  args.QueueStalledEnabled,
+		QueueStalledMinutes:  args.QueueStalledMinutes,
 	}, nil
+}
+
+// SessionSet writes session settings via session-set. The snake_case canonical
+// keys in settings are remapped to the bespoke wire's kebab-case spellings (with
+// the documented camelCase exceptions for the seed-ratio keys), and the
+// encryption enum's canonical "allowed" is mapped to the wire's "tolerated". The
+// method returns no arguments, so only the result string is inspected.
+func (bespokeProtocol) SessionSet(ctx context.Context, t transport, settings map[string]any) error {
+	arguments := make(map[string]any, len(settings))
+	for key, value := range settings {
+		wireKey := bespokeSettingKey(key)
+		if wireKey == bespokeEncryptionKey {
+			value = normalizeEncryptionToWire(value)
+		}
+
+		arguments[wireKey] = value
+	}
+
+	req := bespokeRequest{
+		Method:    methodSessionSetBespoke,
+		Arguments: arguments,
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodSessionSetBespoke, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	return nil
 }
 
 // decodeResponse unmarshals an RPC response body into v, labeling failures with
@@ -1280,6 +1739,76 @@ func (bespokeProtocol) Call(ctx context.Context, t transport, method string, arg
 		Tag:       resp.Tag,
 		OK:        resp.Result == bespokeResultSuccess,
 	}, nil
+}
+
+// Encryption enum values. The canonical "allowed" is spelled "tolerated" on the
+// bespoke wire; "preferred"/"required" are identical across schemes.
+const (
+	encryptionAllowed   = "allowed"
+	encryptionTolerated = "tolerated"
+)
+
+// bespokeEncryptionKey is the bespoke wire key for the encryption setting,
+// derived from the canonical snake_case key.
+const bespokeEncryptionKey = "encryption"
+
+// bespokeSettingExceptions maps the canonical snake_case session-set keys whose
+// bespoke wire spelling is not a plain "_"->"-" transform. Transmission's legacy
+// scheme spells the seed-ratio keys in camelCase, and the cache size key uses
+// "mb" rather than "mib".
+var bespokeSettingExceptions = map[string]string{
+	"seed_ratio_limited": "seedRatioLimited",
+	"seed_ratio_limit":   "seedRatioLimit",
+	"cache_size_mib":     "cache-size-mb",
+}
+
+// jsonrpcSettingExceptions maps the canonical snake_case session-set keys whose
+// JSON-RPC 2.0 wire spelling differs: only the cache size key, which uses "mb"
+// rather than "mib" on the wire.
+var jsonrpcSettingExceptions = map[string]string{
+	"cache_size_mib": "cache_size_mb",
+}
+
+// jsonrpcSettingKey maps a canonical snake_case session-set key to the JSON-RPC
+// 2.0 wire spelling: a known exception when listed, otherwise the key verbatim.
+func jsonrpcSettingKey(key string) string {
+	if wireKey, ok := jsonrpcSettingExceptions[key]; ok {
+		return wireKey
+	}
+
+	return key
+}
+
+// bespokeSettingKey maps a canonical snake_case session-set key to the bespoke
+// wire spelling: a known exception when listed, otherwise the mechanical
+// "_"->"-" transform.
+func bespokeSettingKey(key string) string {
+	if wireKey, ok := bespokeSettingExceptions[key]; ok {
+		return wireKey
+	}
+
+	return strings.ReplaceAll(key, "_", "-")
+}
+
+// normalizeEncryptionFromWire maps the bespoke wire encryption value to the
+// canonical value: "tolerated" becomes "allowed"; other values pass through.
+func normalizeEncryptionFromWire(value string) string {
+	if value == encryptionTolerated {
+		return encryptionAllowed
+	}
+
+	return value
+}
+
+// normalizeEncryptionToWire maps a canonical encryption value to the bespoke
+// wire value: the string "allowed" becomes "tolerated". Non-string or other
+// values pass through unchanged.
+func normalizeEncryptionToWire(value any) any {
+	if s, ok := value.(string); ok && s == encryptionAllowed {
+		return encryptionTolerated
+	}
+
+	return value
 }
 
 // translateMethod maps a canonical kebab-case RPC method name to the spelling

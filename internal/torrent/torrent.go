@@ -123,4 +123,15 @@ type Backend interface {
 	// torrent that was already present is reported via AddResult.Duplicate rather
 	// than as an error.
 	AddTorrent(ctx context.Context, req AddRequest) (AddResult, error)
+
+	// GetSession performs a round-trip to the server and returns its neutral
+	// SessionSettings (the server's current configurable session settings).
+	GetSession(ctx context.Context) (SessionSettings, error)
+
+	// SetSession writes the supplied session settings. The changes map is keyed by
+	// neutral kebab-case setting key (e.g. "peer-port", "dht-enabled") with the
+	// parsed typed value; the backend translates each key to its own wire scheme.
+	// Only the keys present in changes are written. The call confirms success and
+	// carries no response payload.
+	SetSession(ctx context.Context, changes map[string]any) error
 }

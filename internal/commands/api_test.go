@@ -174,6 +174,10 @@ func (noAPIBackend) RemoveTorrents(context.Context, torrent.Selector, bool) erro
 func (noAPIBackend) AddTorrent(context.Context, torrent.AddRequest) (torrent.AddResult, error) {
 	return torrent.AddResult{}, nil
 }
+func (noAPIBackend) GetSession(context.Context) (torrent.SessionSettings, error) {
+	return torrent.SessionSettings{}, nil
+}
+func (noAPIBackend) SetSession(context.Context, map[string]any) error { return nil }
 
 func TestAPIMissingCapabilityErrors(t *testing.T) {
 	_, err := apiCaller(noAPIBackend{})
