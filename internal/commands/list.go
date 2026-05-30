@@ -162,6 +162,7 @@ func NewListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "list",
+		Aliases:       []string{"ls"},
 		Short:         "List torrents",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
