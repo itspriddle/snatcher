@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -198,6 +199,55 @@ func TestClientTorrentGetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	assert.Equal(t, int64(42), torrents[0].ID)
 	assert.Equal(t, "deadbeef", torrents[0].Hash)
 	assert.Equal(t, 6, torrents[0].Status)
+}
+
+func TestClientTorrentStartDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	var captured string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(rpcVersionHeader, "6.0.0")
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	err := c.TorrentStart(context.Background(), []any{int64(1)}, true)
+	require.NoError(t, err)
+	assert.Contains(t, captured, `"method":"torrent_start_now"`)
+	assert.Contains(t, captured, `"ids":[1]`)
+}
+
+func TestClientTorrentStopDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	var captured string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+		_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	err := c.TorrentStop(context.Background(), []any{int64(2), "deadbeef"})
+	require.NoError(t, err)
+	assert.Contains(t, captured, `"method":"torrent-stop"`)
+	assert.Contains(t, captured, `"ids":[2,"deadbeef"]`)
 }
 
 func TestSemverMajor(t *testing.T) {
