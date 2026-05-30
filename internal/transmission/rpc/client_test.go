@@ -201,6 +201,39 @@ func TestClientTorrentGetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	assert.Equal(t, 6, torrents[0].Status)
 }
 
+func TestClientTorrentAddDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	var captured string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(rpcVersionHeader, "6.0.0")
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"torrent_added": {"id": 7, "name": "debian.iso", "hash_string": "deadbeef"}},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	res, err := c.TorrentAdd(context.Background(), AddRequest{Metainfo: "YmFzZTY0", Paused: true})
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), res.ID)
+	assert.Equal(t, "debian.iso", res.Name)
+	assert.Equal(t, "deadbeef", res.Hash)
+	assert.False(t, res.Duplicate)
+	assert.Contains(t, captured, `"method":"torrent_add"`)
+	assert.Contains(t, captured, `"metainfo":"YmFzZTY0"`)
+}
+
 func TestClientTorrentStartDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	var captured string
 

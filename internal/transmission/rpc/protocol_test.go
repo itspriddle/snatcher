@@ -814,3 +814,165 @@ func TestBespokeProtocolTorrentGetMapsNonSuccessResult(t *testing.T) {
 	require.ErrorIs(t, err, ErrRPC)
 	assert.ErrorContains(t, err, "forbidden")
 }
+
+func TestJSONRPCProtocolTorrentAdd(t *testing.T) {
+	t.Run("added", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{
+				"jsonrpc": "2.0",
+				"result": {"torrent_added": {"id": 11, "name": "debian.iso", "hash_string": "deadbeef"}},
+				"id": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		res, err := jsonrpcProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{
+			Metainfo:    "YmFzZTY0",
+			DownloadDir: "/downloads",
+			Paused:      true,
+			Labels:      []string{"linux"},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(11), res.ID)
+		assert.Equal(t, "debian.iso", res.Name)
+		assert.Equal(t, "deadbeef", res.Hash)
+		assert.False(t, res.Duplicate)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		// JSON-RPC 2.0 envelope: snake_case method, snake_case params; empty
+		// filename is omitted.
+		assert.Equal(t, "torrent_add", gotBody["method"])
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "YmFzZTY0", params["metainfo"])
+		assert.Equal(t, "/downloads", params["download_dir"])
+		assert.Equal(t, true, params["paused"])
+		assert.Equal(t, []any{"linux"}, params["labels"])
+		assert.NotContains(t, params, "filename")
+	})
+
+	t.Run("duplicate", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{
+				"jsonrpc": "2.0",
+				"result": {"torrent_duplicate": {"id": 12, "name": "ubuntu.iso", "hash_string": "cafebabe"}},
+				"id": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		res, err := jsonrpcProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{Filename: "magnet:?xt=urn:btih:cafebabe"})
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(12), res.ID)
+		assert.Equal(t, "ubuntu.iso", res.Name)
+		assert.Equal(t, "cafebabe", res.Hash)
+		assert.True(t, res.Duplicate)
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{
+				"jsonrpc": "2.0",
+				"error": {"code": -32602, "message": "invalid metainfo"},
+				"id": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := jsonrpcProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{Metainfo: "bogus"})
+		require.ErrorIs(t, err, ErrRPC)
+		assert.ErrorContains(t, err, "invalid metainfo")
+	})
+}
+
+func TestBespokeProtocolTorrentAdd(t *testing.T) {
+	t.Run("added", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{
+				"arguments": {"torrent-added": {"id": 11, "name": "debian.iso", "hashString": "deadbeef"}},
+				"result": "success",
+				"tag": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		res, err := bespokeProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{
+			Metainfo:    "YmFzZTY0",
+			DownloadDir: "/downloads",
+			Paused:      true,
+			Labels:      []string{"linux"},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(11), res.ID)
+		assert.Equal(t, "debian.iso", res.Name)
+		assert.Equal(t, "deadbeef", res.Hash)
+		assert.False(t, res.Duplicate)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		// Bespoke envelope: kebab-case method, kebab-case download-dir; empty
+		// filename is omitted.
+		assert.Equal(t, "torrent-add", gotBody["method"])
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "YmFzZTY0", args["metainfo"])
+		assert.Equal(t, "/downloads", args["download-dir"])
+		assert.Equal(t, true, args["paused"])
+		assert.Equal(t, []any{"linux"}, args["labels"])
+		assert.NotContains(t, args, "filename")
+	})
+
+	t.Run("duplicate", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{
+				"arguments": {"torrent-duplicate": {"id": 12, "name": "ubuntu.iso", "hashString": "cafebabe"}},
+				"result": "success",
+				"tag": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		res, err := bespokeProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{Filename: "magnet:?xt=urn:btih:cafebabe"})
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(12), res.ID)
+		assert.Equal(t, "ubuntu.iso", res.Name)
+		assert.Equal(t, "cafebabe", res.Hash)
+		assert.True(t, res.Duplicate)
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"result": "invalid or corrupt torrent file", "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := bespokeProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{Metainfo: "bogus"})
+		require.ErrorIs(t, err, ErrRPC)
+		assert.ErrorContains(t, err, "invalid or corrupt torrent file")
+	})
+}

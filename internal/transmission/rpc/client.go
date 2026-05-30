@@ -65,6 +65,18 @@ func (c *Client) TorrentGet(ctx context.Context, ids []int64) ([]Torrent, error)
 	return proto.TorrentGet(ctx, c.transport, ids)
 }
 
+// TorrentAdd detects the protocol (once) and adds a torrent from the parameters
+// in req, returning the canonical AddResult. A torrent that was already present
+// is reported via AddResult.Duplicate rather than as an error.
+func (c *Client) TorrentAdd(ctx context.Context, req AddRequest) (AddResult, error) {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return AddResult{}, err
+	}
+
+	return proto.TorrentAdd(ctx, c.transport, req)
+}
+
 // TorrentStart detects the protocol (once) and starts the selected torrents
 // (start-now when now is true, disregarding queue position). A nil or empty ids
 // slice targets all torrents; otherwise the mixed id/hash array selects them.
