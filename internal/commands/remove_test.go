@@ -334,6 +334,120 @@ func TestRemoveWithoutYesErrorsAndDoesNotRemove(t *testing.T) {
 	assert.False(t, ok, "the remove method must not be called without --yes")
 }
 
+// TestRemoveYesBypassesPrompt is a regression guard: with --yes the command never
+// prompts and removes without reading stdin.
+func TestRemoveYesBypassesPrompt(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	out, _, err := runRemove(t, "--config", cfgPath, "--yes", "1")
+	require.NoError(t, err)
+
+	assert.NotContains(t, out, "[y/N]", "no prompt is shown when --yes is given")
+	assert.Equal(t, "Removed 1 torrent: ubuntu-24.04.iso\n", out)
+
+	_, ok := stub.request("torrent-remove")
+	assert.True(t, ok, "the remove method runs with --yes")
+}
+
+func TestParseAffirmative(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"y", true},
+		{"Y", true},
+		{"yes", true},
+		{"YES", true},
+		{" y \n", true},
+		{"yes\r\n", true},
+		{"n", false},
+		{"N", false},
+		{"no", false},
+		{"", false},
+		{"\n", false},
+		{"  ", false},
+		{"yep", false},
+		{"yeah", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			assert.Equal(t, tc.want, parseAffirmative(tc.in))
+		})
+	}
+}
+
+func TestPromptConfirm(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"affirmative", "y\n", true},
+		{"affirmative word", "yes\n", true},
+		{"decline", "n\n", false},
+		{"empty line declines", "\n", false},
+		{"eof declines", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := NewRemoveCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+
+			got, err := promptConfirm(cmd, strings.NewReader(tc.input), "Remove 1 torrent? [y/N] ")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, "Remove 1 torrent? [y/N] ", out.String(), "the prompt is written verbatim")
+		})
+	}
+}
+
+func TestConfirmPrompt(t *testing.T) {
+	cases := []struct {
+		name       string
+		result     mutationResult
+		deleteData bool
+		want       string
+	}{
+		{
+			name:   "single torrent",
+			result: mutationResult{Count: 1},
+			want:   "Remove 1 torrent? [y/N] ",
+		},
+		{
+			name:   "multiple torrents",
+			result: mutationResult{Count: 3},
+			want:   "Remove 3 torrents? [y/N] ",
+		},
+		{
+			name:   "all",
+			result: mutationResult{Count: 2, all: true},
+			want:   "Remove all 2 torrents? [y/N] ",
+		},
+		{
+			name:       "delete data",
+			result:     mutationResult{Count: 1},
+			deleteData: true,
+			want:       "Remove 1 torrent and delete downloaded data? [y/N] ",
+		},
+		{
+			name:       "all with delete data",
+			result:     mutationResult{Count: 2, all: true},
+			deleteData: true,
+			want:       "Remove all 2 torrents and delete downloaded data? [y/N] ",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, confirmPrompt(tc.result, tc.deleteData))
+		})
+	}
+}
+
 // TestRemoveSanitizesNameInHumanButNotJSON guards the security boundary: a torrent
 // name carrying an ANSI escape is neutralized in the human confirmation but
 // preserved verbatim in the structured --json contract.

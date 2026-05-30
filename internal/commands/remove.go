@@ -1,9 +1,14 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/itspriddle/snatcher/internal/torrent"
 )
@@ -18,6 +23,12 @@ import (
 //
 // Unlike stop, remove lists the torrents *before* removing them so their names
 // are available for the confirmation and output (the torrents are gone after).
+//
+// The confirmation gate works as follows: --yes/-y skips it entirely. Otherwise,
+// on an interactive terminal it prompts [y/N] and a non-affirmative answer cancels
+// (prints "Canceled.", exit 0). When stdin is not a terminal (piped input,
+// scripts) it refuses with an error and removes nothing, so non-interactive
+// removals must pass --yes deliberately.
 func NewRemoveCmd() *cobra.Command {
 	var (
 		configPath string
@@ -64,10 +75,15 @@ func NewRemoveCmd() *cobra.Command {
 			result.DeleteData = &deleteData
 
 			if !yes {
-				return fmt.Errorf(
-					"refusing to remove %s without confirmation; pass --yes to proceed",
-					pluralizeTorrents(result.Count),
-				)
+				confirmed, err := confirmRemoval(cmd, result, deleteData)
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Canceled.")
+
+					return nil
+				}
 			}
 
 			if err := backend.RemoveTorrents(cmd.Context(), sel, deleteData); err != nil {
@@ -86,4 +102,62 @@ func NewRemoveCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 
 	return cmd
+}
+
+// confirmRemoval decides whether a removal may proceed when --yes was not given.
+// On an interactive terminal it prompts [y/N] and returns the user's answer. When
+// stdin is not a terminal (piped input or scripts), it refuses with an error and
+// returns false so the removal is never carried out without an explicit --yes.
+func confirmRemoval(cmd *cobra.Command, result mutationResult, deleteData bool) (bool, error) {
+	in, ok := cmd.InOrStdin().(*os.File)
+	if !ok || !term.IsTerminal(int(in.Fd())) {
+		return false, fmt.Errorf(
+			"refusing to remove %s without confirmation; pass --yes to proceed",
+			pluralizeTorrents(result.Count),
+		)
+	}
+
+	return promptConfirm(cmd, in, confirmPrompt(result, deleteData))
+}
+
+// confirmPrompt builds the interactive confirmation prompt for a removal. An --all
+// selection reads "Remove all N torrents?"; otherwise "Remove N torrents?". When
+// deleteData is set the prompt warns that downloaded data will be deleted too.
+func confirmPrompt(result mutationResult, deleteData bool) string {
+	subject := pluralizeTorrents(result.Count)
+	if result.all {
+		subject = "all " + subject
+	}
+
+	if deleteData {
+		return fmt.Sprintf("Remove %s and delete downloaded data? [y/N] ", subject)
+	}
+
+	return fmt.Sprintf("Remove %s? [y/N] ", subject)
+}
+
+// promptConfirm writes msg to the command's output, reads a single line from in,
+// and reports whether the answer was affirmative. Taking an io.Reader keeps it
+// unit-testable with a strings.Reader, with no real TTY required.
+func promptConfirm(cmd *cobra.Command, in io.Reader, msg string) (bool, error) {
+	_, _ = fmt.Fprint(cmd.OutOrStdout(), msg)
+
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false, fmt.Errorf("reading confirmation: %w", err)
+	}
+
+	return parseAffirmative(line), nil
+}
+
+// parseAffirmative reports whether a prompt answer is an affirmative "y"/"yes"
+// (case-insensitive, surrounding whitespace ignored). Everything else — including
+// an empty line — declines, matching the [y/N] default.
+func parseAffirmative(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
 }
