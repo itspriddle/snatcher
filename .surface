@@ -5,6 +5,7 @@ CMD snatcher auth set
 CMD snatcher auth show
 CMD snatcher auth test
 CMD snatcher list
+CMD snatcher start
 CMD snatcher stats
 CMD snatcher stop
 FLAG snatcher --version type=bool
@@ -25,6 +26,11 @@ FLAG snatcher list --json type=bool
 FLAG snatcher list --reverse type=bool
 FLAG snatcher list --search type=string
 FLAG snatcher list --sort type=string
+FLAG snatcher start --all type=bool
+FLAG snatcher start --config type=string
+FLAG snatcher start --jq type=string
+FLAG snatcher start --json type=bool
+FLAG snatcher start --now type=bool
 FLAG snatcher stats --config type=string
 FLAG snatcher stats --jq type=string
 FLAG snatcher stats --json type=bool
