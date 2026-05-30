@@ -181,9 +181,9 @@ Restore a single setting to its Transmission default. Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR list ", " start ", " stop ", " verify ", " remove ", and " upload .
+.BR list ", " start ", " stop ", " verify ", " reannounce ", " remove ", and " upload .
 The mutation subcommands
-.RB ( start ", " stop ", " verify ", " remove )
+.RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
 .BR \-\-all ;
 at least one selector is required, so a bare invocation is an error, not a
@@ -254,6 +254,15 @@ the torrent metadata. Besides the common options:
 .TP
 .B \-\-all
 Verify every torrent.
+.RE
+.TP
+.B snatcher torrent reannounce \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Reannounce the selected torrents to their trackers immediately, rather than
+waiting for the next scheduled announce interval. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Reannounce every torrent.
 .RE
 .TP
 .B snatcher torrent remove \fR[\fIoptions\fR] [\fIid | hash\fR]...

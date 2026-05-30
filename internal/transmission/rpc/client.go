@@ -127,6 +127,18 @@ func (c *Client) TorrentVerify(ctx context.Context, ids []any) error {
 	return proto.TorrentVerify(ctx, c.transport, ids)
 }
 
+// TorrentReannounce detects the protocol (once) and forces the selected torrents
+// to re-announce to their trackers immediately. A nil or empty ids slice targets
+// all torrents; otherwise the mixed id/hash array selects them.
+func (c *Client) TorrentReannounce(ctx context.Context, ids []any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.TorrentReannounce(ctx, c.transport, ids)
+}
+
 // TorrentRemove detects the protocol (once) and removes the selected torrents,
 // also deleting the downloaded local files when deleteData is true. A nil or
 // empty ids slice targets all torrents; otherwise the mixed id/hash array

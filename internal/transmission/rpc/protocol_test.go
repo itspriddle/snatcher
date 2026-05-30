@@ -646,6 +646,118 @@ func TestBespokeProtocolTorrentVerifyMapsNonSuccessResult(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid argument")
 }
 
+func TestProtocolTorrentReannounce(t *testing.T) {
+	t.Run("jsonrpc sends method and mixed ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := jsonrpcProtocol{}.TorrentReannounce(context.Background(), tr, []any{int64(2), "cafebabe"})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent_reannounce", gotBody["method"])
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{float64(2), "cafebabe"}, params["ids"])
+	})
+
+	t.Run("jsonrpc omits ids when none given", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := jsonrpcProtocol{}.TorrentReannounce(context.Background(), tr, nil)
+		require.NoError(t, err)
+
+		assert.NotContains(t, string(rawBody), `"ids"`)
+	})
+
+	t.Run("bespoke sends method and mixed ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := bespokeProtocol{}.TorrentReannounce(context.Background(), tr, []any{int64(2), "cafebabe"})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent-reannounce", gotBody["method"])
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{float64(2), "cafebabe"}, args["ids"])
+	})
+
+	t.Run("bespoke omits ids when none given", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := bespokeProtocol{}.TorrentReannounce(context.Background(), tr, nil)
+		require.NoError(t, err)
+
+		assert.NotContains(t, string(rawBody), `"ids"`)
+	})
+}
+
+func TestJSONRPCProtocolTorrentReannounceMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32601, "message": "method not found"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.TorrentReannounce(context.Background(), tr, []any{int64(1)})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "method not found")
+}
+
+func TestBespokeProtocolTorrentReannounceMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.TorrentReannounce(context.Background(), tr, []any{int64(1)})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
 func TestProtocolTorrentRemove(t *testing.T) {
 	tests := []struct {
 		name       string

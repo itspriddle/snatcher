@@ -188,6 +188,13 @@ func (b *Backend) VerifyTorrents(ctx context.Context, sel torrent.Selector) erro
 	return mapError(b.client.TorrentVerify(ctx, sel.RPCIDs()))
 }
 
+// ReannounceTorrents forces the torrents matched by sel to re-announce to their
+// trackers immediately. An All selector omits the ids argument so the server
+// targets every torrent. RPC failures are mapped to the neutral sentinels.
+func (b *Backend) ReannounceTorrents(ctx context.Context, sel torrent.Selector) error {
+	return mapError(b.client.TorrentReannounce(ctx, sel.RPCIDs()))
+}
+
 // RemoveTorrents removes the torrents matched by sel, also deleting their
 // downloaded local files when deleteData is true. An All selector omits the ids
 // argument so the server targets every torrent. RPC failures are mapped to the
