@@ -423,6 +423,69 @@ func NewSettingsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&categoryFlag, "category", "", "filter by category (download, network, bandwidth, queue)")
 	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to keys containing this text (case-insensitive)")
 
+	cmd.AddCommand(newSettingsGetCmd())
+
+	return cmd
+}
+
+// newSettingsGetCmd builds "settings get <key>", which prints one setting's
+// current value. Plaintext emits only the bare value (so it composes in scripts,
+// e.g. PORT=$(snatcher settings get peer-port)); --json emits a single {key,
+// category, value} object and --jq filters that object. An unknown key errors
+// with the list of valid keys.
+func newSettingsGetCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+	)
+
+	cmd := &cobra.Command{
+		Use:           "get <key>",
+		Short:         "Show one setting's value",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			def, ok := lookupSetting(args[0])
+			if !ok {
+				return fmt.Errorf("unknown setting %q: valid settings are %s", args[0], strings.Join(allSettingKeys(), ", "))
+			}
+
+			backend, serverURL, err := dial(configPath)
+			if err != nil {
+				return err
+			}
+
+			session, err := backend.GetSession(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			row := settingRow{
+				Key:      def.key,
+				Category: string(def.category),
+				Value:    def.accessor(session),
+			}
+
+			if jqExpr != "" {
+				return output.JQ(cmd.OutOrStdout(), row, jqExpr)
+			}
+
+			if asJSON {
+				return output.JSON(cmd.OutOrStdout(), row)
+			}
+
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), settingCell(def, session))
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
 	return cmd
 }
 

@@ -307,3 +307,114 @@ func TestSettingsNotConfigured(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
 }
+
+func TestSettingsGetBareValue(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	// Plaintext "get" prints only the bare value (no table) so it composes in
+	// scripts.
+	out, _, err := runSettings(t, "get", "peer-port", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "31129", strings.TrimSpace(out))
+}
+
+func TestSettingsGetTypedValues(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	cases := map[string]string{
+		"start-added-torrents": "true",                          // bool
+		"seed-ratio-limit":     "2.5",                           // float
+		"speed-limit-down":     "100",                           // int64
+		"encryption":           "allowed",                       // enum (tolerated->allowed)
+		"blocklist-size":       "1234",                          // read-only is still gettable
+		"blocklist-url":        "http://list.example/blocklist", // string
+	}
+	for key, want := range cases {
+		out, _, err := runSettings(t, "get", key, "--config", cfgPath)
+		require.NoError(t, err, key)
+		assert.Equal(t, want, strings.TrimSpace(out), key)
+	}
+}
+
+func TestSettingsGetSanitizesServerDerivedString(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	out, _, err := runSettings(t, "get", "download-dir", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.NotContains(t, out, "\x1b", "raw ESC from download-dir must not reach plaintext output")
+	assert.Equal(t, "/data[2Jdownloads", strings.TrimSpace(out), "visible text survives sanitization")
+}
+
+func TestSettingsGetUnknownKeyErrors(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	_, _, err := runSettings(t, "get", "bogus-key", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown setting "bogus-key"`)
+	assert.Contains(t, err.Error(), "valid settings are", "the error lists the valid keys")
+	assert.Contains(t, err.Error(), "peer-port", "the valid-keys list includes the registry keys")
+}
+
+func TestSettingsGetRequiresExactlyOneKey(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	_, _, errZero := runSettings(t, "get", "--config", cfgPath)
+	require.Error(t, errZero, "zero keys is an error")
+
+	_, _, errTwo := runSettings(t, "get", "peer-port", "dht-enabled", "--config", cfgPath)
+	require.Error(t, errTwo, "two keys is an error")
+}
+
+func TestSettingsGetJSONSingleObject(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	out, _, err := runSettings(t, "get", "peer-port", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var got struct {
+		Key      string          `json:"key"`
+		Category string          `json:"category"`
+		Value    json.RawMessage `json:"value"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+
+	assert.Equal(t, "peer-port", got.Key)
+	assert.Equal(t, "network", got.Category)
+	assert.JSONEq(t, "31129", string(got.Value), "int value is a native number")
+}
+
+func TestSettingsGetJSONNotSanitized(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	// JSON is a structured contract: the server-derived download-dir is NOT
+	// sanitized, so the raw control byte survives in the JSON value.
+	out, _, err := runSettings(t, "get", "download-dir", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "\\u001b", "JSON value carries the raw control byte unsanitized")
+}
+
+func TestSettingsGetJQFiltersTheObject(t *testing.T) {
+	cfgPath, closeSrv := settingsConfigPath(t)
+	defer closeSrv()
+
+	out, _, err := runSettings(t, "get", "peer-port", "--config", cfgPath, "--jq", ".value")
+	require.NoError(t, err)
+	assert.Equal(t, "31129", strings.TrimSpace(out))
+}
+
+func TestSettingsGetNotConfigured(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runSettings(t, "get", "peer-port", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
