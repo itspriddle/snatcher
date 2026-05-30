@@ -120,6 +120,21 @@ func (b *Backend) ListTorrents(ctx context.Context, ids []int64) ([]torrent.Torr
 	return torrents, nil
 }
 
+// StartTorrents resumes the torrents matched by sel, dispatching to
+// torrent_start_now when now is true (disregarding queue position) and
+// torrent_start otherwise. An All selector omits the ids argument so the server
+// targets every torrent. RPC failures are mapped to the neutral sentinels.
+func (b *Backend) StartTorrents(ctx context.Context, sel torrent.Selector, now bool) error {
+	return mapError(b.client.TorrentStart(ctx, sel.RPCIDs(), now))
+}
+
+// StopTorrents pauses the torrents matched by sel. An All selector omits the ids
+// argument so the server targets every torrent. RPC failures are mapped to the
+// neutral sentinels.
+func (b *Backend) StopTorrents(ctx context.Context, sel torrent.Selector) error {
+	return mapError(b.client.TorrentStop(ctx, sel.RPCIDs()))
+}
+
 // mapTorrent converts a canonical rpc.Torrent into the neutral torrent.Torrent,
 // translating Transmission's raw status int and error fields into the neutral
 // Status (a non-zero error code or non-empty error string promotes to

@@ -65,6 +65,30 @@ func (c *Client) TorrentGet(ctx context.Context, ids []int64) ([]Torrent, error)
 	return proto.TorrentGet(ctx, c.transport, ids)
 }
 
+// TorrentStart detects the protocol (once) and starts the selected torrents
+// (start-now when now is true, disregarding queue position). A nil or empty ids
+// slice targets all torrents; otherwise the mixed id/hash array selects them.
+func (c *Client) TorrentStart(ctx context.Context, ids []any, now bool) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.TorrentStart(ctx, c.transport, ids, now)
+}
+
+// TorrentStop detects the protocol (once) and stops the selected torrents. A nil
+// or empty ids slice targets all torrents; otherwise the mixed id/hash array
+// selects them.
+func (c *Client) TorrentStop(ctx context.Context, ids []any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.TorrentStop(ctx, c.transport, ids)
+}
+
 // Protocol returns the negotiated protocol name, detecting it if necessary. It
 // is primarily useful for diagnostics; typed calls detect on their own.
 func (c *Client) Protocol(ctx context.Context) (string, error) {

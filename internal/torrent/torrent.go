@@ -97,4 +97,13 @@ type Backend interface {
 	// given numeric ids. The returned slice is never nil on success (it is empty
 	// when there are no matching torrents).
 	ListTorrents(ctx context.Context, ids []int64) ([]Torrent, error)
+
+	// StartTorrents resumes the torrents matched by sel (start-now when now is
+	// true, disregarding queue position). An All selector targets every torrent.
+	// Starting an already-started torrent is a no-op.
+	StartTorrents(ctx context.Context, sel Selector, now bool) error
+
+	// StopTorrents pauses the torrents matched by sel. An All selector targets
+	// every torrent. Stopping an already-stopped torrent is a no-op.
+	StopTorrents(ctx context.Context, sel Selector) error
 }

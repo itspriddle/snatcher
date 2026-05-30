@@ -412,3 +412,137 @@ func TestBackendListTorrentsMapsTransportError(t *testing.T) {
 	require.ErrorIs(t, err, torrent.ErrUnreachable)
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }
+
+// captureActionServer is a Transmission stub that records the body of the first
+// non-handshake request (the action call) so tests can assert the method and
+// ids. The rpcVersion header drives protocol negotiation.
+func captureActionServer(t *testing.T, rpcVersion string, captured *string) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			if rpcVersion != "" {
+				w.Header().Set(rpcVersionHeader, rpcVersion)
+			}
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		*captured = string(body)
+		// A body valid for both schemes: bespoke checks result == "success";
+		// JSON-RPC checks only that error is absent (result value is ignored).
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": "success", "arguments": {}, "id": 1, "tag": 1}`))
+	}))
+}
+
+func TestBackendStartTorrents(t *testing.T) {
+	tests := []struct {
+		name       string
+		now        bool
+		rpcVersion string
+		wantMethod string
+	}{
+		{name: "jsonrpc start", now: false, rpcVersion: "6.0.0", wantMethod: `"method":"torrent_start"`},
+		{name: "jsonrpc start-now", now: true, rpcVersion: "6.0.0", wantMethod: `"method":"torrent_start_now"`},
+		{name: "bespoke start", now: false, rpcVersion: "", wantMethod: `"method":"torrent-start"`},
+		{name: "bespoke start-now", now: true, rpcVersion: "", wantMethod: `"method":"torrent-start-now"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			err := b.StartTorrents(context.Background(), sel, tt.now)
+			require.NoError(t, err)
+
+			assert.Contains(t, captured, tt.wantMethod)
+			assert.Contains(t, captured, `"ids":[1,"deadbeef"]`)
+		})
+	}
+}
+
+func TestBackendStopTorrents(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	sel := torrent.Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
+	err := b.StopTorrents(context.Background(), sel)
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent_stop"`)
+	assert.Contains(t, captured, `"ids":[2,"cafebabe"]`)
+}
+
+func TestBackendStartStopAllOmitsIDs(t *testing.T) {
+	t.Run("start --all omits ids", func(t *testing.T) {
+		var captured string
+
+		srv := captureActionServer(t, "6.0.0", &captured)
+		defer srv.Close()
+
+		b := New(srv.URL)
+
+		err := b.StartTorrents(context.Background(), torrent.Selector{All: true}, false)
+		require.NoError(t, err)
+
+		assert.Contains(t, captured, `"method":"torrent_start"`)
+		assert.NotContains(t, captured, `"ids"`)
+	})
+
+	t.Run("stop --all omits ids", func(t *testing.T) {
+		var captured string
+
+		srv := captureActionServer(t, "6.0.0", &captured)
+		defer srv.Close()
+
+		b := New(srv.URL)
+
+		err := b.StopTorrents(context.Background(), torrent.Selector{All: true})
+		require.NoError(t, err)
+
+		assert.Contains(t, captured, `"method":"torrent_stop"`)
+		assert.NotContains(t, captured, `"ids"`)
+	})
+}
+
+func TestBackendStopTorrentsMapsRPCError(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"torrent-stop": `{"result": "invalid argument", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.StopTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, rpc.ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
+func TestBackendStartTorrentsMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.StartTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, false)
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}

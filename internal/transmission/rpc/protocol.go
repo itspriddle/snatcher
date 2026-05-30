@@ -43,6 +43,15 @@ const (
 
 	methodTorrentGetJSONRPC = "torrent_get"
 	methodTorrentGetBespoke = "torrent-get"
+
+	methodTorrentStartJSONRPC = "torrent_start"
+	methodTorrentStartBespoke = "torrent-start"
+
+	methodTorrentStartNowJSONRPC = "torrent_start_now"
+	methodTorrentStartNowBespoke = "torrent-start-now"
+
+	methodTorrentStopJSONRPC = "torrent_stop"
+	methodTorrentStopBespoke = "torrent-stop"
 )
 
 // ErrRPC signals that the server accepted the request at the transport level but
@@ -225,6 +234,19 @@ type Protocol interface {
 	// the canonical Torrents. A nil or empty ids slice requests all torrents;
 	// otherwise the server filters to the given numeric ids.
 	TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error)
+
+	// TorrentStart calls the server's torrent-start/torrent_start method (or the
+	// *-start-now variant when now is true, which disregards queue position). A
+	// nil or empty ids slice targets all torrents; otherwise the mixed id/hash
+	// array selects torrents. These methods carry no response payload, so the
+	// call only confirms success.
+	TorrentStart(ctx context.Context, t transport, ids []any, now bool) error
+
+	// TorrentStop calls the server's torrent-stop/torrent_stop method. A nil or
+	// empty ids slice targets all torrents; otherwise the mixed id/hash array
+	// selects torrents. The method carries no response payload, so the call only
+	// confirms success.
+	TorrentStop(ctx context.Context, t transport, ids []any) error
 }
 
 // jsonrpcProtocol implements the JSON-RPC 2.0 scheme.
@@ -452,6 +474,58 @@ func (p jsonrpcProtocol) TorrentGet(ctx context.Context, t transport, ids []int6
 	}
 
 	return torrents, nil
+}
+
+func (p jsonrpcProtocol) TorrentStart(ctx context.Context, t transport, ids []any, now bool) error {
+	method := methodTorrentStartJSONRPC
+	if now {
+		method = methodTorrentStartNowJSONRPC
+	}
+
+	return p.action(ctx, t, method, ids)
+}
+
+func (p jsonrpcProtocol) TorrentStop(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodTorrentStopJSONRPC, ids)
+}
+
+// action performs a payload-free JSON-RPC mutation (start/start-now/stop): it
+// sends method with an optional ids array (omitted when nil/empty = all
+// torrents) and confirms success. These methods return no result arguments, so
+// only the error object is inspected.
+func (jsonrpcProtocol) action(ctx context.Context, t transport, method string, ids []any) error {
+	var params any
+	if len(ids) > 0 {
+		params = map[string]any{"ids": ids}
+	}
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(method, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	return nil
 }
 
 // bespokeProtocol implements the legacy bespoke scheme.
@@ -692,6 +766,57 @@ func (p bespokeProtocol) TorrentGet(ctx context.Context, t transport, ids []int6
 	}
 
 	return torrents, nil
+}
+
+func (p bespokeProtocol) TorrentStart(ctx context.Context, t transport, ids []any, now bool) error {
+	method := methodTorrentStartBespoke
+	if now {
+		method = methodTorrentStartNowBespoke
+	}
+
+	return p.action(ctx, t, method, ids)
+}
+
+func (p bespokeProtocol) TorrentStop(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodTorrentStopBespoke, ids)
+}
+
+// action performs a payload-free bespoke mutation (start/start-now/stop): it
+// sends method with an optional ids array (omitted when nil/empty = all
+// torrents) and confirms success via the result field. These methods return no
+// arguments, so only the result string is inspected.
+func (bespokeProtocol) action(ctx context.Context, t transport, method string, ids []any) error {
+	var arguments any
+	if len(ids) > 0 {
+		arguments = map[string]any{"ids": ids}
+	}
+
+	req := bespokeRequest{
+		Method:    method,
+		Arguments: arguments,
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(method, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	return nil
 }
 
 // marshalRequest encodes a request envelope, wrapping any error in a clear,
