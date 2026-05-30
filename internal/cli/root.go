@@ -30,6 +30,7 @@ func NewRootCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&showVersion, "version", false, "Print version information and exit")
 
+	cmd.AddCommand(commands.NewAPICmd())
 	cmd.AddCommand(commands.NewAuthCmd())
 	cmd.AddCommand(commands.NewListCmd())
 	cmd.AddCommand(commands.NewRemoveCmd())
