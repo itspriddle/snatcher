@@ -172,6 +172,9 @@ func (noAPIBackend) ReannounceTorrents(context.Context, torrent.Selector) error 
 func (noAPIBackend) RemoveTorrents(context.Context, torrent.Selector, bool) error {
 	return nil
 }
+func (noAPIBackend) MoveTorrents(context.Context, torrent.Selector, string, bool) error {
+	return nil
+}
 func (noAPIBackend) AddTorrent(context.Context, torrent.AddRequest) (torrent.AddResult, error) {
 	return torrent.AddResult{}, nil
 }

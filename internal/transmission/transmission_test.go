@@ -759,6 +759,100 @@ func TestBackendRemoveTorrentsMapsTransportError(t *testing.T) {
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }
 
+func TestBackendMoveTorrents(t *testing.T) {
+	tests := []struct {
+		name       string
+		move       bool
+		rpcVersion string
+		wantMethod string
+		wantFlag   string
+	}{
+		{name: "jsonrpc relocate", move: true, rpcVersion: "6.0.0", wantMethod: `"method":"torrent_set_location"`, wantFlag: `"move":true`},
+		{name: "jsonrpc in-place", move: false, rpcVersion: "6.0.0", wantMethod: `"method":"torrent_set_location"`, wantFlag: `"move":false`},
+		{name: "bespoke relocate", move: true, rpcVersion: "", wantMethod: `"method":"torrent-set-location"`, wantFlag: `"move":true`},
+		{name: "bespoke in-place", move: false, rpcVersion: "", wantMethod: `"method":"torrent-set-location"`, wantFlag: `"move":false`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
+			err := b.MoveTorrents(context.Background(), sel, "/data/media", tt.move)
+			require.NoError(t, err)
+
+			assert.Contains(t, captured, tt.wantMethod)
+			assert.Contains(t, captured, `"ids":[2,"cafebabe"]`)
+			assert.Contains(t, captured, `"location":"/data/media"`)
+			assert.Contains(t, captured, tt.wantFlag)
+		})
+	}
+}
+
+func TestBackendMoveTorrentsAllOmitsIDs(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.MoveTorrents(context.Background(), torrent.Selector{All: true}, "/data/media", true)
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent_set_location"`)
+	assert.Contains(t, captured, `"location":"/data/media"`)
+	assert.NotContains(t, captured, `"ids"`)
+}
+
+func TestBackendMoveTorrentsMapsRPCError(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"torrent-set-location": `{"result": "invalid argument", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.MoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, "/data/media", true)
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, rpc.ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
+func TestBackendMoveTorrentsMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.MoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, "/data/media", true)
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendMoveTorrentsMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.MoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, "/data/media", true)
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, torrent.ErrAuth)
+}
+
 // captureAddServer is a Transmission stub that records the body of the
 // non-handshake request and answers with a valid torrent-add result (a new
 // add). The reply shape differs per scheme — JSON-RPC's "result" must be the

@@ -203,6 +203,15 @@ func (b *Backend) RemoveTorrents(ctx context.Context, sel torrent.Selector, dele
 	return mapError(b.client.TorrentRemove(ctx, sel.RPCIDs(), deleteData))
 }
 
+// MoveTorrents changes the download location of the torrents matched by sel to
+// location, relocating the existing files when move is true and repointing
+// without relocating (searching location for already-present files) when false.
+// An All selector omits the ids argument so the server targets every torrent.
+// RPC failures are mapped to the neutral sentinels.
+func (b *Backend) MoveTorrents(ctx context.Context, sel torrent.Selector, location string, move bool) error {
+	return mapError(b.client.TorrentSetLocation(ctx, sel.RPCIDs(), location, move))
+}
+
 // AddTorrent adds a single torrent via the rpc client's TorrentAdd. It
 // base64-encodes raw Metainfo into the RPC metainfo field, maps URL/Magnet to
 // the RPC filename field, and passes DownloadDir/Paused/Labels through. The
