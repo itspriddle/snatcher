@@ -8,7 +8,7 @@ LDFLAGS := -s -w \
 	-X $(VERSION_PKG).Commit=$(COMMIT) \
 	-X $(VERSION_PKG).Date=$(DATE)
 
-.PHONY: build test lint clean check surface check-surface \
+.PHONY: build test lint clean check surface check-surface check-man \
 	fmt fmt-check vet tidy tidy-check race-test vuln replace-check release-check
 
 build:
@@ -63,6 +63,9 @@ surface:
 check-surface:
 	go test ./internal/cli/ -run TestSurface -v
 
-check: fmt-check vet lint test check-surface tidy-check
+check-man:
+	go test ./internal/cli/ -run TestManPageCoverage -count=1 -v
+
+check: fmt-check vet lint test check-surface check-man tidy-check
 
 release-check: check replace-check vuln race-test

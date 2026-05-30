@@ -19,6 +19,69 @@ func Generate(root *cobra.Command) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
+// Commands returns the full command paths in the tree (e.g. "snatcher settings
+// get"), sorted. The root command itself and the built-in help/completion
+// commands are excluded — it is the set of invocable subcommands a man page is
+// expected to document.
+func Commands(root *cobra.Command) []string {
+	var paths []string
+	collectCommands(root, &paths)
+	sort.Strings(paths)
+	return paths
+}
+
+func collectCommands(cmd *cobra.Command, paths *[]string) {
+	if name := cmd.Name(); name == "help" || name == "completion" {
+		return
+	}
+
+	if cmd.HasParent() {
+		*paths = append(*paths, fullPath(cmd))
+	}
+
+	for _, child := range cmd.Commands() {
+		collectCommands(child, paths)
+	}
+}
+
+// FlagNames returns the distinct long flag names in the tree as "--name" (e.g.
+// "--config"), sorted. The built-in --help flag and the help/completion
+// commands are excluded. Names are deduplicated, so a flag shared across
+// commands (like --config) appears once.
+func FlagNames(root *cobra.Command) []string {
+	seen := map[string]struct{}{}
+	collectFlags(root, seen)
+
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func collectFlags(cmd *cobra.Command, seen map[string]struct{}) {
+	if name := cmd.Name(); name == "help" || name == "completion" {
+		return
+	}
+
+	add := func(f *pflag.Flag) {
+		if f.Name == "help" {
+			return
+		}
+		seen["--"+f.Name] = struct{}{}
+	}
+
+	if !cmd.HasParent() {
+		cmd.PersistentFlags().VisitAll(add)
+	}
+	cmd.Flags().VisitAll(add)
+
+	for _, child := range cmd.Commands() {
+		collectFlags(child, seen)
+	}
+}
+
 func walk(cmd *cobra.Command, lines *[]string) {
 	name := cmd.Name()
 
