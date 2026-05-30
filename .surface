@@ -13,6 +13,7 @@ CMD snatcher auth test
 CMD snatcher port
 CMD snatcher port get
 CMD snatcher port set
+CMD snatcher port test
 CMD snatcher settings
 CMD snatcher settings get
 CMD snatcher settings reset
@@ -50,6 +51,9 @@ FLAG snatcher port set --forwarding type=bool
 FLAG snatcher port set --jq type=string
 FLAG snatcher port set --json type=bool
 FLAG snatcher port set --random type=bool
+FLAG snatcher port test --config type=string
+FLAG snatcher port test --jq type=string
+FLAG snatcher port test --json type=bool
 FLAG snatcher settings --category type=string
 FLAG snatcher settings --config type=string
 FLAG snatcher settings --jq type=string

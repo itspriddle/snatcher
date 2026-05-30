@@ -312,3 +312,134 @@ func TestPortSetTooManyArgs(t *testing.T) {
 	_, _, err := runPort(t, "set", "51413", "extra", "--config", cfgPath)
 	require.Error(t, err, "more than one positional argument is an error")
 }
+
+// portTestConfigPath stands up a transmission stub answering the port-reachability
+// probe and writes a config pointing at it. A non-empty rpcVersionHeader selects
+// the JSON-RPC 2.0 path (method port_test); an empty one selects the bespoke path
+// (method port-test). The response body is the canned answer for that method.
+func portTestConfigPath(t *testing.T, rpcVersion, method, body string) (string, func()) {
+	t.Helper()
+
+	keyring.MockInit()
+
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: rpcVersion,
+		responses: map[string]string{
+			method: body,
+		},
+	}.handler())
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+
+	return cfgPath, srv.Close
+}
+
+func TestPortTestOpenPlaintext(t *testing.T) {
+	cfgPath, closeSrv := portTestConfigPath(t, "", "port-test",
+		`{"arguments": {"port-is-open": true}, "result": "success", "tag": 1}`)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "test", "--config", cfgPath)
+	require.NoError(t, err, "an open port exits zero")
+	assert.Contains(t, out, "Port is open")
+}
+
+func TestPortTestClosedPlaintextExitsNonZero(t *testing.T) {
+	cfgPath, closeSrv := portTestConfigPath(t, "", "port-test",
+		`{"arguments": {"port-is-open": false}, "result": "success", "tag": 1}`)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "test", "--config", cfgPath)
+	// A reachable-but-closed port is a probe failure: it renders the result but
+	// returns the sentinel so Execute exits non-zero.
+	require.Error(t, err)
+	require.ErrorIs(t, err, errPortClosed)
+	assert.Contains(t, out, "Port is closed")
+}
+
+func TestPortTestClosedJSONStillRendered(t *testing.T) {
+	cfgPath, closeSrv := portTestConfigPath(t, "", "port-test",
+		`{"arguments": {"port-is-open": false}, "result": "success", "tag": 1}`)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "test", "--config", cfgPath, "--json")
+	// Closed exits non-zero, but the structured {open:false} payload is still
+	// written to stdout for --json consumers.
+	require.Error(t, err)
+	require.ErrorIs(t, err, errPortClosed)
+	assert.JSONEq(t, `{"open": false}`, out)
+}
+
+func TestPortTestClosedJQStillRendered(t *testing.T) {
+	cfgPath, closeSrv := portTestConfigPath(t, "", "port-test",
+		`{"arguments": {"port-is-open": false}, "result": "success", "tag": 1}`)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "test", "--config", cfgPath, "--jq", ".open")
+	require.Error(t, err)
+	require.ErrorIs(t, err, errPortClosed)
+	assert.Equal(t, "false", strings.TrimSpace(out))
+}
+
+func TestPortTestJSONRPCSurfacesIPProtocol(t *testing.T) {
+	cfgPath, closeSrv := portTestConfigPath(t, "6.0.0", "port_test",
+		`{"jsonrpc": "2.0", "result": {"port_is_open": true, "ip_protocol": "ipv6"}, "id": 1}`)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "test", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+	// ip_protocol is present only on the JSON-RPC 2.0 scheme.
+	assert.JSONEq(t, `{"open": true, "ip_protocol": "ipv6"}`, out)
+}
+
+func TestPortTestBespokeOmitsIPProtocol(t *testing.T) {
+	cfgPath, closeSrv := portTestConfigPath(t, "", "port-test",
+		`{"arguments": {"port-is-open": true}, "result": "success", "tag": 1}`)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "test", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+	// The bespoke scheme reports no ip_protocol, so it is omitted (omitempty).
+	assert.JSONEq(t, `{"open": true}`, out)
+}
+
+func TestPortTestPlaintextShowsIPProtocol(t *testing.T) {
+	cfgPath, closeSrv := portTestConfigPath(t, "6.0.0", "port_test",
+		`{"jsonrpc": "2.0", "result": {"port_is_open": true, "ip_protocol": "ipv6"}, "id": 1}`)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "test", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Port is open")
+	assert.Contains(t, out, "ipv6")
+}
+
+func TestPortTestUnreachableRendersNoResult(t *testing.T) {
+	keyring.MockInit()
+
+	// A server that fails every request maps to a connection error, distinct from
+	// a reachable-but-closed port: it returns an error and renders no result.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+
+	out, _, err := runPort(t, "test", "--config", cfgPath)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, errPortClosed, "a connection failure is distinct from a closed port")
+	assert.Contains(t, err.Error(), srv.URL)
+	assert.Empty(t, out, "no result is rendered on a connection failure")
+}
+
+func TestPortTestNotConfigured(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runPort(t, "test", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}

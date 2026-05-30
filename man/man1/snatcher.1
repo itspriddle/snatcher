@@ -225,6 +225,26 @@ With neither a
 .I port
 nor any flag, it returns a "nothing to set" error. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher port test \fR[\fIoptions\fR]
+Test whether the currently configured peer port is reachable from outside (it
+takes no
+.I port
+argument). Reports
+.B open
+or
+.B closed
+in plaintext and emits an
+.RB { open ", " ip_protocol }
+object under
+.BR \-\-json
+(\c
+.B ip_protocol
+is reported only by Transmission's JSON-RPC 2.0 scheme and omitted otherwise).
+Exits 0 when the port is open and non-zero when it is closed, while still
+writing the structured result to stdout; a connection or authentication failure
+is a distinct non-zero exit that renders no result. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
 .SS "torrent"
 Manage individual torrents. All torrent operations live under the
 .B torrent

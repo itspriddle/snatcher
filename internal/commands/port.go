@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -9,6 +10,13 @@ import (
 	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/torrent"
 )
+
+// errPortClosed is the sentinel returned (after the result has already been
+// rendered) when a reachable server reports the configured peer port as closed.
+// The command writes the {open:false, …} payload to stdout first, then returns
+// this so Execute exits non-zero — a probe-style result scripts can gate on.
+// This is distinct from a connection/auth failure, which renders no result.
+var errPortClosed = errors.New("port is closed")
 
 // portState is the JSON contract emitted by the "port" subcommands: the peer
 // port plus the random-on-start and port-forwarding flags read from the live
@@ -45,6 +53,7 @@ func NewPortCmd() *cobra.Command {
 
 	cmd.AddCommand(newPortGetCmd())
 	cmd.AddCommand(newPortSetCmd())
+	cmd.AddCommand(newPortTestCmd())
 
 	return cmd
 }
@@ -201,6 +210,71 @@ func newPortSetCmd() *cobra.Command {
 	return cmd
 }
 
+// newPortTestCmd builds "port test", which asks the server whether the
+// configured peer port is reachable from outside. The structured result is
+// rendered first in all modes; when the server reports the port closed the
+// command still exits non-zero (via errPortClosed) so scripts can gate on it.
+// A connection/auth failure is distinct: it renders no result and surfaces as
+// the dial/transport error.
+func newPortTestCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "test",
+		Short: "Test whether the configured peer port is reachable",
+		Long: "Test whether the configured peer port is reachable from outside.\n\n" +
+			"Reports open or closed for the currently configured port (it takes no " +
+			"port argument). Exits 0 when the port is open and non-zero when it is " +
+			"closed, while still writing the structured result to stdout — a " +
+			"connection failure is a distinct non-zero exit that renders no result.",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			backend, serverURL, err := dial(configPath)
+			if err != nil {
+				return err
+			}
+
+			result, err := backend.TestPort(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			switch {
+			case jqExpr != "":
+				if err := output.JQ(cmd.OutOrStdout(), result, jqExpr); err != nil {
+					return err
+				}
+			case asJSON:
+				if err := output.JSON(cmd.OutOrStdout(), result); err != nil {
+					return err
+				}
+			default:
+				writePortTest(cmd, result)
+			}
+
+			// A reachable-but-closed port is a probe failure: the result is
+			// already written, so return the sentinel to flip Execute's exit code.
+			if !result.Open {
+				return errPortClosed
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
+	return cmd
+}
+
 // parsePort validates a positional port argument: it must parse to an integer
 // in the inclusive [1, 65535] range. Any other value returns a clear error and
 // the caller performs no session write.
@@ -221,4 +295,24 @@ func writePortState(cmd *cobra.Command, state portState) {
 	_, _ = fmt.Fprintf(out, "Port:               %d\n", state.Port)
 	_, _ = fmt.Fprintf(out, "Random on start:    %s\n", yesNo(state.RandomOnStart))
 	_, _ = fmt.Fprintf(out, "Forwarding enabled: %s\n", yesNo(state.ForwardingEnabled))
+}
+
+// writePortTest renders a port-reachability result as a single plaintext line.
+// IPProtocol is appended only when the server reported it (JSON-RPC 2.0); it is
+// a fixed server-derived enum ("ipv4"/"ipv6"), not free-form text, so no
+// terminal sanitization is required.
+func writePortTest(cmd *cobra.Command, result torrent.PortTest) {
+	out := cmd.OutOrStdout()
+
+	state := "closed"
+	if result.Open {
+		state = "open"
+	}
+
+	if result.IPProtocol != "" {
+		_, _ = fmt.Fprintf(out, "Port is %s (%s)\n", state, result.IPProtocol)
+		return
+	}
+
+	_, _ = fmt.Fprintf(out, "Port is %s\n", state)
 }
