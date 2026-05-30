@@ -195,6 +195,34 @@ func (b *Backend) ReannounceTorrents(ctx context.Context, sel torrent.Selector) 
 	return mapError(b.client.TorrentReannounce(ctx, sel.RPCIDs()))
 }
 
+// QueueMoveTop moves the torrents matched by sel to the top of the queue. An All
+// selector omits the ids argument so the server targets every torrent. RPC
+// failures are mapped to the neutral sentinels.
+func (b *Backend) QueueMoveTop(ctx context.Context, sel torrent.Selector) error {
+	return mapError(b.client.QueueMoveTop(ctx, sel.RPCIDs()))
+}
+
+// QueueMoveUp moves the torrents matched by sel up one position in the queue. An
+// All selector omits the ids argument so the server targets every torrent. RPC
+// failures are mapped to the neutral sentinels.
+func (b *Backend) QueueMoveUp(ctx context.Context, sel torrent.Selector) error {
+	return mapError(b.client.QueueMoveUp(ctx, sel.RPCIDs()))
+}
+
+// QueueMoveDown moves the torrents matched by sel down one position in the queue.
+// An All selector omits the ids argument so the server targets every torrent. RPC
+// failures are mapped to the neutral sentinels.
+func (b *Backend) QueueMoveDown(ctx context.Context, sel torrent.Selector) error {
+	return mapError(b.client.QueueMoveDown(ctx, sel.RPCIDs()))
+}
+
+// QueueMoveBottom moves the torrents matched by sel to the bottom of the queue.
+// An All selector omits the ids argument so the server targets every torrent. RPC
+// failures are mapped to the neutral sentinels.
+func (b *Backend) QueueMoveBottom(ctx context.Context, sel torrent.Selector) error {
+	return mapError(b.client.QueueMoveBottom(ctx, sel.RPCIDs()))
+}
+
 // RemoveTorrents removes the torrents matched by sel, also deleting their
 // downloaded local files when deleteData is true. An All selector omits the ids
 // argument so the server targets every torrent. RPC failures are mapped to the

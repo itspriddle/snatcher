@@ -169,6 +169,10 @@ func (noAPIBackend) StartTorrents(context.Context, torrent.Selector, bool) error
 func (noAPIBackend) StopTorrents(context.Context, torrent.Selector) error        { return nil }
 func (noAPIBackend) VerifyTorrents(context.Context, torrent.Selector) error      { return nil }
 func (noAPIBackend) ReannounceTorrents(context.Context, torrent.Selector) error  { return nil }
+func (noAPIBackend) QueueMoveTop(context.Context, torrent.Selector) error        { return nil }
+func (noAPIBackend) QueueMoveUp(context.Context, torrent.Selector) error         { return nil }
+func (noAPIBackend) QueueMoveDown(context.Context, torrent.Selector) error       { return nil }
+func (noAPIBackend) QueueMoveBottom(context.Context, torrent.Selector) error     { return nil }
 func (noAPIBackend) RemoveTorrents(context.Context, torrent.Selector, bool) error {
 	return nil
 }

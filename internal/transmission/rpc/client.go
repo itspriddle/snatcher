@@ -139,6 +139,54 @@ func (c *Client) TorrentReannounce(ctx context.Context, ids []any) error {
 	return proto.TorrentReannounce(ctx, c.transport, ids)
 }
 
+// QueueMoveTop detects the protocol (once) and moves the selected torrents to the
+// top of the queue. A nil or empty ids slice targets all torrents; otherwise the
+// mixed id/hash array selects them.
+func (c *Client) QueueMoveTop(ctx context.Context, ids []any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.QueueMoveTop(ctx, c.transport, ids)
+}
+
+// QueueMoveUp detects the protocol (once) and moves the selected torrents up one
+// position in the queue. A nil or empty ids slice targets all torrents; otherwise
+// the mixed id/hash array selects them.
+func (c *Client) QueueMoveUp(ctx context.Context, ids []any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.QueueMoveUp(ctx, c.transport, ids)
+}
+
+// QueueMoveDown detects the protocol (once) and moves the selected torrents down
+// one position in the queue. A nil or empty ids slice targets all torrents;
+// otherwise the mixed id/hash array selects them.
+func (c *Client) QueueMoveDown(ctx context.Context, ids []any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.QueueMoveDown(ctx, c.transport, ids)
+}
+
+// QueueMoveBottom detects the protocol (once) and moves the selected torrents to
+// the bottom of the queue. A nil or empty ids slice targets all torrents;
+// otherwise the mixed id/hash array selects them.
+func (c *Client) QueueMoveBottom(ctx context.Context, ids []any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.QueueMoveBottom(ctx, c.transport, ids)
+}
+
 // TorrentRemove detects the protocol (once) and removes the selected torrents,
 // also deleting the downloaded local files when deleteData is true. A nil or
 // empty ids slice targets all torrents; otherwise the mixed id/hash array

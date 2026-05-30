@@ -670,6 +670,119 @@ func TestBackendReannounceTorrentsMapsAuthError(t *testing.T) {
 	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
 }
 
+func TestBackendQueueMove(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          func(*Backend, context.Context, torrent.Selector) error
+		jsonrpcMethod string
+		bespokeMethod string
+	}{
+		{
+			name:          "top",
+			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveTop(ctx, sel) },
+			jsonrpcMethod: `"method":"queue_move_top"`,
+			bespokeMethod: `"method":"queue-move-top"`,
+		},
+		{
+			name:          "up",
+			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveUp(ctx, sel) },
+			jsonrpcMethod: `"method":"queue_move_up"`,
+			bespokeMethod: `"method":"queue-move-up"`,
+		},
+		{
+			name:          "down",
+			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveDown(ctx, sel) },
+			jsonrpcMethod: `"method":"queue_move_down"`,
+			bespokeMethod: `"method":"queue-move-down"`,
+		},
+		{
+			name:          "bottom",
+			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveBottom(ctx, sel) },
+			jsonrpcMethod: `"method":"queue_move_bottom"`,
+			bespokeMethod: `"method":"queue-move-bottom"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+" jsonrpc", func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, "6.0.0", &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			err := tt.call(b, context.Background(), sel)
+			require.NoError(t, err)
+
+			assert.Contains(t, captured, tt.jsonrpcMethod)
+			assert.Contains(t, captured, `"ids":[1,"deadbeef"]`)
+		})
+
+		t.Run(tt.name+" bespoke", func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, "", &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			err := tt.call(b, context.Background(), sel)
+			require.NoError(t, err)
+
+			assert.Contains(t, captured, tt.bespokeMethod)
+			assert.Contains(t, captured, `"ids":[1,"deadbeef"]`)
+		})
+	}
+}
+
+func TestBackendQueueMoveAllOmitsIDs(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.QueueMoveTop(context.Background(), torrent.Selector{All: true})
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"queue_move_top"`)
+	assert.NotContains(t, captured, `"ids"`)
+}
+
+func TestBackendQueueMoveMapsRPCError(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"queue-move-up": `{"result": "invalid argument", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.QueueMoveUp(context.Background(), torrent.Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, rpc.ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
+func TestBackendQueueMoveMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.QueueMoveBottom(context.Background(), torrent.Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
 func TestBackendStartTorrentsMapsAuthError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
