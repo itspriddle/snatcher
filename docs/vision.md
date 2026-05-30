@@ -52,19 +52,20 @@ Use "snatcher [command] --help" for more information about a command.
 
 ## Unscoped Commands
 
-- `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
+- [ ] `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
 - [x] `snatcher torrent reannounce ...` - reannounce torrent to trackers
-- [^] `snatcher torrent move ...` - `torrent_set_location`
+- [x] `snatcher torrent move ...` - `torrent_set_location`
 - [^] `snatcher torrent queue top|up|down|bottom ...` - change queue position
-- `snatcher server blocklist ...` - 
+- [ ] `snatcher server blocklist ...` - 
 - [x] `snatcher port get|set|test` - show or change listening port
-- `snatcher free-space ...` - show free space on disk (merge in with stats?)
+- [ ] `snatcher free-space ...` - show free space on disk (merge in with stats?)
 - [^] `snatcher torrent info <hash|id> ...` - show torrent info
+- [ ] `snatcher search ...` - search for torrents with Prowlarr
 
 ### Aliases
 
 - `snatcher torrent up` / `snatcher upload`
-- `snatcher torrent mv`
+- [x] `snatcher torrent mv`
 - `snatcher torrent rm`
 - `snatcher torrent ls`
 
