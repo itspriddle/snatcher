@@ -14,8 +14,11 @@ CMD snatcher stop
 CMD snatcher upload
 FLAG snatcher --version type=bool
 FLAG snatcher api --config type=string
+FLAG snatcher api --field type=stringArray
+FLAG snatcher api --input type=string
 FLAG snatcher api --jq type=string
 FLAG snatcher api --raw type=bool
+FLAG snatcher api --raw-field type=stringArray
 FLAG snatcher auth remove --config type=string
 FLAG snatcher auth set --config type=string
 FLAG snatcher auth set --password-stdin type=bool
