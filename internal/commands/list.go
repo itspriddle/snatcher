@@ -91,6 +91,15 @@ var defaultFieldKeys = []string{
 	"id", "name", "status", "done", "size", "down", "up", "ratio", "eta",
 }
 
+// allFieldKeys is every selectable field key in registry order. It is the
+// canonical ordering of listFields, shared by the --fields help text, the man
+// page, and the info command's default (which shows the complete set rather
+// than list's smaller defaultFieldKeys).
+var allFieldKeys = []string{
+	"id", "hash", "name", "status", "done", "size", "down", "up", "ratio",
+	"eta", "peers", "added", "download_dir", "error", "labels",
+}
+
 // validFieldKeys returns every selectable --fields key in sorted order, for the
 // error message listing the valid keys.
 func validFieldKeys() string {
