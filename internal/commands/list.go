@@ -67,6 +67,10 @@ func NewListCmd() *cobra.Command {
 		configPath string
 		asJSON     bool
 		jqExpr     string
+		filterFlag string
+		sortFlag   string
+		searchFlag string
+		reverse    bool
 	)
 
 	cmd := &cobra.Command{
@@ -76,6 +80,16 @@ func NewListCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			filter, err := torrent.ParseFilter(filterFlag)
+			if err != nil {
+				return err
+			}
+
+			sortField, err := torrent.ParseSortField(sortFlag)
+			if err != nil {
+				return err
+			}
+
 			backend, serverURL, err := dial(configPath)
 			if err != nil {
 				return err
@@ -85,6 +99,13 @@ func NewListCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
+
+			// Apply the in-memory transforms in a fixed order: status filter,
+			// then name search, then sort. This order is shared by every output
+			// mode (table, piped, JSON/jq).
+			torrents = torrent.FilterByStatus(torrents, filter)
+			torrents = torrent.SearchByName(torrents, searchFlag)
+			torrents = torrent.SortTorrents(torrents, sortField, reverse)
 
 			if jqExpr != "" {
 				return output.JQ(cmd.OutOrStdout(), jsonTorrents(torrents), jqExpr)
@@ -103,6 +124,10 @@ func NewListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	cmd.Flags().StringVar(&filterFlag, "filter", "all", "filter by status (all, active, downloading, seeding, stopped, verifying, queued-to-verify, queued-to-download, queued-to-seed, error)")
+	cmd.Flags().StringVar(&sortFlag, "sort", "queue", "sort by field (queue, name, added, size, progress, ratio, speed)")
+	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to torrents whose name contains this text (case-insensitive)")
+	cmd.Flags().BoolVar(&reverse, "reverse", false, "reverse the sort order")
 
 	return cmd
 }
