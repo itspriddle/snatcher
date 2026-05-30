@@ -152,6 +152,20 @@ func (c *Client) TorrentRemove(ctx context.Context, ids []any, deleteData bool) 
 	return proto.TorrentRemove(ctx, c.transport, ids, deleteData)
 }
 
+// TorrentSetLocation detects the protocol (once) and changes the download
+// location of the selected torrents to location. When move is true the server
+// relocates the existing files; otherwise it repoints to a path where the files
+// already exist and searches there. A nil or empty ids slice targets all
+// torrents; otherwise the mixed id/hash array selects them.
+func (c *Client) TorrentSetLocation(ctx context.Context, ids []any, location string, move bool) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.TorrentSetLocation(ctx, c.transport, ids, location, move)
+}
+
 // Call detects the protocol (once) and issues an arbitrary RPC method with raw
 // arguments, returning the canonical RawResponse. method is the canonical
 // kebab-case name (the protocol translates it for its wire scheme); args is the

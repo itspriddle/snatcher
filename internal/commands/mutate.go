@@ -37,6 +37,16 @@ type mutationResult struct {
 	// start and stop.
 	DeleteData *bool `json:"delete_data,omitempty"`
 
+	// Location is set on the move command to report the new download location the
+	// torrent was moved to. It is omitted for the other mutation commands.
+	Location string `json:"location,omitempty"`
+
+	// Move is set on the move command to report whether the existing files were
+	// relocated (move=true) or Transmission was repointed at an existing path
+	// without moving (--in-place, move=false). It is omitted for the other
+	// mutation commands.
+	Move *bool `json:"move,omitempty"`
+
 	// Unmatched lists the requested selector tokens that matched no torrent. It is
 	// omitted when every requested token matched (or for an --all selection).
 	Unmatched []string `json:"unmatched,omitempty"`

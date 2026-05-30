@@ -69,6 +69,9 @@ const (
 	methodTorrentRemoveJSONRPC = "torrent_remove"
 	methodTorrentRemoveBespoke = "torrent-remove"
 
+	methodTorrentSetLocationJSONRPC = "torrent_set_location"
+	methodTorrentSetLocationBespoke = "torrent-set-location"
+
 	methodPortTestJSONRPC = "port_test"
 	methodPortTestBespoke = "port-test"
 )
@@ -529,6 +532,15 @@ type Protocol interface {
 	// sent: when deleteData is true the server also deletes the downloaded files.
 	// The method carries no response payload, so the call only confirms success.
 	TorrentRemove(ctx context.Context, t transport, ids []any, deleteData bool) error
+
+	// TorrentSetLocation calls the server's torrent-set-location/torrent_set_location
+	// method, changing the download location of the selected torrents. A nil or
+	// empty ids slice targets all torrents; otherwise the mixed id/hash array
+	// selects torrents. location is the new path (always sent), and move is always
+	// sent: when move is true the server relocates the existing files, otherwise it
+	// repoints to a path where the files already exist and searches there. The
+	// method carries no response payload, so the call only confirms success.
+	TorrentSetLocation(ctx context.Context, t transport, ids []any, location string, move bool) error
 
 	// Call issues an arbitrary RPC method with raw arguments and returns the
 	// canonical RawResponse. method is the canonical kebab-case name (each
@@ -1049,6 +1061,45 @@ func (jsonrpcProtocol) TorrentRemove(ctx context.Context, t transport, ids []any
 
 	var resp jsonrpcResponse
 	if err := decodeResponse(methodTorrentRemoveJSONRPC, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	return nil
+}
+
+// TorrentSetLocation sends torrent_set_location with the location and move flags
+// (always present) and an optional ids array (omitted when nil/empty = all
+// torrents). Like the payload-free actions, the method returns no result
+// arguments, so only the error object is inspected.
+func (jsonrpcProtocol) TorrentSetLocation(ctx context.Context, t transport, ids []any, location string, move bool) error {
+	params := map[string]any{"location": location, "move": move}
+	if len(ids) > 0 {
+		params["ids"] = ids
+	}
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodTorrentSetLocationJSONRPC,
+		Params:  params,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodTorrentSetLocationJSONRPC, respBody, &resp); err != nil {
 		return err
 	}
 
@@ -1734,6 +1785,44 @@ func (bespokeProtocol) TorrentRemove(ctx context.Context, t transport, ids []any
 
 	var resp bespokeResponse
 	if err := decodeResponse(methodTorrentRemoveBespoke, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	return nil
+}
+
+// TorrentSetLocation sends torrent-set-location with the location and move flags
+// (always present) and an optional ids array (omitted when nil/empty = all
+// torrents). Like the payload-free actions, the method returns no arguments, so
+// only the result string is inspected.
+func (bespokeProtocol) TorrentSetLocation(ctx context.Context, t transport, ids []any, location string, move bool) error {
+	arguments := map[string]any{"location": location, "move": move}
+	if len(ids) > 0 {
+		arguments["ids"] = ids
+	}
+
+	req := bespokeRequest{
+		Method:    methodTorrentSetLocationBespoke,
+		Arguments: arguments,
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodTorrentSetLocationBespoke, respBody, &resp); err != nil {
 		return err
 	}
 

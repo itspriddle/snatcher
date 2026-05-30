@@ -136,6 +136,14 @@ type Backend interface {
 	// selector targets every torrent. Removal is immediate and irreversible.
 	RemoveTorrents(ctx context.Context, sel Selector, deleteData bool) error
 
+	// MoveTorrents changes the download location of the torrents matched by sel to
+	// location. When move is true the backend relocates the existing files to
+	// location; when false it repoints at location and searches there for files
+	// that are already present (e.g. after a manual move). An All selector targets
+	// every torrent. The location is passed through as given; the backend does not
+	// validate that it exists or is writable.
+	MoveTorrents(ctx context.Context, sel Selector, location string, move bool) error
+
 	// AddTorrent adds a single torrent described by req (exactly one of Metainfo,
 	// URL, or Magnet identifies the source) and returns the neutral AddResult. A
 	// torrent that was already present is reported via AddResult.Duplicate rather
