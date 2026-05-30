@@ -332,6 +332,38 @@ func TestClientTorrentRemoveDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	assert.Contains(t, captured, `"delete-local-data":true`)
 }
 
+func TestClientSessionSetDispatchesThroughDetectedProtocol(t *testing.T) {
+	t.Run("jsonrpc", func(t *testing.T) {
+		stub := &transmissionStub{rpcVersionHeader: "6.0.0", sessionID: "session-token-123"}
+		srv := httptest.NewServer(stub.handler())
+		defer srv.Close()
+
+		client := NewClient(srv.URL)
+
+		err := client.SessionSet(context.Background(), map[string]any{"peer_port": 12345})
+		require.NoError(t, err)
+
+		// The JSON-RPC scheme uses snake_case method and keys verbatim.
+		assert.Contains(t, stub.lastBody, "session_set")
+		assert.Contains(t, stub.lastBody, "peer_port")
+	})
+
+	t.Run("bespoke", func(t *testing.T) {
+		stub := &transmissionStub{sessionID: "session-token-123"}
+		srv := httptest.NewServer(stub.handler())
+		defer srv.Close()
+
+		client := NewClient(srv.URL)
+
+		err := client.SessionSet(context.Background(), map[string]any{"peer_port": 12345})
+		require.NoError(t, err)
+
+		// The bespoke scheme uses kebab-case method and remapped keys.
+		assert.Contains(t, stub.lastBody, "session-set")
+		assert.Contains(t, stub.lastBody, "peer-port")
+	})
+}
+
 func TestSemverMajor(t *testing.T) {
 	tests := []struct {
 		name      string

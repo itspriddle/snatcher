@@ -43,6 +43,19 @@ func (c *Client) SessionGet(ctx context.Context) (Session, error) {
 	return proto.SessionGet(ctx, c.transport)
 }
 
+// SessionSet detects the protocol (once) and writes session settings. settings
+// is a snake_case-keyed map of canonical setting keys to typed values; the
+// negotiated protocol translates the keys to its wire scheme and normalizes the
+// encryption enum. The method confirms success and carries no response payload.
+func (c *Client) SessionSet(ctx context.Context, settings map[string]any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.SessionSet(ctx, c.transport, settings)
+}
+
 // SessionStats detects the protocol (once) and returns the server's canonical
 // SessionStats.
 func (c *Client) SessionStats(ctx context.Context) (SessionStats, error) {

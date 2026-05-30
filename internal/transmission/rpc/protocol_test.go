@@ -1238,3 +1238,244 @@ func TestProtocolCallEmptyBodyIsSuccess(t *testing.T) {
 		assert.Nil(t, resp.Arguments)
 	})
 }
+
+func TestJSONRPCProtocolSessionGetDecodesSettings(t *testing.T) {
+	var rawBody []byte
+
+	// snake_case session settings matching the JSON-RPC 2.0 scheme; cache uses
+	// the real wire key "cache_size_mb".
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {
+				"version": "4.1.0 (ae226418eb)",
+				"rpc_version_semver": "6.0.0",
+				"download_dir": "/downloads",
+				"start_added_torrents": true,
+				"seed_ratio_limit": 2.5,
+				"cache_size_mb": 8,
+				"peer_port": 51413,
+				"encryption": "preferred",
+				"speed_limit_down": 100,
+				"alt_speed_up": 50,
+				"download_queue_size": 5,
+				"queue_stalled_minutes": 30
+			},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	session, err := jsonrpcProtocol{}.SessionGet(context.Background(), tr)
+	require.NoError(t, err)
+
+	assert.Equal(t, "4.1.0 (ae226418eb)", session.Version)
+	require.NotNil(t, session.DownloadDir)
+	assert.Equal(t, "/downloads", *session.DownloadDir)
+	require.NotNil(t, session.StartAddedTorrents)
+	assert.True(t, *session.StartAddedTorrents)
+	require.NotNil(t, session.SeedRatioLimit)
+	assert.InDelta(t, 2.5, *session.SeedRatioLimit, 0.0001)
+	require.NotNil(t, session.CacheSizeMiB)
+	assert.Equal(t, 8, *session.CacheSizeMiB)
+	require.NotNil(t, session.PeerPort)
+	assert.Equal(t, 51413, *session.PeerPort)
+	require.NotNil(t, session.Encryption)
+	assert.Equal(t, "preferred", *session.Encryption)
+	require.NotNil(t, session.SpeedLimitDown)
+	assert.Equal(t, int64(100), *session.SpeedLimitDown)
+	require.NotNil(t, session.AltSpeedUp)
+	assert.Equal(t, int64(50), *session.AltSpeedUp)
+	require.NotNil(t, session.DownloadQueueSize)
+	assert.Equal(t, 5, *session.DownloadQueueSize)
+	require.NotNil(t, session.QueueStalledMinutes)
+	assert.Equal(t, 30, *session.QueueStalledMinutes)
+
+	// Omitted settings stay nil (distinguishable from a zero value).
+	assert.Nil(t, session.IncompleteDir)
+	assert.Nil(t, session.BlocklistSize)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// The request asks for the version fields plus the settings keys.
+	assert.Equal(t, "session_get", gotBody["method"])
+	params, ok := gotBody["params"].(map[string]any)
+	require.True(t, ok)
+	fields, ok := params["fields"].([]any)
+	require.True(t, ok)
+	assert.Contains(t, fields, "download_dir")
+	assert.Contains(t, fields, "cache_size_mb")
+	assert.Contains(t, fields, "encryption")
+}
+
+func TestBespokeProtocolSessionGetDecodesSettings(t *testing.T) {
+	var rawBody []byte
+
+	// kebab-case settings (with the documented camelCase seed-ratio keys and the
+	// "tolerated" encryption value) matching the bespoke scheme.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"arguments": {
+				"version": "4.0.6 (38c164933e)",
+				"rpc-version-semver": "5.4.0",
+				"download-dir": "/data",
+				"seedRatioLimited": true,
+				"seedRatioLimit": 1.5,
+				"cache-size-mb": 16,
+				"peer-port": 12345,
+				"encryption": "tolerated",
+				"speed-limit-up": 200,
+				"download-queue-size": 7
+			},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	session, err := bespokeProtocol{}.SessionGet(context.Background(), tr)
+	require.NoError(t, err)
+
+	require.NotNil(t, session.DownloadDir)
+	assert.Equal(t, "/data", *session.DownloadDir)
+	require.NotNil(t, session.SeedRatioLimited)
+	assert.True(t, *session.SeedRatioLimited)
+	require.NotNil(t, session.SeedRatioLimit)
+	assert.InDelta(t, 1.5, *session.SeedRatioLimit, 0.0001)
+	require.NotNil(t, session.CacheSizeMiB)
+	assert.Equal(t, 16, *session.CacheSizeMiB)
+	require.NotNil(t, session.PeerPort)
+	assert.Equal(t, 12345, *session.PeerPort)
+	require.NotNil(t, session.SpeedLimitUp)
+	assert.Equal(t, int64(200), *session.SpeedLimitUp)
+	require.NotNil(t, session.DownloadQueueSize)
+	assert.Equal(t, 7, *session.DownloadQueueSize)
+
+	// The wire's "tolerated" normalizes to the canonical "allowed".
+	require.NotNil(t, session.Encryption)
+	assert.Equal(t, "allowed", *session.Encryption)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	assert.Equal(t, "session-get", gotBody["method"])
+	args, ok := gotBody["arguments"].(map[string]any)
+	require.True(t, ok)
+	fields, ok := args["fields"].([]any)
+	require.True(t, ok)
+	assert.Contains(t, fields, "download-dir")
+	assert.Contains(t, fields, "seedRatioLimited")
+	assert.Contains(t, fields, "cache-size-mb")
+}
+
+func TestJSONRPCProtocolSessionSet(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.SessionSet(context.Background(), tr, map[string]any{
+		"peer_port":      12345,
+		"dht_enabled":    false,
+		"cache_size_mib": 8,
+		"encryption":     "allowed",
+	})
+	require.NoError(t, err)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// JSON-RPC 2.0 envelope: snake_case method, snake_case params sent verbatim
+	// except the cache key, which becomes the real wire key "cache_size_mb".
+	// Encryption is not remapped on the JSON-RPC scheme.
+	assert.Equal(t, "session_set", gotBody["method"])
+	params, ok := gotBody["params"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, float64(12345), params["peer_port"])
+	assert.Equal(t, false, params["dht_enabled"])
+	assert.Equal(t, float64(8), params["cache_size_mb"])
+	assert.NotContains(t, params, "cache_size_mib")
+	assert.Equal(t, "allowed", params["encryption"])
+}
+
+func TestBespokeProtocolSessionSet(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.SessionSet(context.Background(), tr, map[string]any{
+		"peer_port":          12345,
+		"dht_enabled":        false,
+		"seed_ratio_limit":   2.0,
+		"seed_ratio_limited": true,
+		"cache_size_mib":     8,
+		"encryption":         "allowed",
+	})
+	require.NoError(t, err)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// Bespoke envelope: kebab-case method; snake keys remap to kebab, the
+	// seed-ratio keys to camelCase, the cache key to "cache-size-mb", and the
+	// canonical "allowed" encryption to the wire's "tolerated".
+	assert.Equal(t, "session-set", gotBody["method"])
+	args, ok := gotBody["arguments"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, float64(12345), args["peer-port"])
+	assert.Equal(t, false, args["dht-enabled"])
+	assert.Equal(t, float64(2.0), args["seedRatioLimit"])
+	assert.Equal(t, true, args["seedRatioLimited"])
+	assert.Equal(t, float64(8), args["cache-size-mb"])
+	assert.Equal(t, "tolerated", args["encryption"])
+	assert.NotContains(t, args, "peer_port")
+	assert.NotContains(t, args, "cache_size_mib")
+}
+
+func TestJSONRPCProtocolSessionSetMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32602, "message": "invalid argument"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.SessionSet(context.Background(), tr, map[string]any{"peer_port": 1})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
+func TestBespokeProtocolSessionSetMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.SessionSet(context.Background(), tr, map[string]any{"peer_port": 1})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
