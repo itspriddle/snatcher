@@ -227,6 +227,22 @@ func TestUploadMissingFileErrors(t *testing.T) {
 	assert.Contains(t, errOut, "reading "+missing)
 }
 
+// TestUploadFailureNotAttributedToServer guards against regressing the batch
+// sentinel back into a "connecting to <server>" wrap: a purely local failure (a
+// missing .torrent, server reachable) must surface errUploadFailures unwrapped,
+// not as a transport error.
+func TestUploadFailureNotAttributedToServer(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	missing := filepath.Join(t.TempDir(), "nope.torrent")
+
+	_, _, err := runUpload(t, "--config", cfgPath, missing)
+	require.ErrorIs(t, err, errUploadFailures)
+	assert.NotContains(t, err.Error(), "connecting to",
+		"a local-only failure must not be reported as a connection error")
+}
+
 // TestUploadContinuesOnError confirms that a failure on one source does not abort
 // the remaining sources, and that the command still exits non-zero.
 func TestUploadContinuesOnError(t *testing.T) {

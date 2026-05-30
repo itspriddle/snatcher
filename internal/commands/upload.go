@@ -64,7 +64,7 @@ func NewUploadCmd() *cobra.Command {
 				return errors.New("specify at least one file, url, or magnet link")
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, _, err := dial(configPath)
 			if err != nil {
 				return err
 			}
@@ -92,7 +92,12 @@ func NewUploadCmd() *cobra.Command {
 			}
 
 			if failed {
-				return fmt.Errorf("connecting to %s: %w", serverURL, errUploadFailures)
+				// Return the batch-failure sentinel unwrapped: the per-source
+				// causes (often purely local, e.g. a missing .torrent) were already
+				// written to stderr, and wrapping in "connecting to <server>" would
+				// misattribute them to a transport failure. This mirrors how the
+				// other commands surface non-transport errors (e.g. resolveMutation).
+				return errUploadFailures
 			}
 
 			return nil
