@@ -12,6 +12,7 @@ CMD snatcher start
 CMD snatcher stats
 CMD snatcher stop
 CMD snatcher upload
+CMD snatcher verify
 FLAG snatcher --version type=bool
 FLAG snatcher api --config type=string
 FLAG snatcher api --field type=stringArray
@@ -62,3 +63,7 @@ FLAG snatcher upload --json type=bool
 FLAG snatcher upload --label type=stringArray
 FLAG snatcher upload --quiet type=bool
 FLAG snatcher upload --start type=bool
+FLAG snatcher verify --all type=bool
+FLAG snatcher verify --config type=string
+FLAG snatcher verify --jq type=string
+FLAG snatcher verify --json type=bool

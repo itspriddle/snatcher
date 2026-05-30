@@ -167,6 +167,7 @@ func (noAPIBackend) ListTorrents(context.Context, []int64) ([]torrent.Torrent, e
 }
 func (noAPIBackend) StartTorrents(context.Context, torrent.Selector, bool) error { return nil }
 func (noAPIBackend) StopTorrents(context.Context, torrent.Selector) error        { return nil }
+func (noAPIBackend) VerifyTorrents(context.Context, torrent.Selector) error      { return nil }
 func (noAPIBackend) RemoveTorrents(context.Context, torrent.Selector, bool) error {
 	return nil
 }
