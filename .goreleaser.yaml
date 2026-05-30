@@ -18,6 +18,15 @@ builds:
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Specifying `files` overrides GoReleaser's default globs, so re-list the
+    # license/readme patterns it bundles by default before adding the man page.
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+      - src: man/man1/snatcher.1
+        dst: share/man/man1
+        strip_parent: true
 
 changelog:
   use: github-native

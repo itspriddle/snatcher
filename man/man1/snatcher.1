@@ -1,0 +1,364 @@
+.TH SNATCHER 1 2026-05-30 snatcher "Snatcher Manual"
+.SH NAME
+snatcher \- Transmission BitTorrent CLI client
+.SH SYNOPSIS
+.B snatcher
+.RI [ "global options" ]
+.I command
+.RI [ "command options" ]
+.RI [ arguments ]
+.br
+.B snatcher
+.RB [ \-\-version ]
+.SH DESCRIPTION
+.B snatcher
+is a modern CLI for managing BitTorrent clients, Transmission first.
+It is built so that anything the (forthcoming) TUI can do is also scriptable
+from the command line.
+.PP
+Commands speak to a single configured Transmission server over its RPC
+interface. The non-secret connection settings (server URL and username) are
+stored in a JSON config file; the password is stored only in the operating
+system keyring, never on disk. Run
+.B snatcher auth set
+once to configure a server before using the other commands.
+.PP
+Every command that produces output renders in one of three modes with a fixed
+precedence:
+.BR \-\-jq " \(-> " \-\-json " \(-> plaintext."
+The JSON field names are a stable scripting contract. Human and plaintext
+output is sanitized of terminal control sequences (server-derived names,
+labels, errors, and paths are untrusted); JSON and jq output is never
+sanitized, since it is a structured contract the consumer handles.
+.SH OPTIONS
+.SS Global options
+.TP
+.B \-\-version
+Print version information and exit. Valid on
+.B snatcher
+itself.
+.TP
+.BR \-h ", " \-\-help
+Show help for
+.B snatcher
+or any subcommand and exit.
+.SS Common options
+These options are accepted by every command that talks to the server
+.RB ( auth\ show ", " auth\ test ", " list ", " stats ", " start ", " stop ,
+.BR remove ", " upload ).
+.TP
+.BR \-\-config " " \fIpath\fR
+Read configuration from
+.I path
+instead of the default location (see
+.BR FILES ).
+.TP
+.B \-\-json
+Emit JSON instead of plaintext.
+.TP
+.BR \-\-jq " " \fIexpr\fR
+Filter JSON output through the jq expression
+.IR expr .
+Implies JSON and takes precedence over
+.BR \-\-json .
+.SH COMMANDS
+.SS "auth"
+Manage server authentication. Configure and verify the connection to your
+Transmission server. The
+.B auth
+command has four subcommands.
+.TP
+.B snatcher auth set \fR[\fIoptions\fR]
+Store the server URL and username in the config file and the password in the
+OS keyring. The password is read from a hidden, non-echoing prompt (with
+confirmation) or, for scripting, from standard input with
+.BR \-\-password\-stdin .
+An empty password is a valid choice (a server with authentication disabled)
+and stores no secret. Rekeying to a different URL deletes the old URL's keyring
+entry. Options:
+.RS
+.TP
+.BR \-\-url " " \fIurl\fR
+Transmission RPC URL, e.g.\&
+.IR http://host:9091/transmission/rpc .
+Required. Must be an absolute http or https URL with no embedded credentials.
+.TP
+.BR \-\-username " " \fIname\fR
+Username for HTTP Basic Auth.
+.TP
+.B \-\-password\-stdin
+Read the password from standard input instead of prompting.
+.RE
+.TP
+.B snatcher auth show \fR[\fIoptions\fR]
+Show the current server URL, username, resolved config path, and whether a
+keyring secret exists. The secret value itself is never revealed. Accepts
+.BR \-\-config " and " \-\-json .
+.TP
+.B snatcher auth test \fR[\fIoptions\fR]
+Dial the configured server and perform a real round-trip, reporting the
+connection status, server version, negotiated protocol, and RPC semver. Exits
+non-zero on failure. Accepts
+.BR \-\-config " and " \-\-json .
+.TP
+.B snatcher auth remove \fR[\fIoptions\fR]
+Delete the keyring secret and clear the credentials from the config file.
+Accepts
+.BR \-\-config .
+.SS "list"
+.B snatcher list
+.RI [ options ]
+.br
+List torrents. On a terminal the output is an aligned table with a header; when
+piped (or when
+.B NO_COLOR
+is set) it is tab-separated, full-value rows with no header \(em a stable
+scripting contract. Besides the common options:
+.RS
+.TP
+.BR \-\-filter " " \fIstatus\fR
+Filter by status (default
+.BR all ).
+One of
+.BR all ", " active ", " downloading ", " seeding ", " stopped ,
+.BR verifying ", " queued\-to\-verify ", " queued\-to\-download ,
+.BR queued\-to\-seed ", " error .
+.TP
+.BR \-\-search " " \fItext\fR
+Show only torrents whose name contains
+.I text
+(case-insensitive).
+.TP
+.BR \-\-sort " " \fIfield\fR
+Sort by field (default
+.BR queue ).
+One of
+.BR queue ", " name ", " added ", " size ", " progress ", " ratio ", " speed .
+.TP
+.B \-\-reverse
+Reverse the sort order.
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show. The default set is
+.BR id , name , status , done , size , down , up , ratio , eta .
+Available columns:
+.BR id ", " hash ", " name ", " status ", " done ", " size ", " down ,
+.BR up ", " ratio ", " eta ", " peers ", " added ", " download_dir ,
+.BR error ", " labels .
+.RE
+.SS "stats"
+.B snatcher stats
+.RI [ options ]
+.br
+Show session statistics: torrent counts, current download and upload speeds,
+and cumulative and current-session transfer totals. Accepts the common options
+only.
+.SS "start"
+.B snatcher start
+.RI [ options "] [" "id | hash" ]...
+.br
+Start or resume the selected torrents. Select torrents by numeric id,
+40-character SHA1 hash, or
+.BR \-\-all .
+At least one selector is required; a bare
+.B snatcher start
+is an error, not a no-op. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Start every torrent.
+.TP
+.B \-\-now
+Bypass the queue and start immediately.
+.RE
+.SS "stop"
+.B snatcher stop
+.RI [ options "] [" "id | hash" ]...
+.br
+Stop (pause) the selected torrents. Select torrents by numeric id, 40-character
+SHA1 hash, or
+.BR \-\-all .
+At least one selector is required. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Stop every torrent.
+.RE
+.SS "remove"
+.B snatcher remove
+.RI [ options "] [" "id | hash" ]...
+.br
+Remove the selected torrents from the session. Select torrents by numeric id,
+40-character SHA1 hash, or
+.BR \-\-all .
+Removal is destructive and requires confirmation: on a terminal it prompts
+.RB [ y/N ];
+when standard input is not a terminal it refuses unless
+.B \-\-yes
+is given. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Remove every torrent.
+.TP
+.B \-\-delete\-data
+Also delete the downloaded local files.
+.TP
+.BR \-y ", " \-\-yes
+Skip the confirmation prompt.
+.RE
+.SS "upload"
+.B snatcher upload
+.RI [ options "] [" "file | url | magnet" ]...
+.br
+Add torrents to the server from local
+.I .torrent
+files, HTTP(S) URLs, or magnet links. Each argument is auto-detected as a
+file, URL, or magnet link. With no positional arguments, sources are read from
+standard input, one per line; a bare
+.B snatcher upload
+with no sources and no piped input is an error. Multiple sources are processed
+continue-on-error: a failure adding one source is reported but does not stop
+the rest, and the command exits non-zero if any source failed. Besides the
+common options:
+.RS
+.TP
+.B \-\-start
+Start torrents immediately instead of adding them paused.
+.TP
+.BR \-\-download\-dir " " \fIpath\fR
+Server-side destination directory.
+.TP
+.BR \-d ", " \-\-delete
+Delete the local
+.I .torrent
+after a successful, non-duplicate file add.
+.TP
+.BR \-\-label " " \fIlabel\fR
+Label to apply to added torrents. May be repeated.
+.TP
+.BR \-q ", " \-\-quiet
+Suppress per-source confirmation lines (plaintext only; never alters JSON/jq
+output).
+.RE
+.SS "version, completion, help"
+.B snatcher version
+prints version information.
+.B snatcher completion
+generates a shell completion script for bash, zsh, fish, or PowerShell.
+.B snatcher help
+.RI [ command ]
+shows help for any command.
+.SH OUTPUT
+When a command can emit structured output, the render mode is chosen with this
+precedence:
+.BR \-\-jq " (highest), then " \-\-json ", then plaintext (default)."
+The
+.B json
+field tags on the underlying types are a stable scripting surface; treat them
+as an API. Human and plaintext output passes server-derived strings through a
+terminal sanitizer; JSON and jq output does not, as it is a machine contract.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B non-zero
+An error occurred: the server was unreachable, authentication failed, the
+selectors matched no torrents, a confirmation was refused, or at least one
+.B upload
+source failed.
+.SH ENVIRONMENT
+.TP
+.B SNATCHER_SERVER_URL
+Overrides the
+.B server_url
+from the config file.
+.TP
+.B SNATCHER_USERNAME
+Overrides the
+.B username
+from the config file.
+.TP
+.B NO_COLOR
+When set to a non-empty value, forces
+.B list
+into the piped, tab-separated, header-less contract even on a terminal.
+.TP
+.B XDG_CONFIG_HOME
+When set, the default config path is
+.IR $XDG_CONFIG_HOME/snatcher/config.json .
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/snatcher/config.json
+Non-secret configuration (JSON keys
+.B server_url
+and
+.BR username ),
+created with mode 0600. Falls back to
+.I ~/.config/snatcher/config.json
+when
+.B XDG_CONFIG_HOME
+is unset.
+.PP
+The server password is not stored in any file. It lives only in the operating
+system keyring (macOS Keychain or the Linux Secret Service), under the service
+name
+.B snatcher
+keyed by the server URL.
+.SH EXAMPLES
+.SS "Configure and verify a server"
+.EX
+# point snatcher at your Transmission RPC endpoint (prompts for a password)
+$ snatcher auth set \-\-url http://localhost:9091/transmission/rpc \-\-username admin
+
+# read the password from stdin instead of a prompt (scripting)
+$ printf '%s' "$TRANSMISSION_PASSWORD" | snatcher auth set \(rs
+    \-\-url http://localhost:9091/transmission/rpc \-\-username admin \-\-password\-stdin
+
+# confirm the connection works
+$ snatcher auth test
+.EE
+.SS "List and filter torrents"
+.EX
+# seeding torrents, highest ratio first
+$ snatcher list \-\-filter seeding \-\-sort ratio \-\-reverse
+
+# pick the columns you care about
+$ snatcher list \-\-fields id,name,ratio,up
+
+# search by name
+$ snatcher list \-\-search ubuntu
+
+# names of torrents that are not finished, via jq
+$ snatcher list \-\-jq '.[] | select(.done < 100) | .name'
+.EE
+.SS "Start, stop, and remove torrents"
+.EX
+# start three torrents by id, jumping the queue
+$ snatcher start 1 2 3 \-\-now
+
+# pause everything
+$ snatcher stop \-\-all
+
+# remove a torrent and its data without prompting
+$ snatcher remove 5 \-\-delete\-data \-\-yes
+.EE
+.SS "Add torrents"
+.EX
+# add a file and a magnet link, label them, and start immediately
+$ snatcher upload ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \(rs
+    \-\-label linux \-\-label iso \-\-start
+
+# add every source listed in a file (one per line)
+$ snatcher upload < sources.txt
+.EE
+.SS "Session statistics"
+.EX
+$ snatcher stats
+.EE
+.SH "REPORTING BUGS"
+Report bugs at https://github.com/itspriddle/snatcher/issues
+.SH SEE ALSO
+.BR transmission\-daemon (1),
+.BR jq (1)
