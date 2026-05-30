@@ -976,3 +976,187 @@ func TestBespokeProtocolTorrentAdd(t *testing.T) {
 		assert.ErrorContains(t, err, "invalid or corrupt torrent file")
 	})
 }
+
+func TestTranslateMethod(t *testing.T) {
+	// JSON-RPC 2.0 spells methods snake_case; the bespoke scheme uses the
+	// canonical kebab-case name verbatim.
+	assert.Equal(t, "queue_move_top", translateMethod(ProtocolJSONRPC, "queue-move-top"))
+	assert.Equal(t, "session_get", translateMethod(ProtocolJSONRPC, "session-get"))
+	assert.Equal(t, "queue-move-top", translateMethod(ProtocolBespoke, "queue-move-top"))
+	assert.Equal(t, "session-get", translateMethod(ProtocolBespoke, "session-get"))
+}
+
+func TestJSONRPCProtocolCallSuccess(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": {"version": "4.1.0"}, "id": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	resp, err := jsonrpcProtocol{}.Call(context.Background(), tr, "session-get", nil)
+	require.NoError(t, err)
+
+	// Normalized envelope: synthesized "success", result -> arguments, id -> tag.
+	assert.True(t, resp.OK)
+	assert.Equal(t, "success", resp.Result)
+	assert.JSONEq(t, `{"version": "4.1.0"}`, string(resp.Arguments))
+	assert.Equal(t, 1, resp.Tag)
+	assert.Equal(t, 0, resp.Code)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// JSON-RPC 2.0 envelope with the snake_case translated method name; a
+	// zero-argument call omits params.
+	assert.Equal(t, "session_get", gotBody["method"])
+	assert.Equal(t, "2.0", gotBody["jsonrpc"])
+	assert.NotContains(t, gotBody, "params")
+}
+
+func TestBespokeProtocolCallSuccess(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"arguments": {"version": "4.0.6"}, "result": "success", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	resp, err := bespokeProtocol{}.Call(context.Background(), tr, "session-get", nil)
+	require.NoError(t, err)
+
+	// Bespoke passes result/arguments/tag straight through.
+	assert.True(t, resp.OK)
+	assert.Equal(t, "success", resp.Result)
+	assert.JSONEq(t, `{"version": "4.0.6"}`, string(resp.Arguments))
+	assert.Equal(t, 1, resp.Tag)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// Bespoke envelope with the verbatim kebab-case method name; a zero-argument
+	// call omits arguments.
+	assert.Equal(t, "session-get", gotBody["method"])
+	assert.NotContains(t, gotBody, "arguments")
+}
+
+func TestJSONRPCProtocolCallPassesArguments(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": {"torrents": []}, "id": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	// A large id must survive untouched (no float64 coercion) since args ride as
+	// a raw fragment.
+	args := json.RawMessage(`{"ids": [9007199254740993]}`)
+
+	resp, err := jsonrpcProtocol{}.Call(context.Background(), tr, "torrent-get", args)
+	require.NoError(t, err)
+	assert.True(t, resp.OK)
+
+	assert.Contains(t, string(rawBody), `"params":{"ids":[9007199254740993]}`)
+}
+
+func TestJSONRPCProtocolCallRPCError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "error": {"code": -32601, "message": "method not found"}, "id": 7}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	// An RPC-level error does not return a Go error: it surfaces via OK == false.
+	resp, err := jsonrpcProtocol{}.Call(context.Background(), tr, "bogus-method", nil)
+	require.NoError(t, err)
+
+	assert.False(t, resp.OK)
+	assert.Equal(t, "method not found", resp.Result)
+	assert.Equal(t, -32601, resp.Code)
+	assert.Equal(t, 7, resp.Tag)
+	assert.Nil(t, resp.Arguments)
+}
+
+func TestBespokeProtocolCallRPCError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 3}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	resp, err := bespokeProtocol{}.Call(context.Background(), tr, "bogus-method", nil)
+	require.NoError(t, err)
+
+	assert.False(t, resp.OK)
+	assert.Equal(t, "invalid argument", resp.Result)
+	assert.Equal(t, 3, resp.Tag)
+}
+
+func TestProtocolCallRawBytespassthrough(t *testing.T) {
+	const jsonrpcBody = `{"jsonrpc":"2.0","result":{"torrents":[{"id":1,"name":"a"}]},"id":1}`
+	const bespokeBody = `{"arguments":{"torrents":[{"id":1,"name":"a"}]},"result":"success","tag":1}`
+
+	t.Run("jsonrpc", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(jsonrpcBody))
+		}))
+		defer srv.Close()
+
+		resp, err := jsonrpcProtocol{}.Call(context.Background(), NewTransport(srv.URL), "torrent-get", nil)
+		require.NoError(t, err)
+
+		// Raw carries the exact server bytes, byte-for-byte.
+		assert.JSONEq(t, jsonrpcBody, string(resp.Raw))
+	})
+
+	t.Run("bespoke", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(bespokeBody))
+		}))
+		defer srv.Close()
+
+		resp, err := bespokeProtocol{}.Call(context.Background(), NewTransport(srv.URL), "torrent-get", nil)
+		require.NoError(t, err)
+
+		assert.JSONEq(t, bespokeBody, string(resp.Raw))
+	})
+}
+
+func TestProtocolCallEmptyBodyIsSuccess(t *testing.T) {
+	t.Run("jsonrpc", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer srv.Close()
+
+		resp, err := jsonrpcProtocol{}.Call(context.Background(), NewTransport(srv.URL), "queue-move-top", nil)
+		require.NoError(t, err)
+		assert.True(t, resp.OK)
+		assert.Equal(t, "success", resp.Result)
+		assert.Nil(t, resp.Arguments)
+	})
+
+	t.Run("bespoke", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer srv.Close()
+
+		resp, err := bespokeProtocol{}.Call(context.Background(), NewTransport(srv.URL), "queue-move-top", nil)
+		require.NoError(t, err)
+		assert.True(t, resp.OK)
+		assert.Equal(t, "success", resp.Result)
+		assert.Nil(t, resp.Arguments)
+	})
+}

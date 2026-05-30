@@ -779,3 +779,71 @@ func TestBackendAddTorrentMapsAuthError(t *testing.T) {
 	require.ErrorIs(t, err, torrent.ErrAuth)
 	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
 }
+
+func TestBackendCallAPISuccess(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // bespoke path
+		responses: map[string]string{
+			"free-space": `{"arguments": {"size-bytes": 1234}, "result": "success", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	resp, err := b.CallAPI(context.Background(), "free-space", nil)
+	require.NoError(t, err)
+
+	assert.True(t, resp.OK)
+	assert.Equal(t, "success", resp.Result)
+	assert.JSONEq(t, `{"size-bytes": 1234}`, string(resp.Arguments))
+	assert.JSONEq(t, `{"arguments": {"size-bytes": 1234}, "result": "success", "tag": 1}`, string(resp.Raw))
+}
+
+func TestBackendCallAPILeavesRPCErrorAsNonError(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"bogus-method": `{"result": "no such method", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	// An RPC-level failure is *not* a Go error: it surfaces via OK == false so
+	// the api command can print the envelope and set its own exit code.
+	resp, err := b.CallAPI(context.Background(), "bogus-method", nil)
+	require.NoError(t, err)
+
+	assert.False(t, resp.OK)
+	assert.Equal(t, "no such method", resp.Result)
+}
+
+func TestBackendCallAPIMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.CallAPI(context.Background(), "session-get", nil)
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, rpc.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendCallAPIMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.CallAPI(context.Background(), "session-get", nil)
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, rpc.ErrTransport)
+	assert.NotErrorIs(t, err, torrent.ErrAuth)
+}

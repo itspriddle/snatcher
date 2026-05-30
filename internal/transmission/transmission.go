@@ -8,6 +8,7 @@ package transmission
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -24,6 +25,49 @@ type Backend struct {
 
 // Compile-time assertion that *Backend satisfies torrent.Backend.
 var _ torrent.Backend = (*Backend)(nil)
+
+// Compile-time assertion that *Backend satisfies APICaller.
+var _ APICaller = (*Backend)(nil)
+
+// APICaller is the Transmission-specific capability for issuing arbitrary RPC
+// calls. It is deliberately kept off the vendor-neutral torrent.Backend
+// interface: a generic "call any method" escape hatch is a Transmission feature,
+// so the api command type-asserts the backend to this capability rather than
+// assuming every backend supports it.
+type APICaller interface {
+	// CallAPI issues an arbitrary RPC method with raw arguments and returns the
+	// normalized APIResponse. method is the canonical kebab-case name; args is the
+	// raw arguments object (nil for a zero-argument method). An RPC-level failure
+	// is reported via APIResponse.OK == false, not a Go error; only transport and
+	// auth failures (mapped to the neutral sentinels) return a Go error.
+	CallAPI(ctx context.Context, method string, args json.RawMessage) (APIResponse, error)
+}
+
+// APIResponse is the result of a CallAPI: the normalized response envelope plus
+// the exact server bytes and an OK flag. It is the Transmission-layer mirror of
+// rpc.RawResponse, so commands render a stable shape (and can output the raw
+// bytes verbatim) without importing the rpc package.
+type APIResponse struct {
+	// Raw is the exact response body the server sent, for verbatim --raw output.
+	Raw json.RawMessage
+
+	// Result is the normalized status string: "success" on success, or the
+	// server's error text on an RPC-level failure.
+	Result string
+
+	// Arguments is the normalized result payload: the server's result object on
+	// success, or null on an RPC-level failure.
+	Arguments json.RawMessage
+
+	// Tag is the normalized request tag/id echoed by the server.
+	Tag int
+
+	// Code is the error code on an RPC-level failure (JSON-RPC error.code).
+	Code int
+
+	// OK reports whether the call succeeded at the RPC level.
+	OK bool
+}
 
 // Option configures a Backend built by New. It is a neutral wrapper over the
 // rpc package's options, so callers (commands) never need to import the rpc
@@ -176,6 +220,27 @@ func (b *Backend) AddTorrent(ctx context.Context, req torrent.AddRequest) (torre
 		Hash:      res.Hash,
 		Name:      res.Name,
 		Duplicate: res.Duplicate,
+	}, nil
+}
+
+// CallAPI issues an arbitrary RPC method with raw arguments and returns the
+// normalized APIResponse. Transport and auth failures are mapped to the neutral
+// sentinels via mapError; an RPC-level non-success is *not* mapped to a Go error
+// — it is reported via APIResponse.OK == false so the api command can print the
+// envelope and set its own exit code.
+func (b *Backend) CallAPI(ctx context.Context, method string, args json.RawMessage) (APIResponse, error) {
+	resp, err := b.client.Call(ctx, method, args)
+	if err != nil {
+		return APIResponse{}, mapError(err)
+	}
+
+	return APIResponse{
+		Raw:       resp.Raw,
+		Result:    resp.Result,
+		Arguments: resp.Arguments,
+		Tag:       resp.Tag,
+		Code:      resp.Code,
+		OK:        resp.OK,
 	}, nil
 }
 

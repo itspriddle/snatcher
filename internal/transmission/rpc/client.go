@@ -5,6 +5,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,6 +113,21 @@ func (c *Client) TorrentRemove(ctx context.Context, ids []any, deleteData bool) 
 	}
 
 	return proto.TorrentRemove(ctx, c.transport, ids, deleteData)
+}
+
+// Call detects the protocol (once) and issues an arbitrary RPC method with raw
+// arguments, returning the canonical RawResponse. method is the canonical
+// kebab-case name (the protocol translates it for its wire scheme); args is the
+// raw arguments object (nil for a zero-argument method). An RPC-level failure is
+// reported via RawResponse.OK == false, not a Go error; only transport and
+// JSON-decode failures return a Go error.
+func (c *Client) Call(ctx context.Context, method string, args json.RawMessage) (RawResponse, error) {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return RawResponse{}, err
+	}
+
+	return proto.Call(ctx, c.transport, method, args)
 }
 
 // Protocol returns the negotiated protocol name, detecting it if necessary. It
