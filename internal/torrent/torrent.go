@@ -111,4 +111,10 @@ type Backend interface {
 	// deleting their downloaded local files when deleteData is true. An All
 	// selector targets every torrent. Removal is immediate and irreversible.
 	RemoveTorrents(ctx context.Context, sel Selector, deleteData bool) error
+
+	// AddTorrent adds a single torrent described by req (exactly one of Metainfo,
+	// URL, or Magnet identifies the source) and returns the neutral AddResult. A
+	// torrent that was already present is reported via AddResult.Duplicate rather
+	// than as an error.
+	AddTorrent(ctx context.Context, req AddRequest) (AddResult, error)
 }

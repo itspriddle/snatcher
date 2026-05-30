@@ -44,6 +44,9 @@ const (
 	methodTorrentGetJSONRPC = "torrent_get"
 	methodTorrentGetBespoke = "torrent-get"
 
+	methodTorrentAddJSONRPC = "torrent_add"
+	methodTorrentAddBespoke = "torrent-add"
+
 	methodTorrentStartJSONRPC = "torrent_start"
 	methodTorrentStartBespoke = "torrent-start"
 
@@ -211,6 +214,49 @@ type Torrent struct {
 	IsStalled bool `json:"is_stalled"`
 }
 
+// AddRequest carries the parameters for a TorrentAdd call. Each field maps to a
+// torrent-add request parameter; empty fields are omitted on the wire
+// (omitempty semantics) so the server applies its defaults. Either Metainfo or
+// Filename must be set: Metainfo is base64-encoded .torrent content, Filename is
+// a .torrent URL or magnet link.
+type AddRequest struct {
+	// Metainfo is the base64-encoded .torrent content (the server's metainfo
+	// parameter).
+	Metainfo string
+
+	// Filename is a .torrent URL or magnet link (the server's filename
+	// parameter).
+	Filename string
+
+	// DownloadDir is the server-side destination directory; empty uses the
+	// server default.
+	DownloadDir string
+
+	// Paused, when true, adds the torrent without starting it.
+	Paused bool
+
+	// Labels are the user labels to assign to the torrent.
+	Labels []string
+}
+
+// AddResult is the canonical, protocol-neutral result of a TorrentAdd call. Each
+// Protocol implementation reads the correct per-scheme field names from the
+// torrent-added/torrent-duplicate object and fills this shared shape.
+type AddResult struct {
+	// ID is the server's session-scoped numeric identifier for the torrent.
+	ID int64 `json:"id"`
+
+	// Name is the torrent's display name.
+	Name string `json:"name"`
+
+	// Hash is the torrent's info-hash string (hashString/hash_string).
+	Hash string `json:"hash"`
+
+	// Duplicate reports whether the torrent was already present: the server
+	// returned a torrent-duplicate object rather than torrent-added.
+	Duplicate bool `json:"duplicate"`
+}
+
 // transport is the subset of *Transport a Protocol needs to perform a request.
 // Defining it as an interface keeps the protocol implementations testable in
 // isolation from the HTTP layer.
@@ -237,6 +283,12 @@ type Protocol interface {
 	// the canonical Torrents. A nil or empty ids slice requests all torrents;
 	// otherwise the server filters to the given numeric ids.
 	TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error)
+
+	// TorrentAdd calls the server's torrent-add/torrent_add method, sending only
+	// the non-empty parameters in req, and returns the canonical AddResult. A
+	// torrent that was already present is reported via AddResult.Duplicate rather
+	// than as an error.
+	TorrentAdd(ctx context.Context, t transport, req AddRequest) (AddResult, error)
 
 	// TorrentStart calls the server's torrent-start/torrent_start method (or the
 	// *-start-now variant when now is true, which disregards queue position). A
@@ -344,6 +396,32 @@ type jsonrpcTorrent struct {
 // jsonrpcTorrentResult is the snake_case torrent_get result shape.
 type jsonrpcTorrentResult struct {
 	Torrents []jsonrpcTorrent `json:"torrents"`
+}
+
+// jsonrpcAddParams is the snake_case torrent_add request params shape. Empty
+// fields are omitted so the server applies its defaults.
+type jsonrpcAddParams struct {
+	Metainfo    string   `json:"metainfo,omitempty"`
+	Filename    string   `json:"filename,omitempty"`
+	DownloadDir string   `json:"download_dir,omitempty"`
+	Paused      bool     `json:"paused,omitempty"`
+	Labels      []string `json:"labels,omitempty"`
+}
+
+// jsonrpcAddedTorrent is the snake_case torrent object returned in a
+// torrent_added/torrent_duplicate result.
+type jsonrpcAddedTorrent struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Hash string `json:"hash_string"`
+}
+
+// jsonrpcAddResult is the snake_case torrent_add result shape. Exactly one of
+// the two objects is present: torrent_added on a new add, torrent_duplicate
+// when the torrent was already present.
+type jsonrpcAddResult struct {
+	Added     *jsonrpcAddedTorrent `json:"torrent_added"`
+	Duplicate *jsonrpcAddedTorrent `json:"torrent_duplicate"`
 }
 
 // torrentGetFieldsJSONRPC lists the snake_case torrent_get fields snatcher
@@ -484,6 +562,58 @@ func (p jsonrpcProtocol) TorrentGet(ctx context.Context, t transport, ids []int6
 	}
 
 	return torrents, nil
+}
+
+func (p jsonrpcProtocol) TorrentAdd(ctx context.Context, t transport, addReq AddRequest) (AddResult, error) {
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodTorrentAddJSONRPC,
+		Params:  jsonrpcAddParams(addReq),
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return AddResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return AddResult{}, err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodTorrentAddJSONRPC, respBody, &resp); err != nil {
+		return AddResult{}, err
+	}
+
+	if resp.Error != nil {
+		return AddResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	var result jsonrpcAddResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return AddResult{}, fmt.Errorf("rpc: decoding %s result: %w", methodTorrentAddJSONRPC, err)
+	}
+
+	if result.Duplicate != nil {
+		return AddResult{
+			ID:        result.Duplicate.ID,
+			Name:      result.Duplicate.Name,
+			Hash:      result.Duplicate.Hash,
+			Duplicate: true,
+		}, nil
+	}
+
+	if result.Added != nil {
+		return AddResult{
+			ID:   result.Added.ID,
+			Name: result.Added.Name,
+			Hash: result.Added.Hash,
+		}, nil
+	}
+
+	return AddResult{}, nil
 }
 
 func (p jsonrpcProtocol) TorrentStart(ctx context.Context, t transport, ids []any, now bool) error {
@@ -657,6 +787,33 @@ type bespokeTorrentArguments struct {
 	Torrents []bespokeTorrent `json:"torrents"`
 }
 
+// bespokeAddArguments is the torrent-add request arguments shape (kebab-case
+// download-dir, lowercase everything else). Empty fields are omitted so the
+// server applies its defaults.
+type bespokeAddArguments struct {
+	Metainfo    string   `json:"metainfo,omitempty"`
+	Filename    string   `json:"filename,omitempty"`
+	DownloadDir string   `json:"download-dir,omitempty"`
+	Paused      bool     `json:"paused,omitempty"`
+	Labels      []string `json:"labels,omitempty"`
+}
+
+// bespokeAddedTorrent is the camelCase torrent object returned in a
+// torrent-added/torrent-duplicate result.
+type bespokeAddedTorrent struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Hash string `json:"hashString"`
+}
+
+// bespokeAddArgumentsResult is the torrent-add result arguments shape. Exactly
+// one of the two objects is present: torrent-added on a new add,
+// torrent-duplicate when the torrent was already present.
+type bespokeAddArgumentsResult struct {
+	Added     *bespokeAddedTorrent `json:"torrent-added"`
+	Duplicate *bespokeAddedTorrent `json:"torrent-duplicate"`
+}
+
 // torrentGetFieldsBespoke lists the camelCase torrent-get fields snatcher
 // requests, keeping payloads small. The error code uses Transmission's bare
 // "error" field; the human-readable message is "errorString".
@@ -815,6 +972,57 @@ func (p bespokeProtocol) TorrentGet(ctx context.Context, t transport, ids []int6
 	}
 
 	return torrents, nil
+}
+
+func (p bespokeProtocol) TorrentAdd(ctx context.Context, t transport, addReq AddRequest) (AddResult, error) {
+	req := bespokeRequest{
+		Method:    methodTorrentAddBespoke,
+		Arguments: bespokeAddArguments(addReq),
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return AddResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return AddResult{}, err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodTorrentAddBespoke, respBody, &resp); err != nil {
+		return AddResult{}, err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return AddResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	var args bespokeAddArgumentsResult
+	if err := json.Unmarshal(resp.Arguments, &args); err != nil {
+		return AddResult{}, fmt.Errorf("rpc: decoding %s arguments: %w", methodTorrentAddBespoke, err)
+	}
+
+	if args.Duplicate != nil {
+		return AddResult{
+			ID:        args.Duplicate.ID,
+			Name:      args.Duplicate.Name,
+			Hash:      args.Duplicate.Hash,
+			Duplicate: true,
+		}, nil
+	}
+
+	if args.Added != nil {
+		return AddResult{
+			ID:   args.Added.ID,
+			Name: args.Added.Name,
+			Hash: args.Added.Hash,
+		}, nil
+	}
+
+	return AddResult{}, nil
 }
 
 func (p bespokeProtocol) TorrentStart(ctx context.Context, t transport, ids []any, now bool) error {
