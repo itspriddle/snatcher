@@ -113,6 +113,12 @@ type Backend interface {
 	// no-op.
 	VerifyTorrents(ctx context.Context, sel Selector) error
 
+	// ReannounceTorrents forces the torrents matched by sel to re-announce to
+	// their trackers immediately, rather than waiting for the next scheduled
+	// announce. An All selector targets every torrent. Reannouncing is a no-op-safe
+	// action.
+	ReannounceTorrents(ctx context.Context, sel Selector) error
+
 	// RemoveTorrents removes the torrents matched by sel from the session, also
 	// deleting their downloaded local files when deleteData is true. An All
 	// selector targets every torrent. Removal is immediate and irreversible.

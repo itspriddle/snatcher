@@ -63,6 +63,9 @@ const (
 	methodTorrentVerifyJSONRPC = "torrent_verify"
 	methodTorrentVerifyBespoke = "torrent-verify"
 
+	methodTorrentReannounceJSONRPC = "torrent_reannounce"
+	methodTorrentReannounceBespoke = "torrent-reannounce"
+
 	methodTorrentRemoveJSONRPC = "torrent_remove"
 	methodTorrentRemoveBespoke = "torrent-remove"
 )
@@ -495,6 +498,13 @@ type Protocol interface {
 	// selects torrents. The method carries no response payload, so the call only
 	// confirms success.
 	TorrentVerify(ctx context.Context, t transport, ids []any) error
+
+	// TorrentReannounce calls the server's torrent-reannounce/torrent_reannounce
+	// method, forcing an immediate re-announce to the trackers. A nil or empty ids
+	// slice targets all torrents; otherwise the mixed id/hash array selects
+	// torrents. The method carries no response payload, so the call only confirms
+	// success.
+	TorrentReannounce(ctx context.Context, t transport, ids []any) error
 
 	// TorrentRemove calls the server's torrent-remove/torrent_remove method. A nil
 	// or empty ids slice targets all torrents; otherwise the mixed id/hash array
@@ -981,6 +991,10 @@ func (p jsonrpcProtocol) TorrentStop(ctx context.Context, t transport, ids []any
 
 func (p jsonrpcProtocol) TorrentVerify(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentVerifyJSONRPC, ids)
+}
+
+func (p jsonrpcProtocol) TorrentReannounce(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodTorrentReannounceJSONRPC, ids)
 }
 
 // TorrentRemove sends torrent_remove with the delete_local_data flag (always
@@ -1616,6 +1630,10 @@ func (p bespokeProtocol) TorrentStop(ctx context.Context, t transport, ids []any
 
 func (p bespokeProtocol) TorrentVerify(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentVerifyBespoke, ids)
+}
+
+func (p bespokeProtocol) TorrentReannounce(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodTorrentReannounceBespoke, ids)
 }
 
 // TorrentRemove sends torrent-remove with the delete-local-data flag (always

@@ -307,6 +307,30 @@ func TestClientTorrentVerifyDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	assert.Contains(t, captured, `"ids":[2,"deadbeef"]`)
 }
 
+func TestClientTorrentReannounceDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	var captured string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+		_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	err := c.TorrentReannounce(context.Background(), []any{int64(2), "deadbeef"})
+	require.NoError(t, err)
+	assert.Contains(t, captured, `"method":"torrent-reannounce"`)
+	assert.Contains(t, captured, `"ids":[2,"deadbeef"]`)
+}
+
 func TestClientTorrentRemoveDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	var captured string
 

@@ -596,6 +596,80 @@ func TestBackendVerifyTorrentsMapsRPCError(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid argument")
 }
 
+func TestBackendReannounceTorrents(t *testing.T) {
+	tests := []struct {
+		name       string
+		rpcVersion string
+		wantMethod string
+	}{
+		{name: "jsonrpc", rpcVersion: "6.0.0", wantMethod: `"method":"torrent_reannounce"`},
+		{name: "bespoke", rpcVersion: "", wantMethod: `"method":"torrent-reannounce"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			err := b.ReannounceTorrents(context.Background(), sel)
+			require.NoError(t, err)
+
+			assert.Contains(t, captured, tt.wantMethod)
+			assert.Contains(t, captured, `"ids":[1,"deadbeef"]`)
+		})
+	}
+}
+
+func TestBackendReannounceTorrentsAllOmitsIDs(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.ReannounceTorrents(context.Background(), torrent.Selector{All: true})
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent_reannounce"`)
+	assert.NotContains(t, captured, `"ids"`)
+}
+
+func TestBackendReannounceTorrentsMapsRPCError(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"torrent-reannounce": `{"result": "invalid argument", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.ReannounceTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, rpc.ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
+func TestBackendReannounceTorrentsMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.ReannounceTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
 func TestBackendStartTorrentsMapsAuthError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
