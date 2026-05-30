@@ -403,6 +403,57 @@ func TestSettingsGetJSONNotSanitized(t *testing.T) {
 	assert.Contains(t, out, "\\u001b", "JSON value carries the raw control byte unsanitized")
 }
 
+// maliciousEncryptionConfigPath stands up a stub whose session-get returns an
+// encryption value carrying a terminal escape, modeling a compromised or MITM'd
+// server. The bespoke rpc layer only remaps "tolerated"->"allowed", so any other
+// encryption string passes through verbatim to the neutral SessionSettings.
+func maliciousEncryptionConfigPath(t *testing.T) (string, func()) {
+	t.Helper()
+
+	keyring.MockInit()
+
+	const resp = `{
+		"arguments": {"encryption": "requ\u001b[2Jired"},
+		"result": "success",
+		"tag": 1
+	}`
+
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // bespoke path
+		responses: map[string]string{
+			"session-get": resp,
+		},
+	}.handler())
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+
+	return cfgPath, srv.Close
+}
+
+func TestSettingsGetSanitizesEncryption(t *testing.T) {
+	cfgPath, closeSrv := maliciousEncryptionConfigPath(t)
+	defer closeSrv()
+
+	// Plaintext: the server-returned encryption value is sanitized like every
+	// other server-derived string, so the raw ESC never reaches the terminal.
+	out, _, err := runSettings(t, "get", "encryption", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.NotContains(t, out, "\x1b", "raw ESC from encryption must not reach plaintext output")
+	assert.Equal(t, "requ[2Jired", strings.TrimSpace(out), "visible text survives sanitization")
+}
+
+func TestSettingsGetEncryptionJSONNotSanitized(t *testing.T) {
+	cfgPath, closeSrv := maliciousEncryptionConfigPath(t)
+	defer closeSrv()
+
+	// JSON is a structured contract: the encryption value is NOT sanitized, so
+	// the raw control byte survives verbatim in the JSON value.
+	out, _, err := runSettings(t, "get", "encryption", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "\\u001b", "JSON value carries the raw control byte unsanitized")
+}
+
 func TestSettingsGetJQFiltersTheObject(t *testing.T) {
 	cfgPath, closeSrv := settingsConfigPath(t)
 	defer closeSrv()

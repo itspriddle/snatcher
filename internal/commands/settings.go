@@ -341,15 +341,18 @@ func formatSettingValue(v any) string {
 	}
 }
 
-// serverDerivedSettings is the set of string-valued settings whose current
-// value comes from the remote server and is therefore untrusted: it must pass
-// through output.SanitizeTerminal on the human/plaintext path (and is never
-// sanitized on the --json/--jq path, a structured contract). Only these string
-// keys carry free-form server text; the other settings are bools/numbers/enums.
+// serverDerivedSettings is the set of settings whose current value comes from
+// the remote server and is therefore untrusted: it must pass through
+// output.SanitizeTerminal on the human/plaintext path (and is never sanitized on
+// the --json/--jq path, a structured contract). The string keys carry free-form
+// server text; encryption is an enum we constrain on the write path, but the
+// value read back is server-controlled and could carry escape sequences from a
+// compromised or MITM'd server, so it is sanitized too.
 var serverDerivedSettings = map[string]bool{
 	"download-dir":   true,
 	"incomplete-dir": true,
 	"blocklist-url":  true,
+	"encryption":     true,
 }
 
 // settingRow is the per-setting element of the settings JSON contract: a stable,
