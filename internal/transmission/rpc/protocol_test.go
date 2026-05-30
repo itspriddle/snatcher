@@ -758,6 +758,160 @@ func TestBespokeProtocolTorrentReannounceMapsNonSuccessResult(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid argument")
 }
 
+func TestProtocolQueueMove(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          func(Protocol, context.Context, transport, []any) error
+		jsonrpcMethod string
+		bespokeMethod string
+	}{
+		{
+			name: "top",
+			call: func(p Protocol, ctx context.Context, tr transport, ids []any) error {
+				return p.QueueMoveTop(ctx, tr, ids)
+			},
+			jsonrpcMethod: "queue_move_top",
+			bespokeMethod: "queue-move-top",
+		},
+		{
+			name: "up",
+			call: func(p Protocol, ctx context.Context, tr transport, ids []any) error {
+				return p.QueueMoveUp(ctx, tr, ids)
+			},
+			jsonrpcMethod: "queue_move_up",
+			bespokeMethod: "queue-move-up",
+		},
+		{
+			name: "down",
+			call: func(p Protocol, ctx context.Context, tr transport, ids []any) error {
+				return p.QueueMoveDown(ctx, tr, ids)
+			},
+			jsonrpcMethod: "queue_move_down",
+			bespokeMethod: "queue-move-down",
+		},
+		{
+			name: "bottom",
+			call: func(p Protocol, ctx context.Context, tr transport, ids []any) error {
+				return p.QueueMoveBottom(ctx, tr, ids)
+			},
+			jsonrpcMethod: "queue_move_bottom",
+			bespokeMethod: "queue-move-bottom",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+" jsonrpc sends method and mixed ids", func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := tt.call(jsonrpcProtocol{}, context.Background(), tr, []any{int64(2), "cafebabe"})
+			require.NoError(t, err)
+
+			var gotBody map[string]any
+			require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+			assert.Equal(t, tt.jsonrpcMethod, gotBody["method"])
+			params, ok := gotBody["params"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, []any{float64(2), "cafebabe"}, params["ids"])
+		})
+
+		t.Run(tt.name+" jsonrpc omits ids when none given", func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := tt.call(jsonrpcProtocol{}, context.Background(), tr, nil)
+			require.NoError(t, err)
+
+			assert.NotContains(t, string(rawBody), `"ids"`)
+		})
+
+		t.Run(tt.name+" bespoke sends method and mixed ids", func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := tt.call(bespokeProtocol{}, context.Background(), tr, []any{int64(2), "cafebabe"})
+			require.NoError(t, err)
+
+			var gotBody map[string]any
+			require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+			assert.Equal(t, tt.bespokeMethod, gotBody["method"])
+			args, ok := gotBody["arguments"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, []any{float64(2), "cafebabe"}, args["ids"])
+		})
+
+		t.Run(tt.name+" bespoke omits ids when none given", func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := tt.call(bespokeProtocol{}, context.Background(), tr, nil)
+			require.NoError(t, err)
+
+			assert.NotContains(t, string(rawBody), `"ids"`)
+		})
+	}
+}
+
+func TestJSONRPCProtocolQueueMoveMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32601, "message": "method not found"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.QueueMoveTop(context.Background(), tr, []any{int64(1)})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "method not found")
+}
+
+func TestBespokeProtocolQueueMoveMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.QueueMoveBottom(context.Background(), tr, []any{int64(1)})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
 func TestProtocolTorrentRemove(t *testing.T) {
 	tests := []struct {
 		name       string

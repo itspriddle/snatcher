@@ -186,6 +186,14 @@ func mutationVerb(action string) string {
 		return "Queued verification of"
 	case "reannounce":
 		return "Reannounced"
+	case "queue-top":
+		return "Moved to top"
+	case "queue-up":
+		return "Moved up"
+	case "queue-down":
+		return "Moved down"
+	case "queue-bottom":
+		return "Moved to bottom"
 	default:
 		return action
 	}

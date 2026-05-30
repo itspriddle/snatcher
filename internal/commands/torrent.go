@@ -29,6 +29,7 @@ func NewTorrentCmd() *cobra.Command {
 
 	cmd.AddCommand(NewListCmd())
 	cmd.AddCommand(NewMoveCmd())
+	cmd.AddCommand(NewQueueCmd())
 	cmd.AddCommand(NewReannounceCmd())
 	cmd.AddCommand(NewRemoveCmd())
 	cmd.AddCommand(NewStartCmd())

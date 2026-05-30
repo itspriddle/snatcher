@@ -131,6 +131,22 @@ type Backend interface {
 	// action.
 	ReannounceTorrents(ctx context.Context, sel Selector) error
 
+	// QueueMoveTop moves the torrents matched by sel to the top of the server's
+	// queue. An All selector targets every torrent.
+	QueueMoveTop(ctx context.Context, sel Selector) error
+
+	// QueueMoveUp moves the torrents matched by sel up one position in the
+	// server's queue. An All selector targets every torrent.
+	QueueMoveUp(ctx context.Context, sel Selector) error
+
+	// QueueMoveDown moves the torrents matched by sel down one position in the
+	// server's queue. An All selector targets every torrent.
+	QueueMoveDown(ctx context.Context, sel Selector) error
+
+	// QueueMoveBottom moves the torrents matched by sel to the bottom of the
+	// server's queue. An All selector targets every torrent.
+	QueueMoveBottom(ctx context.Context, sel Selector) error
+
 	// RemoveTorrents removes the torrents matched by sel from the session, also
 	// deleting their downloaded local files when deleteData is true. An All
 	// selector targets every torrent. Removal is immediate and irreversible.

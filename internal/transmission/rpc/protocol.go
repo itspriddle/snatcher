@@ -72,6 +72,18 @@ const (
 	methodTorrentSetLocationJSONRPC = "torrent_set_location"
 	methodTorrentSetLocationBespoke = "torrent-set-location"
 
+	methodQueueMoveTopJSONRPC = "queue_move_top"
+	methodQueueMoveTopBespoke = "queue-move-top"
+
+	methodQueueMoveUpJSONRPC = "queue_move_up"
+	methodQueueMoveUpBespoke = "queue-move-up"
+
+	methodQueueMoveDownJSONRPC = "queue_move_down"
+	methodQueueMoveDownBespoke = "queue-move-down"
+
+	methodQueueMoveBottomJSONRPC = "queue_move_bottom"
+	methodQueueMoveBottomBespoke = "queue-move-bottom"
+
 	methodPortTestJSONRPC = "port_test"
 	methodPortTestBespoke = "port-test"
 )
@@ -525,6 +537,32 @@ type Protocol interface {
 	// torrents. The method carries no response payload, so the call only confirms
 	// success.
 	TorrentReannounce(ctx context.Context, t transport, ids []any) error
+
+	// QueueMoveTop calls the server's queue-move-top/queue_move_top method, moving
+	// the selected torrents to the top of the queue. A nil or empty ids slice
+	// targets all torrents; otherwise the mixed id/hash array selects torrents. The
+	// method carries no response payload, so the call only confirms success.
+	QueueMoveTop(ctx context.Context, t transport, ids []any) error
+
+	// QueueMoveUp calls the server's queue-move-up/queue_move_up method, moving the
+	// selected torrents up one position in the queue. A nil or empty ids slice
+	// targets all torrents; otherwise the mixed id/hash array selects torrents. The
+	// method carries no response payload, so the call only confirms success.
+	QueueMoveUp(ctx context.Context, t transport, ids []any) error
+
+	// QueueMoveDown calls the server's queue-move-down/queue_move_down method,
+	// moving the selected torrents down one position in the queue. A nil or empty
+	// ids slice targets all torrents; otherwise the mixed id/hash array selects
+	// torrents. The method carries no response payload, so the call only confirms
+	// success.
+	QueueMoveDown(ctx context.Context, t transport, ids []any) error
+
+	// QueueMoveBottom calls the server's queue-move-bottom/queue_move_bottom
+	// method, moving the selected torrents to the bottom of the queue. A nil or
+	// empty ids slice targets all torrents; otherwise the mixed id/hash array
+	// selects torrents. The method carries no response payload, so the call only
+	// confirms success.
+	QueueMoveBottom(ctx context.Context, t transport, ids []any) error
 
 	// TorrentRemove calls the server's torrent-remove/torrent_remove method. A nil
 	// or empty ids slice targets all torrents; otherwise the mixed id/hash array
@@ -1030,6 +1068,22 @@ func (p jsonrpcProtocol) TorrentVerify(ctx context.Context, t transport, ids []a
 
 func (p jsonrpcProtocol) TorrentReannounce(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentReannounceJSONRPC, ids)
+}
+
+func (p jsonrpcProtocol) QueueMoveTop(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveTopJSONRPC, ids)
+}
+
+func (p jsonrpcProtocol) QueueMoveUp(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveUpJSONRPC, ids)
+}
+
+func (p jsonrpcProtocol) QueueMoveDown(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveDownJSONRPC, ids)
+}
+
+func (p jsonrpcProtocol) QueueMoveBottom(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveBottomJSONRPC, ids)
 }
 
 // TorrentRemove sends torrent_remove with the delete_local_data flag (always
@@ -1755,6 +1809,22 @@ func (p bespokeProtocol) TorrentVerify(ctx context.Context, t transport, ids []a
 
 func (p bespokeProtocol) TorrentReannounce(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentReannounceBespoke, ids)
+}
+
+func (p bespokeProtocol) QueueMoveTop(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveTopBespoke, ids)
+}
+
+func (p bespokeProtocol) QueueMoveUp(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveUpBespoke, ids)
+}
+
+func (p bespokeProtocol) QueueMoveDown(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveDownBespoke, ids)
+}
+
+func (p bespokeProtocol) QueueMoveBottom(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodQueueMoveBottomBespoke, ids)
 }
 
 // TorrentRemove sends torrent-remove with the delete-local-data flag (always
