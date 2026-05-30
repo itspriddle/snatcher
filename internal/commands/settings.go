@@ -379,8 +379,15 @@ func NewSettingsCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "settings",
-		Short:         "Manage server settings",
+		Use:   "settings",
+		Short: "Manage server settings",
+		Long: "Manage server settings.\n\n" +
+			"With no subcommand, lists every session setting (CATEGORY KEY VALUE), " +
+			"filterable by --category and --search. Use the get, set, and reset " +
+			"subcommands to read, write, or restore individual settings.\n\n" +
+			"Units: speed-limit-down, speed-limit-up, alt-speed-down, and " +
+			"alt-speed-up are in KB/s. alt-speed-time-begin and alt-speed-time-end " +
+			"are minutes after midnight (e.g. 540 is 09:00).",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -510,8 +517,16 @@ func newSettingsSetCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "set <key> <value> [<key> <value>...]",
-		Short:         "Set one or more settings",
+		Use:   "set <key> <value> [<key> <value>...]",
+		Short: "Set one or more settings",
+		Long: "Set one or more settings, given as key/value pairs.\n\n" +
+			"All pairs are validated before any write, so an invalid pair aborts " +
+			"the whole command with no partial change. After writing, the " +
+			"server's actual values are read back and reported.\n\n" +
+			"Units: speed-limit-down, speed-limit-up, alt-speed-down, and " +
+			"alt-speed-up are in KB/s (e.g. 'set speed-limit-down 100' is " +
+			"100 KB/s). alt-speed-time-begin and alt-speed-time-end are minutes " +
+			"after midnight (e.g. 540 is 09:00).",
 		Args:          cobra.MinimumNArgs(2),
 		SilenceUsage:  true,
 		SilenceErrors: true,
