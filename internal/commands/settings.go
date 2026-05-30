@@ -2,9 +2,14 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
+	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/torrent"
 )
 
@@ -334,4 +339,160 @@ func formatSettingValue(v any) string {
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// serverDerivedSettings is the set of string-valued settings whose current
+// value comes from the remote server and is therefore untrusted: it must pass
+// through output.SanitizeTerminal on the human/plaintext path (and is never
+// sanitized on the --json/--jq path, a structured contract). Only these string
+// keys carry free-form server text; the other settings are bools/numbers/enums.
+var serverDerivedSettings = map[string]bool{
+	"download-dir":   true,
+	"incomplete-dir": true,
+	"blocklist-url":  true,
+}
+
+// settingRow is the per-setting element of the settings JSON contract: a stable,
+// jq-friendly {key, category, value} object whose Value carries the native typed
+// value (bool / number / string). It is the array element emitted by --json/--jq.
+type settingRow struct {
+	Key      string `json:"key"`
+	Category string `json:"category"`
+	Value    any    `json:"value"`
+}
+
+// NewSettingsCmd builds the "settings" command. With no subcommand it lists every
+// session setting in a list-style table (CATEGORY KEY VALUE), filterable by
+// --category and --search, in plaintext / --json / --jq modes. It dials the
+// backend via the shared dial helper and carries its own --config flag, like
+// list and the auth subcommands.
+func NewSettingsCmd() *cobra.Command {
+	var (
+		configPath   string
+		asJSON       bool
+		jqExpr       string
+		categoryFlag string
+		searchFlag   string
+	)
+
+	cmd := &cobra.Command{
+		Use:           "settings",
+		Short:         "Manage server settings",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var category settingCategory
+			if categoryFlag != "" {
+				parsed, err := parseCategory(categoryFlag)
+				if err != nil {
+					return err
+				}
+				category = parsed
+			}
+
+			backend, serverURL, err := dial(configPath)
+			if err != nil {
+				return err
+			}
+
+			session, err := backend.GetSession(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			defs := filterSettings(category, searchFlag)
+
+			if jqExpr != "" {
+				return output.JQ(cmd.OutOrStdout(), settingRows(defs, session), jqExpr)
+			}
+
+			if asJSON {
+				return output.JSON(cmd.OutOrStdout(), settingRows(defs, session))
+			}
+
+			writeSettingsPlaintext(cmd, defs, session)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	cmd.Flags().StringVar(&categoryFlag, "category", "", "filter by category (download, network, bandwidth, queue)")
+	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to keys containing this text (case-insensitive)")
+
+	return cmd
+}
+
+// settingRows builds the {key, category, value} JSON rows for the given
+// definitions from a session snapshot, in registry order. Values are the native
+// typed values (never sanitized — JSON/jq is a structured contract). An empty
+// set serializes as "[]" rather than "null".
+func settingRows(defs []settingDef, session torrent.SessionSettings) []settingRow {
+	rows := make([]settingRow, len(defs))
+	for i, def := range defs {
+		rows[i] = settingRow{
+			Key:      def.key,
+			Category: string(def.category),
+			Value:    def.accessor(session),
+		}
+	}
+
+	return rows
+}
+
+// writeSettingsPlaintext renders the settings in the appropriate plaintext mode:
+// an aligned CATEGORY KEY VALUE table with a header on a TTY, or plain
+// tab-separated, header-less rows when piped or when NO_COLOR is set. It mirrors
+// the list command's TTY/piped split (isTTY).
+func writeSettingsPlaintext(cmd *cobra.Command, defs []settingDef, session torrent.SessionSettings) {
+	out := cmd.OutOrStdout()
+
+	if isTTY(out) {
+		writeSettingsTable(out, defs, session)
+		return
+	}
+
+	writeSettingsPiped(out, defs, session)
+}
+
+// settingCell renders a setting's current value as plaintext, neutralizing
+// terminal control sequences for server-derived string settings (sanitize) so a
+// crafted download-dir cannot inject ANSI escapes. The JSON/jq paths never call
+// it.
+func settingCell(def settingDef, session torrent.SessionSettings) string {
+	v := formatSettingValue(def.accessor(session))
+	if serverDerivedSettings[def.key] {
+		v = output.SanitizeTerminal(v)
+	}
+
+	return v
+}
+
+// writeSettingsPiped writes plain, tab-separated CATEGORY KEY VALUE rows with no
+// header — the stable scripting contract. An empty set writes nothing.
+func writeSettingsPiped(w io.Writer, defs []settingDef, session torrent.SessionSettings) {
+	for _, def := range defs {
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", def.category, def.key, settingCell(def, session))
+	}
+}
+
+// writeSettingsTable writes a whitespace-aligned CATEGORY KEY VALUE table with a
+// header row. An empty set writes a friendly "No settings." line.
+func writeSettingsTable(w io.Writer, defs []settingDef, session torrent.SessionSettings) {
+	if len(defs) == 0 {
+		_, _ = fmt.Fprintln(w, "No settings.")
+		return
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
+	_, _ = fmt.Fprintln(tw, "CATEGORY\tKEY\tVALUE")
+	for _, def := range defs {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", def.category, def.key, settingCell(def, session))
+	}
+
+	_ = tw.Flush()
 }

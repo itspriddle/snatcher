@@ -8,6 +8,7 @@ CMD snatcher auth show
 CMD snatcher auth test
 CMD snatcher list
 CMD snatcher remove
+CMD snatcher settings
 CMD snatcher start
 CMD snatcher stats
 CMD snatcher stop
@@ -43,6 +44,11 @@ FLAG snatcher remove --delete-data type=bool
 FLAG snatcher remove --jq type=string
 FLAG snatcher remove --json type=bool
 FLAG snatcher remove --yes type=bool
+FLAG snatcher settings --category type=string
+FLAG snatcher settings --config type=string
+FLAG snatcher settings --jq type=string
+FLAG snatcher settings --json type=bool
+FLAG snatcher settings --search type=string
 FLAG snatcher start --all type=bool
 FLAG snatcher start --config type=string
 FLAG snatcher start --jq type=string
