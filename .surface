@@ -9,6 +9,7 @@ CMD snatcher remove
 CMD snatcher start
 CMD snatcher stats
 CMD snatcher stop
+CMD snatcher upload
 FLAG snatcher --version type=bool
 FLAG snatcher auth remove --config type=string
 FLAG snatcher auth set --config type=string
@@ -45,3 +46,8 @@ FLAG snatcher stop --all type=bool
 FLAG snatcher stop --config type=string
 FLAG snatcher stop --jq type=string
 FLAG snatcher stop --json type=bool
+FLAG snatcher upload --config type=string
+FLAG snatcher upload --download-dir type=string
+FLAG snatcher upload --jq type=string
+FLAG snatcher upload --json type=bool
+FLAG snatcher upload --start type=bool
