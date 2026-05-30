@@ -7,6 +7,7 @@ package transmission
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -141,6 +142,41 @@ func (b *Backend) StopTorrents(ctx context.Context, sel torrent.Selector) error 
 // neutral sentinels.
 func (b *Backend) RemoveTorrents(ctx context.Context, sel torrent.Selector, deleteData bool) error {
 	return mapError(b.client.TorrentRemove(ctx, sel.RPCIDs(), deleteData))
+}
+
+// AddTorrent adds a single torrent via the rpc client's TorrentAdd. It
+// base64-encodes raw Metainfo into the RPC metainfo field, maps URL/Magnet to
+// the RPC filename field, and passes DownloadDir/Paused/Labels through. The
+// canonical rpc.AddResult is mapped to the neutral AddResult; a duplicate is
+// reported via AddResult.Duplicate (not an error). RPC failures are mapped to
+// the neutral sentinels.
+func (b *Backend) AddTorrent(ctx context.Context, req torrent.AddRequest) (torrent.AddResult, error) {
+	rpcReq := rpc.AddRequest{
+		DownloadDir: req.DownloadDir,
+		Paused:      req.Paused,
+		Labels:      req.Labels,
+	}
+
+	switch {
+	case len(req.Metainfo) > 0:
+		rpcReq.Metainfo = base64.StdEncoding.EncodeToString(req.Metainfo)
+	case req.URL != "":
+		rpcReq.Filename = req.URL
+	case req.Magnet != "":
+		rpcReq.Filename = req.Magnet
+	}
+
+	res, err := b.client.TorrentAdd(ctx, rpcReq)
+	if err != nil {
+		return torrent.AddResult{}, mapError(err)
+	}
+
+	return torrent.AddResult{
+		ID:        res.ID,
+		Hash:      res.Hash,
+		Name:      res.Name,
+		Duplicate: res.Duplicate,
+	}, nil
 }
 
 // mapTorrent converts a canonical rpc.Torrent into the neutral torrent.Torrent,

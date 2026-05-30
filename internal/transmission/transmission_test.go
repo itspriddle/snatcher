@@ -2,6 +2,7 @@ package transmission
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -621,4 +622,160 @@ func TestBackendRemoveTorrentsMapsTransportError(t *testing.T) {
 	err := b.RemoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, false)
 	require.ErrorIs(t, err, torrent.ErrUnreachable)
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
+}
+
+// captureAddServer is a Transmission stub that records the body of the
+// non-handshake request and answers with a valid torrent-add result (a new
+// add). The reply shape differs per scheme — JSON-RPC's "result" must be the
+// torrent_added object, bespoke's "result" is the "success" string with the
+// torrent-added object under "arguments" — so the response is chosen from the
+// negotiated protocol (empty rpcVersion -> bespoke).
+func captureAddServer(t *testing.T, rpcVersion string, captured *string) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			if rpcVersion != "" {
+				w.Header().Set(rpcVersionHeader, rpcVersion)
+			}
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		*captured = string(body)
+
+		if rpcVersion == "" {
+			_, _ = w.Write([]byte(`{"arguments": {"torrent-added": {"id": 1, "name": "n", "hashString": "h"}}, "result": "success", "tag": 1}`))
+			return
+		}
+
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": {"torrent_added": {"id": 1, "name": "n", "hash_string": "h"}}, "id": 1}`))
+	}))
+}
+
+func TestBackendAddTorrentByFile(t *testing.T) {
+	var captured string
+
+	srv := captureAddServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	metainfo := []byte("d8:announce0:e") // not real, just bytes to encode
+	res, err := b.AddTorrent(context.Background(), torrent.AddRequest{
+		Metainfo:    metainfo,
+		DownloadDir: "/downloads",
+		Paused:      true,
+		Labels:      []string{"linux", "iso"},
+	})
+	require.NoError(t, err)
+	assert.False(t, res.Duplicate)
+
+	// Raw metainfo is base64-encoded into the wire "metainfo" field; URL/magnet
+	// "filename" is absent for a file source.
+	wantMetainfo := base64.StdEncoding.EncodeToString(metainfo)
+	assert.Contains(t, captured, `"method":"torrent_add"`)
+	assert.Contains(t, captured, `"metainfo":"`+wantMetainfo+`"`)
+	assert.NotContains(t, captured, `"filename"`)
+	assert.Contains(t, captured, `"download_dir":"/downloads"`)
+	assert.Contains(t, captured, `"paused":true`)
+	assert.Contains(t, captured, `"labels":["linux","iso"]`)
+}
+
+func TestBackendAddTorrentByURL(t *testing.T) {
+	var captured string
+
+	srv := captureAddServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.AddTorrent(context.Background(), torrent.AddRequest{
+		URL: "https://example.com/a.torrent",
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent_add"`)
+	assert.Contains(t, captured, `"filename":"https://example.com/a.torrent"`)
+	assert.NotContains(t, captured, `"metainfo"`)
+}
+
+func TestBackendAddTorrentByMagnet(t *testing.T) {
+	var captured string
+
+	srv := captureAddServer(t, "", &captured) // bespoke path
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.AddTorrent(context.Background(), torrent.AddRequest{
+		Magnet: "magnet:?xt=urn:btih:deadbeef",
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent-add"`)
+	assert.Contains(t, captured, `"filename":"magnet:?xt=urn:btih:deadbeef"`)
+	assert.NotContains(t, captured, `"metainfo"`)
+}
+
+func TestBackendAddTorrentAddedResult(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"torrent_add": `{
+				"jsonrpc": "2.0",
+				"result": {"torrent_added": {"id": 7, "name": "ubuntu.iso", "hash_string": "abc123"}},
+				"id": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	res, err := b.AddTorrent(context.Background(), torrent.AddRequest{URL: "https://example.com/a.torrent"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), res.ID)
+	assert.Equal(t, "ubuntu.iso", res.Name)
+	assert.Equal(t, "abc123", res.Hash)
+	assert.False(t, res.Duplicate)
+}
+
+func TestBackendAddTorrentDuplicateResult(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // bespoke: hashString, torrent-duplicate
+		responses: map[string]string{
+			"torrent-add": `{
+				"arguments": {"torrent-duplicate": {"id": 3, "name": "already-here", "hashString": "cafebabe"}},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	res, err := b.AddTorrent(context.Background(), torrent.AddRequest{Magnet: "magnet:?xt=urn:btih:cafebabe"})
+	// A duplicate is reported via the result, not as an error.
+	require.NoError(t, err)
+	assert.True(t, res.Duplicate)
+	assert.Equal(t, int64(3), res.ID)
+	assert.Equal(t, "already-here", res.Name)
+	assert.Equal(t, "cafebabe", res.Hash)
+}
+
+func TestBackendAddTorrentMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.AddTorrent(context.Background(), torrent.AddRequest{URL: "https://example.com/a.torrent"})
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
 }
