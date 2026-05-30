@@ -174,6 +174,8 @@ func mutationVerb(action string) string {
 		return "Removed"
 	case "verify":
 		return "Queued verification of"
+	case "reannounce":
+		return "Reannounced"
 	default:
 		return action
 	}

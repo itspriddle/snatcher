@@ -17,6 +17,7 @@ CMD snatcher settings set
 CMD snatcher stats
 CMD snatcher torrent
 CMD snatcher torrent list
+CMD snatcher torrent reannounce
 CMD snatcher torrent remove
 CMD snatcher torrent start
 CMD snatcher torrent stop
@@ -63,6 +64,10 @@ FLAG snatcher torrent list --json type=bool
 FLAG snatcher torrent list --reverse type=bool
 FLAG snatcher torrent list --search type=string
 FLAG snatcher torrent list --sort type=string
+FLAG snatcher torrent reannounce --all type=bool
+FLAG snatcher torrent reannounce --config type=string
+FLAG snatcher torrent reannounce --jq type=string
+FLAG snatcher torrent reannounce --json type=bool
 FLAG snatcher torrent remove --all type=bool
 FLAG snatcher torrent remove --config type=string
 FLAG snatcher torrent remove --delete-data type=bool
