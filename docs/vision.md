@@ -54,13 +54,24 @@ Use "snatcher [command] --help" for more information about a command.
 
 - `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
 - `snatcher torrent start [--force|now] ...` - start torrent disregarding queue position
-- `snatcher torrent reannounce ...` - reannounce torrent to trackers
+- [x] `snatcher torrent reannounce ...` - reannounce torrent to trackers
 - `snatcher torrent move ...` - `torrent_set_location`
 - `snatcher torrent rename-path ...` - seems dangerous, power users?
 - `snatcher torrent queue top|up|down|bottom ...` - change queue position
 - `snatcher blocklist ...` - 
-- `snatcher port get|set|test` - show or change listening port
+- [^] `snatcher port get|set|test` - show or change listening port
 - `snatcher free-space ...` - show free space on disk (merge in with stats?)
+
+### Aliases
+
+- `snatcher torrent up` / `snatcher upload`
+- `snatcher torrent mv`
+- `snatcher torrent rm`
+- `snatcher torrent ls`
+
+### Helpers?
+
+- `snatcher server toggle-alt-speed` - toggle alt-speed, show new state
 
 ## TUI
 
