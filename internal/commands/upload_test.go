@@ -40,12 +40,20 @@ const duplicateResponse = `{
 func runUpload(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
+	return runUploadStdin(t, "", args...)
+}
+
+// runUploadStdin executes the upload command with the given stdin contents and
+// args, returning stdout, stderr, and the Execute error.
+func runUploadStdin(t *testing.T, stdin string, args ...string) (string, string, error) {
+	t.Helper()
+
 	cmd := NewUploadCmd()
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
-	cmd.SetIn(strings.NewReader(""))
+	cmd.SetIn(strings.NewReader(stdin))
 	cmd.SetArgs(args)
 
 	err := cmd.Execute()
@@ -360,4 +368,217 @@ func TestUploadSanitizesNameInHumanButNotJSON(t *testing.T) {
 	jsonOut, _, err := runUpload(t, "--config", cfgPath, "--json", "https://example.com/a.torrent")
 	require.NoError(t, err)
 	assert.Contains(t, jsonOut, "\\u001b", "the raw escape is preserved in the JSON contract")
+}
+
+// TestUploadDeleteRemovesFileOnSuccess confirms --delete removes the source
+// .torrent after a successful, non-duplicate file add and reports deleted=true.
+func TestUploadDeleteRemovesFileOnSuccess(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	torrentPath := writeTorrentFile(t, []byte("d8:announce0:e"))
+
+	out, _, err := runUpload(t, "--config", cfgPath, "--delete", "--json", torrentPath)
+	require.NoError(t, err)
+
+	assert.NoFileExists(t, torrentPath, "the consumed .torrent is deleted")
+
+	var got []struct {
+		Deleted bool `json:"deleted"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1)
+	assert.True(t, got[0].Deleted, "deleted is reported when removal succeeds")
+}
+
+// TestUploadDeleteShortFlag confirms -d is an alias for --delete.
+func TestUploadDeleteShortFlag(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	torrentPath := writeTorrentFile(t, []byte("d8:announce0:e"))
+
+	_, _, err := runUpload(t, "--config", cfgPath, "-d", torrentPath)
+	require.NoError(t, err)
+
+	assert.NoFileExists(t, torrentPath, "-d deletes the consumed .torrent")
+}
+
+// TestUploadDeleteKeepsFileOnDuplicate confirms --delete leaves the source
+// .torrent in place when the add was a duplicate (not a fresh add).
+func TestUploadDeleteKeepsFileOnDuplicate(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, duplicateResponse)
+	defer closeSrv()
+
+	torrentPath := writeTorrentFile(t, []byte("d8:announce0:e"))
+
+	out, _, err := runUpload(t, "--config", cfgPath, "--delete", "--json", torrentPath)
+	require.NoError(t, err)
+
+	assert.FileExists(t, torrentPath, "a duplicate add does not delete the source file")
+
+	var got []struct {
+		Duplicate bool `json:"duplicate"`
+		Deleted   bool `json:"deleted"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1)
+	assert.True(t, got[0].Duplicate)
+	assert.False(t, got[0].Deleted)
+}
+
+// TestUploadDeleteIgnoresURLAndMagnet confirms --delete has no effect on
+// URL/magnet sources (there is no local file to remove).
+func TestUploadDeleteIgnoresURLAndMagnet(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	out, _, err := runUpload(t, "--config", cfgPath, "--delete", "--json", "https://example.com/a.torrent", "magnet:?xt=urn:btih:deadbeef")
+	require.NoError(t, err)
+
+	var got []struct {
+		Deleted bool `json:"deleted"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 2)
+	assert.False(t, got[0].Deleted, "deleted is never set for a URL source")
+	assert.False(t, got[1].Deleted, "deleted is never set for a magnet source")
+}
+
+// TestUploadDeleteToleratesFailure confirms a delete failure (here, the file
+// was already removed out from under us) warns on stderr without failing the
+// add and leaves deleted=false.
+func TestUploadDeleteToleratesFailure(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	// A read-only directory: os.ReadFile succeeds on the file, but os.Remove of
+	// the entry fails because the parent directory is not writable.
+	dir := t.TempDir()
+	torrentPath := filepath.Join(dir, "ro.torrent")
+	require.NoError(t, os.WriteFile(torrentPath, []byte("d8:announce0:e"), 0o600))
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	out, errOut, err := runUpload(t, "--config", cfgPath, "--delete", "--json", torrentPath)
+	require.NoError(t, err, "a delete failure does not fail the add")
+
+	assert.Contains(t, errOut, "deleting "+torrentPath, "the delete failure warns on stderr")
+
+	var got []struct {
+		Deleted bool `json:"deleted"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1)
+	assert.False(t, got[0].Deleted, "deleted stays false when removal fails")
+}
+
+// TestUploadLabelsForwarded confirms repeated --label values are sent on the add
+// request.
+func TestUploadLabelsForwarded(t *testing.T) {
+	var body string
+	cfgPath, closeSrv := captureUploadConfigPath(t, &body)
+	defer closeSrv()
+
+	_, _, err := runUpload(t, "--config", cfgPath, "--label", "iso", "--label", "linux", "https://example.com/a.torrent")
+	require.NoError(t, err)
+
+	assert.Contains(t, body, `"labels":["iso","linux"]`)
+}
+
+// TestUploadQuietSuppressesSuccessLines confirms --quiet drops the per-source
+// confirmation lines on stdout while still surfacing errors on stderr.
+func TestUploadQuietSuppressesSuccessLines(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	missing := filepath.Join(t.TempDir(), "nope.torrent")
+
+	out, errOut, err := runUpload(t, "--config", cfgPath, "--quiet", missing, "https://example.com/a.torrent")
+	require.Error(t, err, "a failed source still exits non-zero under --quiet")
+
+	assert.Empty(t, out, "--quiet suppresses the success line")
+	assert.Contains(t, errOut, "reading "+missing, "--quiet does not suppress errors")
+}
+
+// TestUploadQuietShortFlag confirms -q is an alias for --quiet.
+func TestUploadQuietShortFlag(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	out, _, err := runUpload(t, "--config", cfgPath, "-q", "https://example.com/a.torrent")
+	require.NoError(t, err)
+
+	assert.Empty(t, out, "-q suppresses the success line")
+}
+
+// TestUploadQuietDoesNotAlterJSON confirms --quiet leaves the JSON contract
+// untouched.
+func TestUploadQuietDoesNotAlterJSON(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	out, _, err := runUpload(t, "--config", cfgPath, "--quiet", "--json", "https://example.com/a.torrent")
+	require.NoError(t, err)
+
+	var got []struct {
+		Name string `json:"name"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1)
+	assert.Equal(t, "ubuntu-24.04.iso", got[0].Name, "--quiet does not change JSON output")
+}
+
+// TestUploadReadsSourcesFromStdin confirms that, with no positional args, sources
+// are read one-per-line from stdin (blank lines and surrounding whitespace
+// ignored).
+func TestUploadReadsSourcesFromStdin(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	stdin := "  https://example.com/a.torrent  \n\nmagnet:?xt=urn:btih:deadbeef\n"
+
+	out, _, err := runUploadStdin(t, stdin, "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var got []struct {
+		Source string `json:"source"`
+		Input  string `json:"input"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+
+	require.Len(t, got, 2, "blank lines are ignored")
+	assert.Equal(t, "url", got[0].Source)
+	assert.Equal(t, "https://example.com/a.torrent", got[0].Input, "surrounding whitespace is trimmed")
+	assert.Equal(t, "magnet", got[1].Source)
+	assert.Equal(t, "magnet:?xt=urn:btih:deadbeef", got[1].Input)
+}
+
+// TestUploadPositionalArgsTakePrecedenceOverStdin confirms stdin is consulted
+// only when no positional args are present.
+func TestUploadPositionalArgsTakePrecedenceOverStdin(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	out, _, err := runUploadStdin(t, "magnet:?xt=urn:btih:fromstdin\n", "--config", cfgPath, "--json", "https://example.com/a.torrent")
+	require.NoError(t, err)
+
+	var got []struct {
+		Input string `json:"input"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+
+	require.Len(t, got, 1, "stdin is not mixed with positional args")
+	assert.Equal(t, "https://example.com/a.torrent", got[0].Input)
+}
+
+// TestUploadNoArgsNoStdinErrors confirms a bare invocation with neither
+// positional args nor piped stdin remains an error.
+func TestUploadNoArgsNoStdinErrors(t *testing.T) {
+	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+	defer closeSrv()
+
+	_, _, err := runUploadStdin(t, "", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "specify at least one file, url, or magnet link")
 }

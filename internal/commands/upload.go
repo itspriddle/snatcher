@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -31,6 +34,9 @@ func NewUploadCmd() *cobra.Command {
 		jqExpr      string
 		start       bool
 		downloadDir string
+		deleteFile  bool
+		labels      []string
+		quiet       bool
 	)
 
 	cmd := &cobra.Command{
@@ -40,14 +46,21 @@ func NewUploadCmd() *cobra.Command {
 			"or magnet links.\n\n" +
 			"Each argument is auto-detected as a file, URL, or magnet link. Torrents " +
 			"are added paused unless --start is given; use --download-dir to choose a " +
-			"server-side destination. Multiple sources are processed continue-on-error: " +
-			"a failure adding one source is reported but does not stop the rest, and the " +
-			"command exits non-zero if any source failed. A bare 'snatcher upload' with " +
-			"no sources is an error, not a no-op.",
+			"server-side destination and --label (repeatable) to tag them. Use --delete " +
+			"to remove a local .torrent after it is successfully added, and --quiet to " +
+			"suppress per-source confirmation lines. Multiple sources are processed " +
+			"continue-on-error: a failure adding one source is reported but does not stop " +
+			"the rest, and the command exits non-zero if any source failed. With no " +
+			"positional arguments, sources are read from stdin (one per line); a bare " +
+			"'snatcher upload' with no sources and no piped stdin is an error, not a no-op.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
+			sources, err := uploadSources(cmd, args)
+			if err != nil {
+				return err
+			}
+			if len(sources) == 0 {
 				return errors.New("specify at least one file, url, or magnet link")
 			}
 
@@ -56,18 +69,25 @@ func NewUploadCmd() *cobra.Command {
 				return err
 			}
 
-			results := make([]uploadResult, 0, len(args))
+			opts := uploadOptions{
+				start:       start,
+				downloadDir: downloadDir,
+				deleteFile:  deleteFile,
+				labels:      labels,
+			}
+
+			results := make([]uploadResult, 0, len(sources))
 			failed := false
 
-			for _, arg := range args {
-				res := uploadSource(cmd, backend, arg, start, downloadDir)
+			for _, arg := range sources {
+				res := uploadSource(cmd, backend, arg, opts)
 				if res.Error != "" {
 					failed = true
 				}
 				results = append(results, res)
 			}
 
-			if err := renderUpload(cmd, results, jqExpr, asJSON); err != nil {
+			if err := renderUpload(cmd, results, jqExpr, asJSON, quiet); err != nil {
 				return err
 			}
 
@@ -84,8 +104,53 @@ func NewUploadCmd() *cobra.Command {
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().BoolVar(&start, "start", false, "start torrents immediately instead of adding them paused")
 	cmd.Flags().StringVar(&downloadDir, "download-dir", "", "server-side destination directory")
+	cmd.Flags().BoolVarP(&deleteFile, "delete", "d", false, "delete the local .torrent after a successful add")
+	cmd.Flags().StringArrayVar(&labels, "label", nil, "label to apply to added torrents (repeatable)")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "suppress per-source confirmation lines")
 
 	return cmd
+}
+
+// uploadSources resolves the sources to process: the positional args when any
+// are present, otherwise one whitespace-trimmed, non-blank source per line read
+// from stdin. Positional args and stdin are never mixed — stdin is consulted
+// only when no positional args are given.
+func uploadSources(cmd *cobra.Command, args []string) ([]string, error) {
+	if len(args) > 0 {
+		return args, nil
+	}
+
+	var sources []string
+
+	scanner := bufio.NewScanner(cmd.InOrStdin())
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		sources = append(sources, line)
+	}
+	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("reading sources from stdin: %w", err)
+	}
+
+	return sources, nil
+}
+
+// uploadOptions carries the per-invocation add options shared across every
+// source, sparing uploadSource a long positional argument list.
+type uploadOptions struct {
+	// start adds torrents running instead of paused.
+	start bool
+
+	// downloadDir is the server-side destination directory (empty = server default).
+	downloadDir string
+
+	// deleteFile removes a local .torrent after a successful, non-duplicate add.
+	deleteFile bool
+
+	// labels are applied to every added torrent.
+	labels []string
 }
 
 // uploadSource classifies arg, builds the neutral AddRequest, adds the torrent,
@@ -93,14 +158,17 @@ func NewUploadCmd() *cobra.Command {
 // bytes (surfacing a clear error on a missing/unreadable file) before adding.
 // On a per-source failure it writes the error to stderr (continue-on-error) and
 // records it in the returned result; a duplicate is a success, not an error.
-func uploadSource(cmd *cobra.Command, backend torrent.Backend, arg string, start bool, downloadDir string) uploadResult {
+// With opts.deleteFile, a successful non-duplicate file add deletes the source
+// .torrent; a delete failure warns on stderr but does not fail the add.
+func uploadSource(cmd *cobra.Command, backend torrent.Backend, arg string, opts uploadOptions) uploadResult {
 	source := torrent.ClassifySource(arg)
 
 	res := uploadResult{Source: source.String(), Input: arg}
 
 	req := torrent.AddRequest{
-		DownloadDir: downloadDir,
-		Paused:      !start,
+		DownloadDir: opts.downloadDir,
+		Paused:      !opts.start,
+		Labels:      opts.labels,
 	}
 
 	switch source {
@@ -125,6 +193,18 @@ func uploadSource(cmd *cobra.Command, backend torrent.Backend, arg string, start
 	res.Name = added.Name
 	res.Hash = added.Hash
 	res.Duplicate = added.Duplicate
+
+	// --delete removes the consumed .torrent only after a successful, non-duplicate
+	// file add. A delete failure warns but does not fail the add; deleted is set
+	// only when the removal succeeded. URL/magnet sources and duplicates are
+	// untouched.
+	if opts.deleteFile && source == torrent.SourceFile && !added.Duplicate {
+		if err := os.Remove(arg); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", output.SanitizeTerminal(fmt.Sprintf("deleting %s: %v", arg, err)))
+		} else {
+			res.Deleted = true
+		}
+	}
 
 	return res
 }
@@ -155,6 +235,10 @@ type uploadResult struct {
 	// success, not an error). Omitted when false.
 	Duplicate bool `json:"duplicate,omitempty"`
 
+	// Deleted reports that the source .torrent was deleted after a successful add
+	// (only set under --delete for a non-duplicate file source). Omitted when false.
+	Deleted bool `json:"deleted,omitempty"`
+
 	// Error is a human-readable description of why this source failed. Empty on
 	// success.
 	Error string `json:"error,omitempty"`
@@ -174,8 +258,9 @@ func (r uploadResult) withError(cmd *cobra.Command, err error) uploadResult {
 // renderUpload writes the per-source results in the appropriate output mode:
 // --jq filters the JSON array, --json emits the structured array, and otherwise
 // a plain human line is printed per source. Render precedence mirrors the other
-// commands: --jq → --json → plaintext.
-func renderUpload(cmd *cobra.Command, results []uploadResult, jqExpr string, asJSON bool) error {
+// commands: --jq → --json → plaintext. --quiet suppresses only the plaintext
+// confirmation lines; it never alters the JSON/jq contract.
+func renderUpload(cmd *cobra.Command, results []uploadResult, jqExpr string, asJSON, quiet bool) error {
 	if jqExpr != "" {
 		return output.JQ(cmd.OutOrStdout(), results, jqExpr)
 	}
@@ -184,7 +269,9 @@ func renderUpload(cmd *cobra.Command, results []uploadResult, jqExpr string, asJ
 		return output.JSON(cmd.OutOrStdout(), results)
 	}
 
-	writeUploadPlaintext(cmd, results)
+	if !quiet {
+		writeUploadPlaintext(cmd, results)
+	}
 
 	return nil
 }
