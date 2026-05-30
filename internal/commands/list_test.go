@@ -230,6 +230,69 @@ func TestWriteListTableEmpty(t *testing.T) {
 	assert.Equal(t, "No torrents.", strings.TrimSpace(buf.String()))
 }
 
+func TestWriteListTableSanitizesControlChars(t *testing.T) {
+	torrents := []torrent.Torrent{
+		{ID: 1, Name: "\x1b[2Jmalicious", Status: torrent.StatusDownloading},
+	}
+
+	cols, err := parseFields("")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	// width 0 disables truncation so the full (sanitized) name shows.
+	writeListTable(&buf, torrents, cols, 0)
+
+	out := buf.String()
+	assert.NotContains(t, out, "\x1b", "raw ESC must not reach the table output")
+	assert.Contains(t, out, "[2Jmalicious", "visible text survives sanitization")
+}
+
+func TestWriteListPipedSanitizesControlChars(t *testing.T) {
+	torrents := []torrent.Torrent{
+		{
+			ID:          1,
+			Name:        "\x1b[2Jmalicious",
+			DownloadDir: "/d\x1bir",
+			Error:       "boom\x07",
+			Labels:      []string{"li\x1bnux"},
+			Status:      torrent.StatusDownloading,
+		},
+	}
+
+	cols, err := parseFields("name,download_dir,error,labels")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListPiped(&buf, torrents, cols)
+
+	out := buf.String()
+	assert.NotContains(t, out, "\x1b", "raw ESC must not reach the piped output")
+	assert.NotContains(t, out, "\x07", "raw BEL must not reach the piped output")
+	assert.Contains(t, out, "[2Jmalicious")
+	assert.Contains(t, out, "/dir")
+	assert.Contains(t, out, "boom")
+	assert.Contains(t, out, "linux")
+}
+
+func TestWriteListPipedLeavesOrdinaryTextIntact(t *testing.T) {
+	torrents := []torrent.Torrent{
+		{
+			ID:     1,
+			Name:   "Debian ISO",
+			Labels: []string{"linux", "iso"},
+			Status: torrent.StatusSeeding,
+		},
+	}
+
+	cols, err := parseFields("name,labels")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListPiped(&buf, torrents, cols)
+
+	assert.Equal(t, "Debian ISO\tlinux,iso\n", buf.String())
+}
+
 func TestListFieldsSelectsAndOrdersColumns(t *testing.T) {
 	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
 	defer closeSrv()

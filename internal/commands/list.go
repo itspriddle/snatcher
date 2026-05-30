@@ -16,13 +16,20 @@ import (
 )
 
 // listColumn describes a single rendered column: its header, how a torrent's
-// value is derived, its alignment, and whether the Name-style truncation applies
-// on a TTY.
+// value is derived, its alignment, whether the Name-style truncation applies on
+// a TTY, and whether the rendered cell carries untrusted, server-derived text
+// that must be neutralized of terminal control sequences before display.
 type listColumn struct {
 	header     string
 	value      func(torrent.Torrent) string
 	rightAlign bool
 	truncate   bool
+	// sanitize marks columns whose value comes from the remote server or
+	// swarm-supplied .torrent metadata (name, labels, error, download dir). Such
+	// cells are passed through output.SanitizeTerminal in the human/plaintext
+	// render paths (table and piped) so a crafted torrent name cannot inject ANSI
+	// escapes. JSON/jq output is a structured contract and is never sanitized.
+	sanitize bool
 }
 
 // listFields is the field registry: it maps a selectable --fields key to the
@@ -36,7 +43,7 @@ var listFields = map[string]listColumn{
 	"hash": {header: "Hash", value: func(t torrent.Torrent) string {
 		return t.Hash
 	}},
-	"name": {header: "Name", truncate: true, value: func(t torrent.Torrent) string {
+	"name": {header: "Name", truncate: true, sanitize: true, value: func(t torrent.Torrent) string {
 		return t.Name
 	}},
 	"status": {header: "Status", value: func(t torrent.Torrent) string {
@@ -66,13 +73,13 @@ var listFields = map[string]listColumn{
 	"added": {header: "Added", value: func(t torrent.Torrent) string {
 		return output.Date(t.AddedDate)
 	}},
-	"download_dir": {header: "Download Dir", value: func(t torrent.Torrent) string {
+	"download_dir": {header: "Download Dir", sanitize: true, value: func(t torrent.Torrent) string {
 		return t.DownloadDir
 	}},
-	"error": {header: "Error", value: func(t torrent.Torrent) string {
+	"error": {header: "Error", sanitize: true, value: func(t torrent.Torrent) string {
 		return t.Error
 	}},
-	"labels": {header: "Labels", value: func(t torrent.Torrent) string {
+	"labels": {header: "Labels", sanitize: true, value: func(t torrent.Torrent) string {
 		return strings.Join(t.Labels, ",")
 	}},
 }
@@ -233,13 +240,26 @@ func writeListPlaintext(cmd *cobra.Command, torrents []torrent.Torrent, columns 
 	writeListPiped(out, torrents, columns)
 }
 
+// cellValue renders a column's value for a torrent, neutralizing terminal
+// control sequences for columns whose text is untrusted, server-derived
+// (sanitize). It is the single rendering seam shared by the table and piped
+// paths so both apply the same protection; the JSON/jq paths never call it.
+func cellValue(col listColumn, t torrent.Torrent) string {
+	v := col.value(t)
+	if col.sanitize {
+		v = output.SanitizeTerminal(v)
+	}
+
+	return v
+}
+
 // writeListPiped writes plain, tab-separated, full-value rows with no header —
 // the stable scripting contract. An empty list writes nothing.
 func writeListPiped(w io.Writer, torrents []torrent.Torrent, columns []listColumn) {
 	for _, t := range torrents {
 		cells := make([]string, len(columns))
 		for i, col := range columns {
-			cells[i] = col.value(t)
+			cells[i] = cellValue(col, t)
 		}
 
 		_, _ = fmt.Fprintln(w, strings.Join(cells, "\t"))
@@ -269,7 +289,7 @@ func writeListTable(w io.Writer, torrents []torrent.Torrent, columns []listColum
 	for _, t := range torrents {
 		cells := make([]string, len(columns))
 		for i, col := range columns {
-			cell := col.value(t)
+			cell := cellValue(col, t)
 			if col.truncate && nameLimit > 0 {
 				cell = truncate(cell, nameLimit)
 			}
@@ -311,7 +331,7 @@ func nameColumnLimit(torrents []torrent.Torrent, columns []listColumn, width int
 
 		colWidth := len(col.header)
 		for _, t := range torrents {
-			if cellWidth := len([]rune(col.value(t))); cellWidth > colWidth {
+			if cellWidth := len([]rune(cellValue(col, t))); cellWidth > colWidth {
 				colWidth = cellWidth
 			}
 		}
@@ -335,7 +355,7 @@ func nameColumnLimit(torrents []torrent.Torrent, columns []listColumn, width int
 	// Don't truncate when the longest name already fits.
 	longest := len(columns[nameIndex].header)
 	for _, t := range torrents {
-		if w := len([]rune(columns[nameIndex].value(t))); w > longest {
+		if w := len([]rune(cellValue(columns[nameIndex], t))); w > longest {
 			longest = w
 		}
 	}

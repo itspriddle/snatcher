@@ -113,6 +113,33 @@ func TestRatio(t *testing.T) {
 	}
 }
 
+func TestSanitizeTerminal(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "Debian ISO", "Debian ISO"},
+		{"unicode", "Café — naïve 日本語", "Café — naïve 日本語"},
+		{"esc clear screen", "\x1b[2Jmalicious", "[2Jmalicious"},
+		{"esc only", "\x1b", ""},
+		{"c0 controls", "a\x00b\x07c\x1bd", "abcd"},
+		{"tab", "a\tb", "ab"},
+		{"newline and cr", "a\r\nb", "ab"},
+		{"del", "a\x7fb", "ab"},
+		{"c1 controls", "a\u0085b", "ab"},
+		{"empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SanitizeTerminal(tt.in)
+			assert.Equal(t, tt.want, got)
+			assert.NotContains(t, got, "\x1b", "no raw ESC survives sanitization")
+		})
+	}
+}
+
 func TestDuration(t *testing.T) {
 	tests := []struct {
 		name    string

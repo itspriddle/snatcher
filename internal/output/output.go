@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/itchyny/gojq"
@@ -171,6 +172,43 @@ func Date(unix int64) string {
 	}
 
 	return time.Unix(unix, 0).Format("2006-01-02")
+}
+
+// SanitizeTerminal neutralizes terminal control sequences in untrusted,
+// server-derived strings (torrent names, labels, errors, download dirs) before
+// they reach a human/plaintext render path. It removes C0 control bytes
+// (0x00–0x1F, including ESC 0x1B), the DEL byte (0x7F), and C1 control runes
+// (0x80–0x9F), so a maliciously crafted torrent name cannot inject ANSI escapes
+// that clear the screen, move the cursor, or spoof output. Tabs, carriage
+// returns, and newlines are C0 controls and are therefore stripped too, which
+// also keeps tab-separated and line-oriented output columns intact.
+//
+// Legitimate printable text and Unicode (including wide and combining
+// characters) pass through untouched. The original string is returned
+// unchanged when it contains no control characters, so the common case avoids
+// any allocation. SanitizeTerminal must NOT be applied to --json/--jq output,
+// which is a structured contract that consumers handle themselves.
+func SanitizeTerminal(s string) string {
+	if !strings.ContainsFunc(s, isTerminalControl) {
+		return s
+	}
+
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if isTerminalControl(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+
+	return b.String()
+}
+
+// isTerminalControl reports whether r is a C0 control (0x00–0x1F), DEL (0x7F),
+// or a C1 control (0x80–0x9F) — the bytes/runes SanitizeTerminal removes.
+func isTerminalControl(r rune) bool {
+	return r < 0x20 || r == 0x7F || (r >= 0x80 && r <= 0x9F)
 }
 
 // Duration formats a number of seconds as a compact "Nd Nh Nm Ns" string,
