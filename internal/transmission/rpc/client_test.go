@@ -356,6 +356,32 @@ func TestClientTorrentRemoveDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	assert.Contains(t, captured, `"delete-local-data":true`)
 }
 
+func TestClientTorrentSetLocationDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	var captured string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+		_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	err := c.TorrentSetLocation(context.Background(), []any{int64(2), "deadbeef"}, "/data/media", false)
+	require.NoError(t, err)
+	assert.Contains(t, captured, `"method":"torrent-set-location"`)
+	assert.Contains(t, captured, `"ids":[2,"deadbeef"]`)
+	assert.Contains(t, captured, `"location":"/data/media"`)
+	assert.Contains(t, captured, `"move":false`)
+}
+
 func TestClientSessionSetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	t.Run("jsonrpc", func(t *testing.T) {
 		var captured string

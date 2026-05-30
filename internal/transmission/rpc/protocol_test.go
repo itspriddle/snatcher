@@ -900,6 +900,152 @@ func TestBespokeProtocolTorrentRemoveMapsNonSuccessResult(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid argument")
 }
 
+func TestProtocolTorrentSetLocation(t *testing.T) {
+	tests := []struct {
+		name string
+		move bool
+	}{
+		{name: "relocate files", move: true},
+		{name: "in place", move: false},
+	}
+
+	for _, tt := range tests {
+		t.Run("jsonrpc "+tt.name, func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := jsonrpcProtocol{}.TorrentSetLocation(context.Background(), tr, []any{int64(2), "cafebabe"}, "/data/media", tt.move)
+			require.NoError(t, err)
+
+			var gotBody map[string]any
+			require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+			assert.Equal(t, "torrent_set_location", gotBody["method"])
+			params, ok := gotBody["params"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, []any{float64(2), "cafebabe"}, params["ids"])
+			assert.Equal(t, "/data/media", params["location"])
+			assert.Equal(t, tt.move, params["move"])
+		})
+
+		t.Run("bespoke "+tt.name, func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := bespokeProtocol{}.TorrentSetLocation(context.Background(), tr, []any{int64(2), "cafebabe"}, "/data/media", tt.move)
+			require.NoError(t, err)
+
+			var gotBody map[string]any
+			require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+			assert.Equal(t, "torrent-set-location", gotBody["method"])
+			args, ok := gotBody["arguments"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, []any{float64(2), "cafebabe"}, args["ids"])
+			assert.Equal(t, "/data/media", args["location"])
+			assert.Equal(t, tt.move, args["move"])
+		})
+	}
+}
+
+func TestProtocolTorrentSetLocationOmitsIDsWhenAll(t *testing.T) {
+	t.Run("jsonrpc omits ids but keeps location and move", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		// A nil ids slice (RPCIDs() for an All selector) omits ids but always
+		// sends location and move.
+		err := jsonrpcProtocol{}.TorrentSetLocation(context.Background(), tr, nil, "/data/media", true)
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent_set_location", gotBody["method"])
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, params, "ids")
+		assert.Equal(t, "/data/media", params["location"])
+		assert.Equal(t, true, params["move"])
+	})
+
+	t.Run("bespoke omits ids but keeps location and move", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := bespokeProtocol{}.TorrentSetLocation(context.Background(), tr, nil, "/data/media", false)
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent-set-location", gotBody["method"])
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, args, "ids")
+		assert.Equal(t, "/data/media", args["location"])
+		assert.Equal(t, false, args["move"])
+	})
+}
+
+func TestJSONRPCProtocolTorrentSetLocationMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32601, "message": "method not found"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.TorrentSetLocation(context.Background(), tr, []any{int64(1)}, "/data/media", true)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "method not found")
+}
+
+func TestBespokeProtocolTorrentSetLocationMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.TorrentSetLocation(context.Background(), tr, []any{int64(1)}, "/data/media", false)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
 func TestProtocolActionOmitsIDsWhenAll(t *testing.T) {
 	t.Run("jsonrpc omits ids", func(t *testing.T) {
 		var rawBody []byte
