@@ -568,6 +568,84 @@ func TestProtocolTorrentStop(t *testing.T) {
 	})
 }
 
+func TestProtocolTorrentVerify(t *testing.T) {
+	t.Run("jsonrpc sends method and mixed ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := jsonrpcProtocol{}.TorrentVerify(context.Background(), tr, []any{int64(2), "cafebabe"})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent_verify", gotBody["method"])
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{float64(2), "cafebabe"}, params["ids"])
+	})
+
+	t.Run("bespoke sends method and mixed ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := bespokeProtocol{}.TorrentVerify(context.Background(), tr, []any{int64(2), "cafebabe"})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent-verify", gotBody["method"])
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{float64(2), "cafebabe"}, args["ids"])
+	})
+}
+
+func TestJSONRPCProtocolTorrentVerifyMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32601, "message": "method not found"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.TorrentVerify(context.Background(), tr, []any{int64(1)})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "method not found")
+}
+
+func TestBespokeProtocolTorrentVerifyMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.TorrentVerify(context.Background(), tr, []any{int64(1)})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
 func TestProtocolTorrentRemove(t *testing.T) {
 	tests := []struct {
 		name       string

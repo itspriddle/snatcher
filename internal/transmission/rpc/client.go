@@ -102,6 +102,18 @@ func (c *Client) TorrentStop(ctx context.Context, ids []any) error {
 	return proto.TorrentStop(ctx, c.transport, ids)
 }
 
+// TorrentVerify detects the protocol (once) and queues local-data verification
+// for the selected torrents. A nil or empty ids slice targets all torrents;
+// otherwise the mixed id/hash array selects them.
+func (c *Client) TorrentVerify(ctx context.Context, ids []any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.TorrentVerify(ctx, c.transport, ids)
+}
+
 // TorrentRemove detects the protocol (once) and removes the selected torrents,
 // also deleting the downloaded local files when deleteData is true. A nil or
 // empty ids slice targets all torrents; otherwise the mixed id/hash array

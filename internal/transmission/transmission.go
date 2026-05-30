@@ -180,6 +180,13 @@ func (b *Backend) StopTorrents(ctx context.Context, sel torrent.Selector) error 
 	return mapError(b.client.TorrentStop(ctx, sel.RPCIDs()))
 }
 
+// VerifyTorrents queues local-data verification for the torrents matched by sel.
+// An All selector omits the ids argument so the server targets every torrent.
+// RPC failures are mapped to the neutral sentinels.
+func (b *Backend) VerifyTorrents(ctx context.Context, sel torrent.Selector) error {
+	return mapError(b.client.TorrentVerify(ctx, sel.RPCIDs()))
+}
+
 // RemoveTorrents removes the torrents matched by sel, also deleting their
 // downloaded local files when deleteData is true. An All selector omits the ids
 // argument so the server targets every torrent. RPC failures are mapped to the

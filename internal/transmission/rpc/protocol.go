@@ -57,6 +57,9 @@ const (
 	methodTorrentStopJSONRPC = "torrent_stop"
 	methodTorrentStopBespoke = "torrent-stop"
 
+	methodTorrentVerifyJSONRPC = "torrent_verify"
+	methodTorrentVerifyBespoke = "torrent-verify"
+
 	methodTorrentRemoveJSONRPC = "torrent_remove"
 	methodTorrentRemoveBespoke = "torrent-remove"
 )
@@ -337,6 +340,13 @@ type Protocol interface {
 	// selects torrents. The method carries no response payload, so the call only
 	// confirms success.
 	TorrentStop(ctx context.Context, t transport, ids []any) error
+
+	// TorrentVerify calls the server's torrent-verify/torrent_verify method,
+	// queuing a re-hash of downloaded files against the torrent metadata. A nil or
+	// empty ids slice targets all torrents; otherwise the mixed id/hash array
+	// selects torrents. The method carries no response payload, so the call only
+	// confirms success.
+	TorrentVerify(ctx context.Context, t transport, ids []any) error
 
 	// TorrentRemove calls the server's torrent-remove/torrent_remove method. A nil
 	// or empty ids slice targets all torrents; otherwise the mixed id/hash array
@@ -670,6 +680,10 @@ func (p jsonrpcProtocol) TorrentStart(ctx context.Context, t transport, ids []an
 
 func (p jsonrpcProtocol) TorrentStop(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentStopJSONRPC, ids)
+}
+
+func (p jsonrpcProtocol) TorrentVerify(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodTorrentVerifyJSONRPC, ids)
 }
 
 // TorrentRemove sends torrent_remove with the delete_local_data flag (always
@@ -1139,6 +1153,10 @@ func (p bespokeProtocol) TorrentStart(ctx context.Context, t transport, ids []an
 
 func (p bespokeProtocol) TorrentStop(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentStopBespoke, ids)
+}
+
+func (p bespokeProtocol) TorrentVerify(ctx context.Context, t transport, ids []any) error {
+	return p.action(ctx, t, methodTorrentVerifyBespoke, ids)
 }
 
 // TorrentRemove sends torrent-remove with the delete-local-data flag (always
