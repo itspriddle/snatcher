@@ -270,7 +270,21 @@ lines with no header \(em a stable scripting contract. With
 .B \-\-json
 the torrent is emitted as a single JSON object (not an array), and
 .B \-\-jq
-filters that object. The command accepts the common options only.
+filters that object. Besides the common options:
+.RS
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated fields to show in the plaintext output, in the given order.
+When omitted the full field set is shown. Available fields:
+.BR id ", " hash ", " name ", " status ", " done ", " size ", " down ,
+.BR up ", " ratio ", " eta ", " peers ", " added ", " download_dir ,
+.BR error ", " labels .
+This affects plaintext only:
+.B \-\-json
+always emits the full object and
+.B \-\-jq
+selects fields itself.
+.RE
 .TP
 .B snatcher torrent list \fR[\fIoptions\fR]
 List torrents. On a terminal the output is an aligned table with a header; when

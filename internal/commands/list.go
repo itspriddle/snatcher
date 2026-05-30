@@ -113,11 +113,11 @@ func validFieldKeys() string {
 }
 
 // parseFields resolves a --fields value into the ordered columns to render. An
-// empty value selects the default column set. An unknown key returns an error
-// listing the valid keys. Keys are matched case-insensitively after trimming
-// whitespace.
-func parseFields(spec string) ([]listColumn, error) {
-	keys := defaultFieldKeys
+// empty value selects defaults (list passes defaultFieldKeys, info passes the
+// full allFieldKeys). An unknown key returns an error listing the valid keys.
+// Keys are matched case-insensitively after trimming whitespace.
+func parseFields(spec string, defaults []string) ([]listColumn, error) {
+	keys := defaults
 	if strings.TrimSpace(spec) != "" {
 		keys = nil
 		for _, raw := range strings.Split(spec, ",") {
@@ -177,7 +177,7 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			columns, err := parseFields(fieldsFlag)
+			columns, err := parseFields(fieldsFlag, defaultFieldKeys)
 			if err != nil {
 				return err
 			}

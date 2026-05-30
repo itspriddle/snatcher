@@ -259,6 +259,70 @@ func TestInfoSanitizesHumanOutputNotJSON(t *testing.T) {
 	assert.Contains(t, got.Labels[0], "\x1b", "JSON label keeps the raw ESC")
 }
 
+func TestInfoFieldsSubsetAndOrder(t *testing.T) {
+	cfgPath, closeSrv := infoConfigPath(t, bespokeInfoResponse)
+	defer closeSrv()
+
+	// --fields selects a subset and renders the lines in the given order,
+	// case-insensitively after trimming whitespace.
+	out, _, err := runInfo(t, "--config", cfgPath, "1", "--fields", "Name, id ,status")
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 3, "only the selected fields are shown")
+
+	// Each piped line is "header<TAB>value"; assert the header order.
+	headers := make([]string, len(lines))
+	for i, line := range lines {
+		key, _, ok := strings.Cut(line, "\t")
+		require.True(t, ok, "each plaintext line is key<TAB>value: %q", line)
+		headers[i] = key
+	}
+	assert.Equal(t, []string{"Name", "ID", "Status"}, headers)
+}
+
+func TestInfoFieldsInvalidKey(t *testing.T) {
+	cfgPath, closeSrv := infoConfigPath(t, bespokeInfoResponse)
+	defer closeSrv()
+
+	_, _, err := runInfo(t, "--config", cfgPath, "1", "--fields", "name,bogus")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid field "bogus"`)
+	assert.Contains(t, err.Error(), "valid fields are")
+}
+
+func TestInfoFieldsEmptyAfterParse(t *testing.T) {
+	cfgPath, closeSrv := infoConfigPath(t, bespokeInfoResponse)
+	defer closeSrv()
+
+	// A non-empty spec that resolves to no keys (only separators/whitespace) is
+	// an error, not a fall-through to the default set.
+	_, _, err := runInfo(t, "--config", cfgPath, "1", "--fields", " , ")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no fields selected")
+}
+
+func TestInfoFieldsIgnoredByJSON(t *testing.T) {
+	cfgPath, closeSrv := infoConfigPath(t, bespokeInfoResponse)
+	defer closeSrv()
+
+	// --json always emits the full object regardless of --fields.
+	out, _, err := runInfo(t, "--config", cfgPath, "1", "--fields", "name", "--json")
+	require.NoError(t, err)
+
+	var got struct {
+		ID     int64  `json:"id"`
+		Hash   string `json:"hash"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	assert.Equal(t, int64(1), got.ID, "id present despite --fields=name")
+	assert.Equal(t, infoHash1, got.Hash, "hash present despite --fields=name")
+	assert.Equal(t, "ubuntu-24.04.iso", got.Name)
+	assert.Equal(t, "downloading", got.Status, "status present despite --fields=name")
+}
+
 func TestInfoNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")

@@ -16,13 +16,16 @@ import (
 // set of fields. The output honors the same precedence as list: --jq filters
 // the single torrent object, --json emits it as one JSON object (not an array),
 // and the default plaintext is a vertical aligned "key: value" block on a TTY or
-// header-less "key<TAB>value" lines when piped. It carries its own local
-// --config flag, like list and stats.
+// header-less "key<TAB>value" lines when piped. --fields selects and orders the
+// plaintext lines (defaulting to the full field set); it has no effect on
+// --json (always the full object) or --jq (which selects fields itself). It
+// carries its own local --config flag, like list and stats.
 func NewInfoCmd() *cobra.Command {
 	var (
 		configPath string
 		asJSON     bool
 		jqExpr     string
+		fieldsFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -33,6 +36,11 @@ func NewInfoCmd() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sel, err := torrent.ParseSelector(args, false)
+			if err != nil {
+				return err
+			}
+
+			columns, err := parseFields(fieldsFlag, allFieldKeys)
 			if err != nil {
 				return err
 			}
@@ -55,7 +63,7 @@ func NewInfoCmd() *cobra.Command {
 				return output.JSON(cmd.OutOrStdout(), match)
 			}
 
-			writeInfoPlaintext(cmd, match, infoColumns())
+			writeInfoPlaintext(cmd, match, columns)
 
 			return nil
 		},
@@ -64,6 +72,7 @@ func NewInfoCmd() *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	cmd.Flags().StringVar(&fieldsFlag, "fields", "", "comma-separated fields to show, in order (default: all; id, hash, name, status, done, size, down, up, ratio, eta, peers, added, download_dir, error, labels)")
 
 	return cmd
 }
@@ -110,18 +119,6 @@ func resolveTorrent(cmd *cobra.Command, backend torrent.Backend, serverURL strin
 	}
 
 	return torrent.Torrent{}, fmt.Errorf("no torrent matched: %s", arg)
-}
-
-// infoColumns returns the columns info renders, in registry order — the full
-// listFields set. It reuses list's field registry so info and list share
-// headers, accessors, alignment, and sanitization.
-func infoColumns() []listColumn {
-	cols := make([]listColumn, len(allFieldKeys))
-	for i, key := range allFieldKeys {
-		cols[i] = listFields[key]
-	}
-
-	return cols
 }
 
 // writeInfoPlaintext renders one torrent's fields as a vertical "key: value"

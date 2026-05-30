@@ -82,6 +82,7 @@ FLAG snatcher stats --config type=string
 FLAG snatcher stats --jq type=string
 FLAG snatcher stats --json type=bool
 FLAG snatcher torrent info --config type=string
+FLAG snatcher torrent info --fields type=string
 FLAG snatcher torrent info --jq type=string
 FLAG snatcher torrent info --json type=bool
 FLAG snatcher torrent list --config type=string
