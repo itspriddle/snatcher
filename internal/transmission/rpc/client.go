@@ -89,6 +89,19 @@ func (c *Client) TorrentStop(ctx context.Context, ids []any) error {
 	return proto.TorrentStop(ctx, c.transport, ids)
 }
 
+// TorrentRemove detects the protocol (once) and removes the selected torrents,
+// also deleting the downloaded local files when deleteData is true. A nil or
+// empty ids slice targets all torrents; otherwise the mixed id/hash array
+// selects them.
+func (c *Client) TorrentRemove(ctx context.Context, ids []any, deleteData bool) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.TorrentRemove(ctx, c.transport, ids, deleteData)
+}
+
 // Protocol returns the negotiated protocol name, detecting it if necessary. It
 // is primarily useful for diagnostics; typed calls detect on their own.
 func (c *Client) Protocol(ctx context.Context) (string, error) {

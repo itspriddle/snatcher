@@ -32,6 +32,11 @@ type mutationResult struct {
 	// (torrent-start-now). It is omitted for stop.
 	Now *bool `json:"now,omitempty"`
 
+	// DeleteData is set on the remove command to report whether the torrents'
+	// downloaded local files were deleted (delete-local-data). It is omitted for
+	// start and stop.
+	DeleteData *bool `json:"delete_data,omitempty"`
+
 	// Unmatched lists the requested selector tokens that matched no torrent. It is
 	// omitted when every requested token matched (or for an --all selection).
 	Unmatched []string `json:"unmatched,omitempty"`
@@ -165,6 +170,8 @@ func mutationVerb(action string) string {
 		return "Started"
 	case "stop":
 		return "Stopped"
+	case "remove":
+		return "Removed"
 	default:
 		return action
 	}

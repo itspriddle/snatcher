@@ -135,6 +135,14 @@ func (b *Backend) StopTorrents(ctx context.Context, sel torrent.Selector) error 
 	return mapError(b.client.TorrentStop(ctx, sel.RPCIDs()))
 }
 
+// RemoveTorrents removes the torrents matched by sel, also deleting their
+// downloaded local files when deleteData is true. An All selector omits the ids
+// argument so the server targets every torrent. RPC failures are mapped to the
+// neutral sentinels.
+func (b *Backend) RemoveTorrents(ctx context.Context, sel torrent.Selector, deleteData bool) error {
+	return mapError(b.client.TorrentRemove(ctx, sel.RPCIDs(), deleteData))
+}
+
 // mapTorrent converts a canonical rpc.Torrent into the neutral torrent.Torrent,
 // translating Transmission's raw status int and error fields into the neutral
 // Status (a non-zero error code or non-empty error string promotes to

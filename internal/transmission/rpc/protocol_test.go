@@ -568,6 +568,148 @@ func TestProtocolTorrentStop(t *testing.T) {
 	})
 }
 
+func TestProtocolTorrentRemove(t *testing.T) {
+	tests := []struct {
+		name       string
+		deleteData bool
+	}{
+		{name: "keep data", deleteData: false},
+		{name: "delete data", deleteData: true},
+	}
+
+	for _, tt := range tests {
+		t.Run("jsonrpc "+tt.name, func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := jsonrpcProtocol{}.TorrentRemove(context.Background(), tr, []any{int64(2), "cafebabe"}, tt.deleteData)
+			require.NoError(t, err)
+
+			var gotBody map[string]any
+			require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+			assert.Equal(t, "torrent_remove", gotBody["method"])
+			params, ok := gotBody["params"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, []any{float64(2), "cafebabe"}, params["ids"])
+			assert.Equal(t, tt.deleteData, params["delete_local_data"])
+		})
+
+		t.Run("bespoke "+tt.name, func(t *testing.T) {
+			var rawBody []byte
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rawBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+			}))
+			defer srv.Close()
+
+			tr := NewTransport(srv.URL)
+
+			err := bespokeProtocol{}.TorrentRemove(context.Background(), tr, []any{int64(2), "cafebabe"}, tt.deleteData)
+			require.NoError(t, err)
+
+			var gotBody map[string]any
+			require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+			assert.Equal(t, "torrent-remove", gotBody["method"])
+			args, ok := gotBody["arguments"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, []any{float64(2), "cafebabe"}, args["ids"])
+			assert.Equal(t, tt.deleteData, args["delete-local-data"])
+		})
+	}
+}
+
+func TestProtocolTorrentRemoveOmitsIDsWhenAll(t *testing.T) {
+	t.Run("jsonrpc omits ids but keeps delete flag", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		// A nil ids slice (RPCIDs() for an All selector) omits ids but always
+		// sends the delete flag.
+		err := jsonrpcProtocol{}.TorrentRemove(context.Background(), tr, nil, true)
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent_remove", gotBody["method"])
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, params, "ids")
+		assert.Equal(t, true, params["delete_local_data"])
+	})
+
+	t.Run("bespoke omits ids but keeps delete flag", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := bespokeProtocol{}.TorrentRemove(context.Background(), tr, nil, false)
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent-remove", gotBody["method"])
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, args, "ids")
+		assert.Equal(t, false, args["delete-local-data"])
+	})
+}
+
+func TestJSONRPCProtocolTorrentRemoveMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32601, "message": "method not found"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.TorrentRemove(context.Background(), tr, []any{int64(1)}, false)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "method not found")
+}
+
+func TestBespokeProtocolTorrentRemoveMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.TorrentRemove(context.Background(), tr, []any{int64(1)}, true)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
 func TestProtocolActionOmitsIDsWhenAll(t *testing.T) {
 	t.Run("jsonrpc omits ids", func(t *testing.T) {
 		var rawBody []byte
