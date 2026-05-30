@@ -24,6 +24,11 @@ CMD snatcher stats
 CMD snatcher torrent
 CMD snatcher torrent list
 CMD snatcher torrent move
+CMD snatcher torrent queue
+CMD snatcher torrent queue bottom
+CMD snatcher torrent queue down
+CMD snatcher torrent queue top
+CMD snatcher torrent queue up
 CMD snatcher torrent reannounce
 CMD snatcher torrent remove
 CMD snatcher torrent start
@@ -86,6 +91,18 @@ FLAG snatcher torrent move --config type=string
 FLAG snatcher torrent move --in-place type=bool
 FLAG snatcher torrent move --jq type=string
 FLAG snatcher torrent move --json type=bool
+FLAG snatcher torrent queue bottom --config type=string
+FLAG snatcher torrent queue bottom --jq type=string
+FLAG snatcher torrent queue bottom --json type=bool
+FLAG snatcher torrent queue down --config type=string
+FLAG snatcher torrent queue down --jq type=string
+FLAG snatcher torrent queue down --json type=bool
+FLAG snatcher torrent queue top --config type=string
+FLAG snatcher torrent queue top --jq type=string
+FLAG snatcher torrent queue top --json type=bool
+FLAG snatcher torrent queue up --config type=string
+FLAG snatcher torrent queue up --jq type=string
+FLAG snatcher torrent queue up --json type=bool
 FLAG snatcher torrent reannounce --all type=bool
 FLAG snatcher torrent reannounce --config type=string
 FLAG snatcher torrent reannounce --jq type=string

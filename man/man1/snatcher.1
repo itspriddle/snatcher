@@ -346,6 +346,29 @@ Repoint Transmission at a path where the files already exist (after a manual
 move) without relocating them.
 .RE
 .TP
+.B snatcher torrent queue \fR[\fIid | hash\fR]...
+Reorder the selected torrents within the download/seed queue. Select torrents by
+numeric id or 40-character SHA1 hash; at least one selector is required (there
+is no
+.B \-\-all
+flag, and a bare invocation is an error, not a no-op). Each subcommand accepts
+the common options and confirms by naming the affected torrents. With no
+subcommand it prints help.
+.RS
+.TP
+.B snatcher torrent queue top \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Move the selected torrents to the top (front) of the queue.
+.TP
+.B snatcher torrent queue up \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Move the selected torrents up one position in the queue.
+.TP
+.B snatcher torrent queue down \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Move the selected torrents down one position in the queue.
+.TP
+.B snatcher torrent queue bottom \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Move the selected torrents to the bottom (back) of the queue.
+.RE
+.TP
 .B snatcher torrent remove \fR[\fIoptions\fR] [\fIid | hash\fR]...
 Remove the selected torrents from the session. Removal is destructive and
 requires confirmation: on a terminal it prompts
