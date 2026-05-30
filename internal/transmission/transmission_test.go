@@ -546,3 +546,79 @@ func TestBackendStartTorrentsMapsAuthError(t *testing.T) {
 	require.ErrorIs(t, err, torrent.ErrAuth)
 	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
 }
+
+func TestBackendRemoveTorrents(t *testing.T) {
+	tests := []struct {
+		name       string
+		deleteData bool
+		rpcVersion string
+		wantMethod string
+		wantFlag   string
+	}{
+		{name: "jsonrpc keep data", deleteData: false, rpcVersion: "6.0.0", wantMethod: `"method":"torrent_remove"`, wantFlag: `"delete_local_data":false`},
+		{name: "jsonrpc delete data", deleteData: true, rpcVersion: "6.0.0", wantMethod: `"method":"torrent_remove"`, wantFlag: `"delete_local_data":true`},
+		{name: "bespoke keep data", deleteData: false, rpcVersion: "", wantMethod: `"method":"torrent-remove"`, wantFlag: `"delete-local-data":false`},
+		{name: "bespoke delete data", deleteData: true, rpcVersion: "", wantMethod: `"method":"torrent-remove"`, wantFlag: `"delete-local-data":true`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
+			err := b.RemoveTorrents(context.Background(), sel, tt.deleteData)
+			require.NoError(t, err)
+
+			assert.Contains(t, captured, tt.wantMethod)
+			assert.Contains(t, captured, `"ids":[2,"cafebabe"]`)
+			assert.Contains(t, captured, tt.wantFlag)
+		})
+	}
+}
+
+func TestBackendRemoveTorrentsAllOmitsIDs(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.RemoveTorrents(context.Background(), torrent.Selector{All: true}, true)
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent_remove"`)
+	assert.Contains(t, captured, `"delete_local_data":true`)
+	assert.NotContains(t, captured, `"ids"`)
+}
+
+func TestBackendRemoveTorrentsMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.RemoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, false)
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendRemoveTorrentsMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.RemoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, false)
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, torrent.ErrAuth)
+}

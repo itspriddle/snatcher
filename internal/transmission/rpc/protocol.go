@@ -52,6 +52,9 @@ const (
 
 	methodTorrentStopJSONRPC = "torrent_stop"
 	methodTorrentStopBespoke = "torrent-stop"
+
+	methodTorrentRemoveJSONRPC = "torrent_remove"
+	methodTorrentRemoveBespoke = "torrent-remove"
 )
 
 // ErrRPC signals that the server accepted the request at the transport level but
@@ -247,6 +250,13 @@ type Protocol interface {
 	// selects torrents. The method carries no response payload, so the call only
 	// confirms success.
 	TorrentStop(ctx context.Context, t transport, ids []any) error
+
+	// TorrentRemove calls the server's torrent-remove/torrent_remove method. A nil
+	// or empty ids slice targets all torrents; otherwise the mixed id/hash array
+	// selects torrents. The delete-local-data/delete_local_data flag is always
+	// sent: when deleteData is true the server also deletes the downloaded files.
+	// The method carries no response payload, so the call only confirms success.
+	TorrentRemove(ctx context.Context, t transport, ids []any, deleteData bool) error
 }
 
 // jsonrpcProtocol implements the JSON-RPC 2.0 scheme.
@@ -487,6 +497,45 @@ func (p jsonrpcProtocol) TorrentStart(ctx context.Context, t transport, ids []an
 
 func (p jsonrpcProtocol) TorrentStop(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentStopJSONRPC, ids)
+}
+
+// TorrentRemove sends torrent_remove with the delete_local_data flag (always
+// present) and an optional ids array (omitted when nil/empty = all torrents).
+// Like the payload-free actions, the method returns no result arguments, so
+// only the error object is inspected.
+func (jsonrpcProtocol) TorrentRemove(ctx context.Context, t transport, ids []any, deleteData bool) error {
+	params := map[string]any{"delete_local_data": deleteData}
+	if len(ids) > 0 {
+		params["ids"] = ids
+	}
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodTorrentRemoveJSONRPC,
+		Params:  params,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodTorrentRemoveJSONRPC, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	return nil
 }
 
 // action performs a payload-free JSON-RPC mutation (start/start-now/stop): it
@@ -779,6 +828,44 @@ func (p bespokeProtocol) TorrentStart(ctx context.Context, t transport, ids []an
 
 func (p bespokeProtocol) TorrentStop(ctx context.Context, t transport, ids []any) error {
 	return p.action(ctx, t, methodTorrentStopBespoke, ids)
+}
+
+// TorrentRemove sends torrent-remove with the delete-local-data flag (always
+// present) and an optional ids array (omitted when nil/empty = all torrents).
+// Like the payload-free actions, the method returns no arguments, so only the
+// result string is inspected.
+func (bespokeProtocol) TorrentRemove(ctx context.Context, t transport, ids []any, deleteData bool) error {
+	arguments := map[string]any{"delete-local-data": deleteData}
+	if len(ids) > 0 {
+		arguments["ids"] = ids
+	}
+
+	req := bespokeRequest{
+		Method:    methodTorrentRemoveBespoke,
+		Arguments: arguments,
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodTorrentRemoveBespoke, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	return nil
 }
 
 // action performs a payload-free bespoke mutation (start/start-now/stop): it

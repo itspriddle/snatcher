@@ -106,4 +106,9 @@ type Backend interface {
 	// StopTorrents pauses the torrents matched by sel. An All selector targets
 	// every torrent. Stopping an already-stopped torrent is a no-op.
 	StopTorrents(ctx context.Context, sel Selector) error
+
+	// RemoveTorrents removes the torrents matched by sel from the session, also
+	// deleting their downloaded local files when deleteData is true. An All
+	// selector targets every torrent. Removal is immediate and irreversible.
+	RemoveTorrents(ctx context.Context, sel Selector, deleteData bool) error
 }
