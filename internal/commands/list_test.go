@@ -373,3 +373,144 @@ func TestWriteListTableTruncatesName(t *testing.T) {
 	assert.Contains(t, out, "…", "long name is truncated with an ellipsis")
 	assert.NotContains(t, out, "this-is-a-very-long-torrent-name-that-will-not-fit")
 }
+
+// US-007: command-level coverage for --search, --reverse, and the
+// "transforms apply to every output mode (including --json/--jq)" contract from
+// US-004, plus invalid-flag errors and a guard that --filter's status vocabulary
+// stays aligned with Status.Slug(). These exercise the flag wiring end-to-end
+// through NewListCmd (via runList), which the field/render/transform unit tests
+// above do not.
+
+// nameField returns the index of the "name" cell in the default piped column
+// order (the column index of "name" in defaultFieldKeys).
+func defaultNameColumn(t *testing.T) int {
+	t.Helper()
+
+	for i, key := range defaultFieldKeys {
+		if key == "name" {
+			return i
+		}
+	}
+	require.Fail(t, "name is not in defaultFieldKeys")
+
+	return -1
+}
+
+func TestListSearchFiltersByName(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	// --search narrows to the single torrent whose name contains the text
+	// (case-insensitively), exercised end-to-end through the command.
+	out, _, err := runList(t, "--config", cfgPath, "--search", "ubuntu")
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 1, "only the matching torrent is listed")
+
+	nameCol := defaultNameColumn(t)
+	cells := strings.Split(lines[0], "\t")
+	assert.Equal(t, "ubuntu-24.04.iso", cells[nameCol])
+	assert.NotContains(t, out, "debian.iso", "non-matching torrent is excluded")
+}
+
+func TestListReverseFlipsSortOrder(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	nameCol := defaultNameColumn(t)
+
+	// Ascending by name: debian.iso before ubuntu-24.04.iso.
+	asc, _, err := runList(t, "--config", cfgPath, "--sort", "name")
+	require.NoError(t, err)
+	ascLines := strings.Split(strings.TrimRight(asc, "\n"), "\n")
+	require.Len(t, ascLines, 2)
+	assert.Equal(t, "debian.iso", strings.Split(ascLines[0], "\t")[nameCol])
+	assert.Equal(t, "ubuntu-24.04.iso", strings.Split(ascLines[1], "\t")[nameCol])
+
+	// --reverse flips the order: ubuntu-24.04.iso before debian.iso.
+	rev, _, err := runList(t, "--config", cfgPath, "--sort", "name", "--reverse")
+	require.NoError(t, err)
+	revLines := strings.Split(strings.TrimRight(rev, "\n"), "\n")
+	require.Len(t, revLines, 2)
+	assert.Equal(t, "ubuntu-24.04.iso", strings.Split(revLines[0], "\t")[nameCol])
+	assert.Equal(t, "debian.iso", strings.Split(revLines[1], "\t")[nameCol])
+}
+
+func TestListFilterAppliesToJSON(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	// The status filter must apply to structured (--json) output, not only the
+	// plaintext branch: --filter seeding yields exactly the seeding torrent.
+	out, _, err := runList(t, "--config", cfgPath, "--filter", "seeding", "--json")
+	require.NoError(t, err)
+
+	var got []struct {
+		ID     int64  `json:"id"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1, "only the seeding torrent survives the filter in JSON output")
+	assert.Equal(t, int64(2), got[0].ID)
+	assert.Equal(t, "debian.iso", got[0].Name)
+	assert.Equal(t, "seeding", got[0].Status, "the status slug is the seeding torrent's")
+}
+
+func TestListSearchAppliesToJQ(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	// --search must apply to --jq output too: only the matching name is emitted.
+	out, _, err := runList(t, "--config", cfgPath, "--search", "debian", "--jq", ".[].name")
+	require.NoError(t, err)
+
+	assert.Equal(t, `"debian.iso"`, strings.TrimSpace(out))
+}
+
+func TestListInvalidFilterErrors(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	_, _, err := runList(t, "--config", cfgPath, "--filter", "bogus")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid filter "bogus"`)
+	assert.Contains(t, err.Error(), "valid filters are", "the error lists the valid filters")
+	assert.Contains(t, err.Error(), "downloading", "the valid-filters list includes the status filters")
+}
+
+func TestListInvalidSortErrors(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	_, _, err := runList(t, "--config", cfgPath, "--sort", "bogus")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid sort field "bogus"`)
+	assert.Contains(t, err.Error(), "valid sort fields are", "the error lists the valid sort fields")
+	assert.Contains(t, err.Error(), "name", "the valid-sort-fields list includes the sort fields")
+}
+
+// TestListFilterVocabularyMatchesStatusSlug guards the PRD's single-source-of-
+// truth design: every Status.Slug() must be an accepted --filter value, so the
+// --filter vocabulary cannot silently drift from the status slugs used by the
+// JSON contract (e.g. `--jq 'select(.status=="seeding")'` aligning with
+// `--filter seeding`).
+func TestListFilterVocabularyMatchesStatusSlug(t *testing.T) {
+	statuses := []torrent.Status{
+		torrent.StatusStopped,
+		torrent.StatusQueuedToVerify,
+		torrent.StatusVerifying,
+		torrent.StatusQueuedToDownload,
+		torrent.StatusDownloading,
+		torrent.StatusQueuedToSeed,
+		torrent.StatusSeeding,
+		torrent.StatusError,
+	}
+
+	for _, s := range statuses {
+		slug := s.Slug()
+		_, err := torrent.ParseFilter(slug)
+		assert.NoErrorf(t, err, "status slug %q must be an accepted --filter value", slug)
+	}
+}
