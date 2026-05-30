@@ -50,6 +50,9 @@ jobs:
       - name: Regressions - CLI surface changes
         run: make check-surface
 
+      - name: Regressions - man page coverage
+        run: make check-man
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

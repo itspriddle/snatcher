@@ -44,8 +44,20 @@ Show help for
 or any subcommand and exit.
 .SS Common options
 These options are accepted by every command that talks to the server
-.RB ( auth\ show ", " auth\ test ", " list ", " stats ", " start ", " stop ,
-.BR remove ", " upload ).
+.RB ( auth\ show ", " auth\ test ", " stats ", " settings )
+and by all the
+.B torrent
+subcommands.
+The
+.B api
+command also accepts
+.B \-\-config
+and
+.B \-\-jq
+but uses
+.B \-\-raw
+in place of
+.BR \-\-json .
 .TP
 .BR \-\-config " " \fIpath\fR
 Read configuration from
@@ -105,10 +117,79 @@ non-zero on failure. Accepts
 Delete the keyring secret and clear the credentials from the config file.
 Accepts
 .BR \-\-config .
-.SS "list"
-.B snatcher list
+.SS "stats"
+.B snatcher stats
 .RI [ options ]
 .br
+Show session statistics: torrent counts, current download and upload speeds,
+and cumulative and current-session transfer totals. Accepts the common options
+only.
+.SS "settings"
+.B snatcher settings
+.RI [ options ]
+.br
+Manage server (session) settings. With no subcommand, list every session
+setting as a
+.BR CATEGORY " " KEY " " VALUE
+table (the same terminal/piped contract as
+.BR list ),
+filterable by category and key. The
+.B settings
+command has three subcommands:
+.BR get ", " set ", and " reset .
+Speed limits
+.RB ( speed\-limit\-down ", " speed\-limit\-up ", " alt\-speed\-down ", " alt\-speed\-up )
+are in KB/s; the alt-speed schedule times
+.RB ( alt\-speed\-time\-begin ", " alt\-speed\-time\-end )
+are minutes after midnight (e.g.\& 540 is 09:00). Besides the common options,
+the bare command accepts:
+.RS
+.TP
+.BR \-\-category " " \fIname\fR
+Show only settings in one category. One of
+.BR download ", " network ", " bandwidth ", " queue .
+.TP
+.BR \-\-search " " \fItext\fR
+Show only settings whose key contains
+.I text
+(case-insensitive).
+.RE
+.TP
+.B snatcher settings get \fIkey\fR
+Print a single setting's current value. Plaintext emits the bare value so it
+composes in scripts (e.g.\&
+.BR "port=$(snatcher settings get peer-port)" );
+.B \-\-json
+emits a single
+.RB { key ", " category ", " value }
+object. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher settings set \fIkey value\fR \fR[\fIkey value\fR]...
+Set one or more settings, given as key/value pairs. All pairs are validated
+before any write, so an invalid pair aborts the whole command with no partial
+change; afterwards the server's actual values are read back and reported.
+Read-only settings (e.g.\&
+.BR blocklist\-size )
+are rejected. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher settings reset \fIkey\fR
+Restore a single setting to its Transmission default. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.SS "torrent"
+Manage individual torrents. All torrent operations live under the
+.B torrent
+command group:
+.BR list ", " start ", " stop ", " verify ", " remove ", and " upload .
+The mutation subcommands
+.RB ( start ", " stop ", " verify ", " remove )
+select torrents by numeric id, 40-character SHA1 hash, or
+.BR \-\-all ;
+at least one selector is required, so a bare invocation is an error, not a
+no-op. Every subcommand accepts the common options.
+.TP
+.B snatcher torrent list \fR[\fIoptions\fR]
 List torrents. On a terminal the output is an aligned table with a header; when
 piped (or when
 .B NO_COLOR
@@ -146,23 +227,9 @@ Available columns:
 .BR up ", " ratio ", " eta ", " peers ", " added ", " download_dir ,
 .BR error ", " labels .
 .RE
-.SS "stats"
-.B snatcher stats
-.RI [ options ]
-.br
-Show session statistics: torrent counts, current download and upload speeds,
-and cumulative and current-session transfer totals. Accepts the common options
-only.
-.SS "start"
-.B snatcher start
-.RI [ options "] [" "id | hash" ]...
-.br
-Start or resume the selected torrents. Select torrents by numeric id,
-40-character SHA1 hash, or
-.BR \-\-all .
-At least one selector is required; a bare
-.B snatcher start
-is an error, not a no-op. Besides the common options:
+.TP
+.B snatcher torrent start \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Start or resume the selected torrents. Besides the common options:
 .RS
 .TP
 .B \-\-all
@@ -171,27 +238,27 @@ Start every torrent.
 .B \-\-now
 Bypass the queue and start immediately.
 .RE
-.SS "stop"
-.B snatcher stop
-.RI [ options "] [" "id | hash" ]...
-.br
-Stop (pause) the selected torrents. Select torrents by numeric id, 40-character
-SHA1 hash, or
-.BR \-\-all .
-At least one selector is required. Besides the common options:
+.TP
+.B snatcher torrent stop \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Stop (pause) the selected torrents. Besides the common options:
 .RS
 .TP
 .B \-\-all
 Stop every torrent.
 .RE
-.SS "remove"
-.B snatcher remove
-.RI [ options "] [" "id | hash" ]...
-.br
-Remove the selected torrents from the session. Select torrents by numeric id,
-40-character SHA1 hash, or
-.BR \-\-all .
-Removal is destructive and requires confirmation: on a terminal it prompts
+.TP
+.B snatcher torrent verify \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Verify local torrent data by queueing a re-hash of the downloaded files against
+the torrent metadata. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Verify every torrent.
+.RE
+.TP
+.B snatcher torrent remove \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Remove the selected torrents from the session. Removal is destructive and
+requires confirmation: on a terminal it prompts
 .RB [ y/N ];
 when standard input is not a terminal it refuses unless
 .B \-\-yes
@@ -207,16 +274,14 @@ Also delete the downloaded local files.
 .BR \-y ", " \-\-yes
 Skip the confirmation prompt.
 .RE
-.SS "upload"
-.B snatcher upload
-.RI [ options "] [" "file | url | magnet" ]...
-.br
+.TP
+.B snatcher torrent upload \fR[\fIoptions\fR] [\fIfile | url | magnet\fR]...
 Add torrents to the server from local
 .I .torrent
 files, HTTP(S) URLs, or magnet links. Each argument is auto-detected as a
 file, URL, or magnet link. With no positional arguments, sources are read from
 standard input, one per line; a bare
-.B snatcher upload
+.B snatcher torrent upload
 with no sources and no piped input is an error. Multiple sources are processed
 continue-on-error: a failure adding one source is reported but does not stop
 the rest, and the command exits non-zero if any source failed. Besides the
@@ -241,6 +306,58 @@ Label to apply to added torrents. May be repeated.
 Suppress per-source confirmation lines (plaintext only; never alters JSON/jq
 output).
 .RE
+.SS "api"
+.B snatcher api
+.RI [ options "] " method
+.br
+Power-user escape hatch, modeled on
+.BR "gh api" ,
+that issues an arbitrary Transmission RPC
+.I method
+(canonical kebab-case, e.g.\&
+.IR session\-get ", " torrent\-get ", " queue\-move\-top )
+and prints a normalized response envelope that is identical whether the server
+speaks the bespoke dialect (Transmission 4.0 and earlier) or JSON-RPC 2.0
+(4.1 and later). snatcher translates the method name only; it never rewrites
+argument keys or values, which are not portable across dialect versions. An
+RPC-level failure still prints the envelope, then exits non-zero. Options:
+.RS
+.TP
+.BR \-F ", " \-\-field " " \fIkey=value\fR
+Add a type-inferred argument field:
+.BR true ", " false ", and " null
+become JSON literals, numbers become JSON numbers,
+.IR @file " or " @\-
+read a file or standard input as a string, and anything else is a string. The
+.I key:=value
+form parses the value as raw JSON. Repeatable.
+.TP
+.BR \-f ", " \-\-raw\-field " " \fIkey=value\fR
+Add a string argument field; the value is always a literal string. Repeatable.
+.TP
+.BR \-\-input " " \fIfile\fR
+Supply the entire arguments object as raw JSON from
+.IR file ,
+or
+.B \-
+for standard input. Mutually exclusive with
+.BR \-\-field " and " \-\-raw\-field .
+.TP
+.B \-\-raw
+Print the server's exact response bytes, bypassing normalization. Mutually
+exclusive with
+.BR \-\-jq .
+.RE
+.PP
+The
+.B api
+command also accepts
+.B \-\-config
+and
+.BR \-\-jq ;
+it has no
+.B \-\-json
+flag, since the normalized envelope is already JSON.
 .SS "version, completion, help"
 .B snatcher version
 prints version information.
@@ -322,40 +439,63 @@ $ snatcher auth test
 .SS "List and filter torrents"
 .EX
 # seeding torrents, highest ratio first
-$ snatcher list \-\-filter seeding \-\-sort ratio \-\-reverse
+$ snatcher torrent list \-\-filter seeding \-\-sort ratio \-\-reverse
 
 # pick the columns you care about
-$ snatcher list \-\-fields id,name,ratio,up
+$ snatcher torrent list \-\-fields id,name,ratio,up
 
 # search by name
-$ snatcher list \-\-search ubuntu
+$ snatcher torrent list \-\-search ubuntu
 
 # names of torrents that are not finished, via jq
-$ snatcher list \-\-jq '.[] | select(.done < 100) | .name'
+$ snatcher torrent list \-\-jq '.[] | select(.done < 100) | .name'
 .EE
 .SS "Start, stop, and remove torrents"
 .EX
 # start three torrents by id, jumping the queue
-$ snatcher start 1 2 3 \-\-now
+$ snatcher torrent start 1 2 3 \-\-now
 
 # pause everything
-$ snatcher stop \-\-all
+$ snatcher torrent stop \-\-all
 
 # remove a torrent and its data without prompting
-$ snatcher remove 5 \-\-delete\-data \-\-yes
+$ snatcher torrent remove 5 \-\-delete\-data \-\-yes
 .EE
 .SS "Add torrents"
 .EX
 # add a file and a magnet link, label them, and start immediately
-$ snatcher upload ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \(rs
+$ snatcher torrent upload ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \(rs
     \-\-label linux \-\-label iso \-\-start
 
 # add every source listed in a file (one per line)
-$ snatcher upload < sources.txt
+$ snatcher torrent upload < sources.txt
 .EE
 .SS "Session statistics"
 .EX
 $ snatcher stats
+.EE
+.SS "Inspect and change settings"
+.EX
+# list the bandwidth settings
+$ snatcher settings \-\-category bandwidth
+
+# read one value (bare value, script-friendly)
+$ snatcher settings get peer\-port
+
+# set the download speed limit to 500 KB/s and enable it
+$ snatcher settings set speed\-limit\-down 500 speed\-limit\-down\-enabled true
+
+# restore a setting to its default
+$ snatcher settings reset peer\-port
+.EE
+.SS "Raw RPC calls"
+.EX
+# read the whole session, pick one field with jq
+$ snatcher api session\-get \-\-jq '.arguments.version'
+
+# call torrent-get with typed fields
+$ snatcher api torrent\-get \-F ids:=1 \-F fields:='["id","name"]' \(rs
+    \-\-jq '.arguments.torrents'
 .EE
 .SH "REPORTING BUGS"
 Report bugs at https://github.com/itspriddle/snatcher/issues

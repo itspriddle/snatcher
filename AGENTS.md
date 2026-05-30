@@ -108,3 +108,14 @@ git add .surface   # commit alongside the code change
 ```
 
 This makes every CLI change visible in code review.
+
+## Man page
+
+The man page `man/man1/snatcher.1` is hand-written (bundled into release archives
+by `.goreleaser.yaml`) and must document every command and flag. CI fails
+(`make check-man`) when a command or flag exists in the code but is not mentioned
+in the man page — a forward coverage guard, not a generator.
+
+**After adding or renaming a command or flag, also document it in
+`man/man1/snatcher.1`.** If something is intentionally left undocumented, add it
+to `manExceptions` in `internal/cli/man_test.go` with a comment explaining why.
