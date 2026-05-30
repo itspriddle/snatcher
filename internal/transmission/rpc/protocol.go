@@ -68,6 +68,9 @@ const (
 
 	methodTorrentRemoveJSONRPC = "torrent_remove"
 	methodTorrentRemoveBespoke = "torrent-remove"
+
+	methodPortTestJSONRPC = "port_test"
+	methodPortTestBespoke = "port-test"
 )
 
 // ErrRPC signals that the server accepted the request at the transport level but
@@ -276,6 +279,20 @@ type SessionStats struct {
 
 	// CurrentStats covers statistics for the current session only.
 	CurrentStats StatsSnapshot `json:"current_stats"`
+}
+
+// PortTestResult is the canonical, protocol-neutral result of a PortTest call.
+// Each Protocol implementation reads the correct per-scheme field names and
+// fills this shared shape. IPProtocol is only populated by the JSON-RPC 2.0
+// scheme (Transmission >= 4.1.0); the bespoke scheme returns only Open.
+type PortTestResult struct {
+	// Open reports whether the configured peer port is reachable from outside.
+	Open bool `json:"open"`
+
+	// IPProtocol is the IP protocol the test was carried out on ("ipv4" or
+	// "ipv6"), or empty when the server did not report it (the bespoke scheme
+	// never does, and JSON-RPC 2.0 omits it when it cannot be determined).
+	IPProtocol string `json:"ip_protocol"`
 }
 
 // Torrent is the canonical, protocol-neutral result of one torrent in a
@@ -520,6 +537,12 @@ type Protocol interface {
 	// failure is reported via RawResponse.OK == false, not a Go error; only
 	// transport and JSON-decode failures return a Go error.
 	Call(ctx context.Context, t transport, method string, args json.RawMessage) (RawResponse, error)
+
+	// PortTest calls the server's port-test/port_test method, which checks
+	// whether the configured peer port is reachable from outside, and returns
+	// the canonical PortTestResult. The JSON-RPC 2.0 scheme also reports the IP
+	// protocol the test ran on; the bespoke scheme returns only the open flag.
+	PortTest(ctx context.Context, t transport) (PortTestResult, error)
 }
 
 // jsonrpcProtocol implements the JSON-RPC 2.0 scheme.
@@ -1132,6 +1155,53 @@ func (jsonrpcProtocol) Call(ctx context.Context, t transport, method string, arg
 		Arguments: resp.Result,
 		Tag:       resp.ID,
 		OK:        true,
+	}, nil
+}
+
+// jsonrpcPortTestResult is the snake_case port_test result shape. ip_protocol is
+// unset when the server cannot determine it.
+type jsonrpcPortTestResult struct {
+	PortIsOpen bool   `json:"port_is_open"`
+	IPProtocol string `json:"ip_protocol"`
+}
+
+// PortTest calls port_test and decodes the snake_case result, surfacing both the
+// open flag and the IP protocol the test ran on. The default behavior (no
+// ip_protocol param) is used, so the server picks the protocol.
+func (jsonrpcProtocol) PortTest(ctx context.Context, t transport) (PortTestResult, error) {
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodPortTestJSONRPC,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return PortTestResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return PortTestResult{}, err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodPortTestJSONRPC, respBody, &resp); err != nil {
+		return PortTestResult{}, err
+	}
+
+	if resp.Error != nil {
+		return PortTestResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	var result jsonrpcPortTestResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return PortTestResult{}, fmt.Errorf("rpc: decoding %s result: %w", methodPortTestJSONRPC, err)
+	}
+
+	return PortTestResult{
+		Open:       result.PortIsOpen,
+		IPProtocol: result.IPProtocol,
 	}, nil
 }
 
@@ -1757,6 +1827,48 @@ func (bespokeProtocol) Call(ctx context.Context, t transport, method string, arg
 		Tag:       resp.Tag,
 		OK:        resp.Result == bespokeResultSuccess,
 	}, nil
+}
+
+// bespokePortTestArguments is the kebab-case port-test arguments shape. The
+// bespoke scheme reports only port-is-open; there is no ip-protocol field.
+type bespokePortTestArguments struct {
+	PortIsOpen bool `json:"port-is-open"`
+}
+
+// PortTest calls port-test and decodes the kebab-case result. The bespoke scheme
+// reports only whether the port is open, so PortTestResult.IPProtocol is left
+// empty.
+func (bespokeProtocol) PortTest(ctx context.Context, t transport) (PortTestResult, error) {
+	req := bespokeRequest{
+		Method: methodPortTestBespoke,
+		Tag:    1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return PortTestResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return PortTestResult{}, err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodPortTestBespoke, respBody, &resp); err != nil {
+		return PortTestResult{}, err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return PortTestResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	var args bespokePortTestArguments
+	if err := json.Unmarshal(resp.Arguments, &args); err != nil {
+		return PortTestResult{}, fmt.Errorf("rpc: decoding %s arguments: %w", methodPortTestBespoke, err)
+	}
+
+	return PortTestResult{Open: args.PortIsOpen}, nil
 }
 
 // Encryption enum values. The canonical "allowed" is spelled "tolerated" on the

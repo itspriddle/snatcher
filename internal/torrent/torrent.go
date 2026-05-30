@@ -55,6 +55,18 @@ type StatsSnapshot struct {
 	SecondsActive int64 `json:"seconds_active"`
 }
 
+// PortTest is the vendor-neutral result of a port-reachability check, returned
+// by Backend.TestPort. IPProtocol is only populated when the backend reports it
+// (Transmission's JSON-RPC 2.0 scheme); it is omitted otherwise.
+type PortTest struct {
+	// Open reports whether the configured peer port is reachable from outside.
+	Open bool `json:"open"`
+
+	// IPProtocol is the IP protocol the test was carried out on ("ipv4" or
+	// "ipv6"), or empty when the backend did not report it.
+	IPProtocol string `json:"ip_protocol,omitempty"`
+}
+
 // Stats is the vendor-neutral session statistics returned by Backend.Stats.
 type Stats struct {
 	// ActiveTorrentCount is the number of active torrents.
@@ -140,4 +152,10 @@ type Backend interface {
 	// Only the keys present in changes are written. The call confirms success and
 	// carries no response payload.
 	SetSession(ctx context.Context, changes map[string]any) error
+
+	// TestPort checks whether the configured peer port is reachable from outside
+	// and returns the neutral PortTest. The result's Open flag is a probe value
+	// (a reachable-but-closed port is not an error); a transport or auth failure
+	// maps to the neutral sentinels (ErrAuth, ErrUnreachable).
+	TestPort(ctx context.Context) (PortTest, error)
 }

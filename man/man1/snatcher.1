@@ -177,6 +177,74 @@ are rejected. Accepts
 .B snatcher settings reset \fIkey\fR
 Restore a single setting to its Transmission default. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
+.SS "port"
+.B snatcher port
+.RI [ options ]
+.br
+View, change, and test the BitTorrent peer/listening port \(em a discoverable
+wrapper over the peer-port session settings. With no subcommand it prints help.
+.TP
+.B snatcher port get \fR[\fIoptions\fR]
+Show the current peer port alongside the random-on-start and port-forwarding
+flags read from the live session. Plaintext is an aligned
+.RI Label : " value"
+block;
+.B \-\-json
+emits a stable
+.RB { port ", " random_on_start ", " forwarding_enabled }
+object. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher port set \fR[\fIport\fR] [\fIoptions\fR]
+Set the peer port and/or related flags, then re-read the session and report the
+resulting state in the same shape as
+.BR "port get" .
+A
+.I port
+must be an integer in
+.RB [ 1 ", " 65535 ];
+giving one also disables
+.B random_on_start
+so the port sticks across restarts, unless
+.B \-\-random
+is passed explicitly. Besides the common options:
+.RS
+.TP
+.B \-\-random\fR[=\fIbool\fR]
+Randomize the peer port on each server start. A bare
+.B \-\-random
+means true; an explicit flag overrides the auto-disable triggered by a
+.I port
+argument.
+.TP
+.B \-\-forwarding\fR[=\fIbool\fR]
+Enable or disable port forwarding (UPnP/NAT-PMP).
+.RE
+.IP
+With neither a
+.I port
+nor any flag, it returns a "nothing to set" error. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher port test \fR[\fIoptions\fR]
+Test whether the currently configured peer port is reachable from outside (it
+takes no
+.I port
+argument). Reports
+.B open
+or
+.B closed
+in plaintext and emits an
+.RB { open ", " ip_protocol }
+object under
+.BR \-\-json
+(\c
+.B ip_protocol
+is reported only by Transmission's JSON-RPC 2.0 scheme and omitted otherwise).
+Exits 0 when the port is open and non-zero when it is closed, while still
+writing the structured result to stdout; a connection or authentication failure
+is a distinct non-zero exit that renders no result. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
 .SS "torrent"
 Manage individual torrents. All torrent operations live under the
 .B torrent

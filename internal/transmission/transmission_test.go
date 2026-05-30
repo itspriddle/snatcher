@@ -1177,3 +1177,74 @@ func TestBackendSetSessionMapsAuthError(t *testing.T) {
 	require.ErrorIs(t, err, rpc.ErrAuth)
 	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
 }
+
+func TestBackendTestPortJSONRPC(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"port_test": `{
+				"jsonrpc": "2.0",
+				"result": {"port_is_open": true, "ip_protocol": "ipv6"},
+				"id": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	result, err := b.TestPort(context.Background())
+	require.NoError(t, err)
+	assert.True(t, result.Open)
+	assert.Equal(t, "ipv6", result.IPProtocol)
+}
+
+func TestBackendTestPortBespoke(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // old server: no version header -> bespoke
+		responses: map[string]string{
+			"port-test": `{
+				"arguments": {"port-is-open": false},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	result, err := b.TestPort(context.Background())
+	require.NoError(t, err)
+	assert.False(t, result.Open)
+	// The bespoke scheme carries no ip protocol, so the neutral field stays empty.
+	assert.Empty(t, result.IPProtocol)
+}
+
+func TestBackendTestPortMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.TestPort(context.Background())
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, rpc.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendTestPortMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.TestPort(context.Background())
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, rpc.ErrTransport)
+	assert.NotErrorIs(t, err, torrent.ErrAuth)
+}

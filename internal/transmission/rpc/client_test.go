@@ -411,6 +411,42 @@ func TestClientSessionSetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	})
 }
 
+func TestClientPortTestDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	t.Run("jsonrpc", func(t *testing.T) {
+		// The CSRF probe carries a 6.0.0 header, so the client negotiates JSON-RPC
+		// 2.0 and PortTest decodes the snake_case result, including ip_protocol.
+		srv := httptest.NewServer(transmissionStub{
+			rpcVersionHeader: "6.0.0",
+			sessionResponse:  `{"jsonrpc": "2.0", "result": {"port_is_open": true, "ip_protocol": "ipv4"}, "id": 1}`,
+		}.handler())
+		defer srv.Close()
+
+		c := NewClient(srv.URL)
+
+		result, err := c.PortTest(context.Background())
+		require.NoError(t, err)
+		assert.True(t, result.Open)
+		assert.Equal(t, "ipv4", result.IPProtocol)
+	})
+
+	t.Run("bespoke", func(t *testing.T) {
+		// The CSRF probe carries no rpc-version header, so the client negotiates
+		// bespoke and PortTest decodes only the kebab-case port-is-open flag.
+		srv := httptest.NewServer(transmissionStub{
+			rpcVersionHeader: "",
+			sessionResponse:  `{"arguments": {"port-is-open": false}, "result": "success", "tag": 1}`,
+		}.handler())
+		defer srv.Close()
+
+		c := NewClient(srv.URL)
+
+		result, err := c.PortTest(context.Background())
+		require.NoError(t, err)
+		assert.False(t, result.Open)
+		assert.Empty(t, result.IPProtocol)
+	})
+}
+
 func TestSemverMajor(t *testing.T) {
 	tests := []struct {
 		name      string
