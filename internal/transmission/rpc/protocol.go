@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Protocol names returned in Session.Protocol and used to label the negotiated
@@ -257,6 +258,40 @@ type AddResult struct {
 	Duplicate bool `json:"duplicate"`
 }
 
+// RawResponse is the canonical, protocol-neutral envelope returned by Call. It
+// carries both the exact server response bytes (for verbatim --raw output) and
+// the normalized fields that are identical across the two wire dialects, so a
+// generic caller renders one stable shape regardless of server version.
+//
+// OK distinguishes an RPC-level failure from success: an RPC-level failure is
+// reported via OK == false (with Result/Code carrying the server's error) rather
+// than as a Go error, so the caller can print the envelope and set its own exit
+// code. Transport, auth, and decode failures still surface as Go errors from
+// Call.
+type RawResponse struct {
+	// Raw is the exact response body the server sent, for verbatim --raw output.
+	Raw json.RawMessage `json:"-"`
+
+	// Result is the normalized status string: "success" on success, or the
+	// server's error text on an RPC-level failure.
+	Result string `json:"result"`
+
+	// Arguments is the normalized result payload: the server's arguments/result
+	// object on success, or null on an RPC-level failure.
+	Arguments json.RawMessage `json:"arguments"`
+
+	// Tag is the normalized request tag/id echoed by the server.
+	Tag int `json:"tag"`
+
+	// Code is the error code on an RPC-level failure (JSON-RPC error.code); it is
+	// omitted from the normalized JSON when zero.
+	Code int `json:"code,omitempty"`
+
+	// OK reports whether the call succeeded at the RPC level (bespoke result ==
+	// "success", or a JSON-RPC response without an error object).
+	OK bool `json:"-"`
+}
+
 // transport is the subset of *Transport a Protocol needs to perform a request.
 // Defining it as an interface keeps the protocol implementations testable in
 // isolation from the HTTP layer.
@@ -309,6 +344,14 @@ type Protocol interface {
 	// sent: when deleteData is true the server also deletes the downloaded files.
 	// The method carries no response payload, so the call only confirms success.
 	TorrentRemove(ctx context.Context, t transport, ids []any, deleteData bool) error
+
+	// Call issues an arbitrary RPC method with raw arguments and returns the
+	// canonical RawResponse. method is the canonical kebab-case name (each
+	// implementation translates it for its wire scheme); args is the raw
+	// arguments/params object (nil for a zero-argument method). An RPC-level
+	// failure is reported via RawResponse.OK == false, not a Go error; only
+	// transport and JSON-decode failures return a Go error.
+	Call(ctx context.Context, t transport, method string, args json.RawMessage) (RawResponse, error)
 }
 
 // jsonrpcProtocol implements the JSON-RPC 2.0 scheme.
@@ -705,6 +748,66 @@ func (jsonrpcProtocol) action(ctx context.Context, t transport, method string, i
 	}
 
 	return nil
+}
+
+// Call issues an arbitrary method against the JSON-RPC 2.0 scheme. The canonical
+// kebab-case name is translated to snake_case, args become the params object,
+// and the response is normalized: success synthesizes result "success" with the
+// JSON-RPC result as Arguments and id mapped to Tag; an error object maps
+// error.message to Result, error.code to Code, and null Arguments. An empty 2xx
+// body is treated as an empty success envelope. Only transport and decode
+// failures return a Go error.
+func (jsonrpcProtocol) Call(ctx context.Context, t transport, method string, args json.RawMessage) (RawResponse, error) {
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  translateMethod(ProtocolJSONRPC, method),
+		Params:  rawParams(args),
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return RawResponse{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return RawResponse{}, err
+	}
+
+	if len(bytes.TrimSpace(respBody)) == 0 {
+		return RawResponse{
+			Raw:       respBody,
+			Result:    bespokeResultSuccess,
+			Arguments: nil,
+			Tag:       1,
+			OK:        true,
+		}, nil
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(method, respBody, &resp); err != nil {
+		return RawResponse{}, err
+	}
+
+	if resp.Error != nil {
+		return RawResponse{
+			Raw:       respBody,
+			Result:    resp.Error.Message,
+			Arguments: nil,
+			Tag:       resp.ID,
+			Code:      resp.Error.Code,
+			OK:        false,
+		}, nil
+	}
+
+	return RawResponse{
+		Raw:       respBody,
+		Result:    bespokeResultSuccess,
+		Arguments: resp.Result,
+		Tag:       resp.ID,
+		OK:        true,
+	}, nil
 }
 
 // bespokeProtocol implements the legacy bespoke scheme.
@@ -1112,6 +1215,75 @@ func (bespokeProtocol) action(ctx context.Context, t transport, method string, i
 	}
 
 	return nil
+}
+
+// Call issues an arbitrary method against the bespoke scheme. The canonical
+// kebab-case name is sent verbatim, args become the arguments object, and the
+// response is passed through: result/arguments/tag map straight onto the
+// normalized fields, with OK reporting whether result == "success". An empty 2xx
+// body is treated as an empty success envelope. Only transport and decode
+// failures return a Go error.
+func (bespokeProtocol) Call(ctx context.Context, t transport, method string, args json.RawMessage) (RawResponse, error) {
+	req := bespokeRequest{
+		Method:    translateMethod(ProtocolBespoke, method),
+		Arguments: rawParams(args),
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return RawResponse{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return RawResponse{}, err
+	}
+
+	if len(bytes.TrimSpace(respBody)) == 0 {
+		return RawResponse{
+			Raw:       respBody,
+			Result:    bespokeResultSuccess,
+			Arguments: nil,
+			Tag:       1,
+			OK:        true,
+		}, nil
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(method, respBody, &resp); err != nil {
+		return RawResponse{}, err
+	}
+
+	return RawResponse{
+		Raw:       respBody,
+		Result:    resp.Result,
+		Arguments: resp.Arguments,
+		Tag:       resp.Tag,
+		OK:        resp.Result == bespokeResultSuccess,
+	}, nil
+}
+
+// translateMethod maps a canonical kebab-case RPC method name to the spelling
+// the given protocol expects: the JSON-RPC 2.0 scheme uses snake_case (so each
+// "-" becomes "_"), while the bespoke scheme uses the kebab-case name verbatim.
+func translateMethod(protocol, method string) string {
+	if protocol == ProtocolJSONRPC {
+		return strings.ReplaceAll(method, "-", "_")
+	}
+
+	return method
+}
+
+// rawParams converts a raw arguments fragment into the value placed in a request
+// envelope's params/arguments field. A nil fragment yields nil, so the
+// "omitempty" envelope tag drops the field entirely for a zero-argument method.
+func rawParams(args json.RawMessage) any {
+	if len(args) == 0 {
+		return nil
+	}
+
+	return args
 }
 
 // marshalRequest encodes a request envelope, wrapping any error in a clear,
