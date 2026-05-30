@@ -55,7 +55,7 @@ Use "snatcher [command] --help" for more information about a command.
 - [ ] `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
 - [x] `snatcher torrent reannounce ...` - reannounce torrent to trackers
 - [x] `snatcher torrent move ...` - `torrent_set_location`
-- [^] `snatcher torrent queue top|up|down|bottom ...` - change queue position
+- [x] `snatcher torrent queue top|up|down|bottom ...` - change queue position
 - [ ] `snatcher server blocklist ...` - 
 - [x] `snatcher port get|set|test` - show or change listening port
 - [ ] `snatcher free-space ...` - show free space on disk (merge in with stats?)
@@ -66,8 +66,8 @@ Use "snatcher [command] --help" for more information about a command.
 
 - `snatcher torrent up` / `snatcher upload`
 - [x] `snatcher torrent mv`
-- `snatcher torrent rm`
-- `snatcher torrent ls`
+- [x] `snatcher torrent rm`
+- [x] `snatcher torrent ls`
 
 ### Helpers?
 
@@ -95,6 +95,23 @@ Use "snatcher [command] --help" for more information about a command.
   confirm
 
 #### Torrents Window Globals
+
++------------------------------------------------------------------------------+
+|                |                                                             |
+|                |                                                             |
+|                |                                                             |
+|                |                                                             |
+|                |                                                             |
+|                |                                                             |
+|                |                                                             |
+|                |                                                             |
++------------------------------------------------------------------------------+
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
++------------------------------------------------------------------------------+
 
 - `{` - show left pane (filters) (?)
 - `}` - show right (bottom) pane (details) (?)
@@ -152,7 +169,22 @@ Tabs: overview, files, trackers, peers, labels
 
 #### Prowlarr Window Global 
 
-
++------------------------------------------------------------------------------+
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
++------------------------------------------------------------------------------+
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
++------------------------------------------------------------------------------+
 
 #### Prowlarr Window > Search Pane (Top)
 
