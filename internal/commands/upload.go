@@ -52,7 +52,7 @@ func NewUploadCmd() *cobra.Command {
 			"continue-on-error: a failure adding one source is reported but does not stop " +
 			"the rest, and the command exits non-zero if any source failed. With no " +
 			"positional arguments, sources are read from stdin (one per line); a bare " +
-			"'snatcher upload' with no sources and no piped stdin is an error, not a no-op.",
+			"'snatcher torrent upload' with no sources and no piped stdin is an error, not a no-op.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

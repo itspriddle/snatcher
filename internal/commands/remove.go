@@ -44,7 +44,7 @@ func NewRemoveCmd() *cobra.Command {
 		Short: "Remove torrents",
 		Long: "Remove the selected torrents from the session.\n\n" +
 			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
-			"At least one selector is required; a bare 'snatcher remove' is an error, " +
+			"At least one selector is required; a bare 'snatcher torrent remove' is an error, " +
 			"not a no-op. Use --delete-data to also delete the downloaded local files. " +
 			"Removal is destructive and requires confirmation: pass --yes to proceed.",
 		SilenceUsage:  true,

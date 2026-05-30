@@ -26,7 +26,7 @@ func NewStopCmd() *cobra.Command {
 		Short: "Stop (pause) torrents",
 		Long: "Stop (pause) the selected torrents.\n\n" +
 			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
-			"At least one selector is required; a bare 'snatcher stop' is an error, " +
+			"At least one selector is required; a bare 'snatcher torrent stop' is an error, " +
 			"not a no-op.",
 		SilenceUsage:  true,
 		SilenceErrors: true,

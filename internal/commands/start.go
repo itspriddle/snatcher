@@ -27,7 +27,7 @@ func NewStartCmd() *cobra.Command {
 		Short: "Start or resume torrents",
 		Long: "Start or resume the selected torrents.\n\n" +
 			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
-			"At least one selector is required; a bare 'snatcher start' is an error, " +
+			"At least one selector is required; a bare 'snatcher torrent start' is an error, " +
 			"not a no-op. Use --now to bypass the queue and start immediately.",
 		SilenceUsage:  true,
 		SilenceErrors: true,

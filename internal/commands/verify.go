@@ -27,7 +27,7 @@ func NewVerifyCmd() *cobra.Command {
 		Short: "Verify local torrent data",
 		Long: "Verify local torrent data by queueing a re-hash of downloaded files.\n\n" +
 			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
-			"At least one selector is required; a bare 'snatcher verify' is an error, " +
+			"At least one selector is required; a bare 'snatcher torrent verify' is an error, " +
 			"not a no-op.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
