@@ -287,6 +287,7 @@ selects fields itself.
 .RE
 .TP
 .B snatcher torrent list \fR[\fIoptions\fR]
+.RB ( ls )
 List torrents. On a terminal the output is an aligned table with a header; when
 piped (or when
 .B NO_COLOR
@@ -399,6 +400,7 @@ Move the selected torrents to the bottom (back) of the queue.
 .RE
 .TP
 .B snatcher torrent remove \fR[\fIoptions\fR] [\fIid | hash\fR]...
+.RB ( rm )
 Remove the selected torrents from the session. Removal is destructive and
 requires confirmation: on a terminal it prompts
 .RB [ y/N ];

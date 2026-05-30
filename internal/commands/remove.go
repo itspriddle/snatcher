@@ -40,8 +40,9 @@ func NewRemoveCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "remove [id|hash]...",
-		Short: "Remove torrents",
+		Use:     "remove [id|hash]...",
+		Aliases: []string{"rm"},
+		Short:   "Remove torrents",
 		Long: "Remove the selected torrents from the session.\n\n" +
 			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
 			"At least one selector is required; a bare 'snatcher torrent remove' is an error, " +
