@@ -194,6 +194,37 @@ emits a stable
 .RB { port ", " random_on_start ", " forwarding_enabled }
 object. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher port set \fR[\fIport\fR] [\fIoptions\fR]
+Set the peer port and/or related flags, then re-read the session and report the
+resulting state in the same shape as
+.BR "port get" .
+A
+.I port
+must be an integer in
+.RB [ 1 ", " 65535 ];
+giving one also disables
+.B random_on_start
+so the port sticks across restarts, unless
+.B \-\-random
+is passed explicitly. Besides the common options:
+.RS
+.TP
+.B \-\-random\fR[=\fIbool\fR]
+Randomize the peer port on each server start. A bare
+.B \-\-random
+means true; an explicit flag overrides the auto-disable triggered by a
+.I port
+argument.
+.TP
+.B \-\-forwarding\fR[=\fIbool\fR]
+Enable or disable port forwarding (UPnP/NAT-PMP).
+.RE
+.IP
+With neither a
+.I port
+nor any flag, it returns a "nothing to set" error. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
 .SS "torrent"
 Manage individual torrents. All torrent operations live under the
 .B torrent

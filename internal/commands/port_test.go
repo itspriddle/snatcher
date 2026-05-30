@@ -2,6 +2,9 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -115,4 +118,197 @@ func TestPortBarePrintsHelp(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "Usage:")
 	assert.Contains(t, out, "port")
+}
+
+// capturedPortServer stands up a transmission stub on the bespoke path that
+// records every request body (so a test can assert what session-set sent) and
+// answers session-get with the canned bespoke payload. The stub is stateless:
+// the re-fetch after a write returns the same payload, which is sufficient to
+// exercise the command's "report the server's values" flow.
+func capturedPortServer(t *testing.T, captured *[]string) (string, func()) {
+	t.Helper()
+
+	keyring.MockInit()
+
+	srv := httptest.NewServer(func() http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(sessionIDHeader) == "" {
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+
+			body, _ := io.ReadAll(r.Body)
+			*captured = append(*captured, string(body))
+
+			var envelope struct {
+				Method string `json:"method"`
+			}
+			_ = json.Unmarshal(body, &envelope)
+
+			if envelope.Method == "session-get" {
+				_, _ = w.Write([]byte(bespokeSessionResponse))
+				return
+			}
+
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}
+	}())
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+
+	return cfgPath, srv.Close
+}
+
+// portSetBody returns the captured session-set request body, failing the test
+// if no write was sent.
+func portSetBody(t *testing.T, captured []string) string {
+	t.Helper()
+
+	for _, body := range captured {
+		if strings.Contains(body, "session-set") {
+			return body
+		}
+	}
+
+	require.FailNow(t, "no session-set request was sent")
+
+	return ""
+}
+
+func TestPortSetPortDisablesRandomOnStart(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "set", "51413", "--config", cfgPath)
+	require.NoError(t, err)
+
+	// A positional port pins the port: it sends peer-port plus
+	// peer-port-random-on-start=false (the transmission adapter kebab->snake).
+	setBody := portSetBody(t, captured)
+	assert.Contains(t, setBody, "51413", "the parsed port reaches the wire")
+	assert.Contains(t, setBody, `"peer-port":51413`, "the kebab-case key reaches the wire")
+	assert.Contains(t, setBody, `"peer-port-random-on-start":false`,
+		"the port is pinned by disabling random-on-start")
+
+	// After the write the resulting port state is rendered (re-fetched fixture).
+	assert.Contains(t, out, "Port:")
+	assert.Contains(t, out, "31129")
+}
+
+func TestPortSetExplicitRandomOverridesAutoDisable(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	// An explicit --random keeps random-on-start true and wins over the
+	// auto-disable that a positional port would otherwise trigger.
+	_, _, err := runPort(t, "set", "51413", "--random", "--config", cfgPath)
+	require.NoError(t, err)
+
+	setBody := portSetBody(t, captured)
+	assert.Contains(t, setBody, `"peer-port":51413`)
+	assert.Contains(t, setBody, `"peer-port-random-on-start":true`,
+		"the explicit --random overrides the auto-disable")
+}
+
+func TestPortSetExplicitRandomFalseWithPort(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	// --random=false alongside a port is consistent with the auto-disable but is
+	// an explicit user choice all the same.
+	_, _, err := runPort(t, "set", "51413", "--random=false", "--config", cfgPath)
+	require.NoError(t, err)
+
+	setBody := portSetBody(t, captured)
+	assert.Contains(t, setBody, `"peer-port-random-on-start":false`)
+}
+
+func TestPortSetForwardingOnlyWritesForwarding(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	// --forwarding=false with no port writes only port-forwarding-enabled.
+	_, _, err := runPort(t, "set", "--forwarding=false", "--config", cfgPath)
+	require.NoError(t, err)
+
+	setBody := portSetBody(t, captured)
+	assert.Contains(t, setBody, `"port-forwarding-enabled":false`)
+	assert.NotContains(t, setBody, "peer-port", "no port was given, so peer-port is not written")
+}
+
+func TestPortSetRejectsInvalidPort(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	for _, bad := range []string{"0", "70000", "abc"} {
+		captured = captured[:0]
+		_, _, err := runPort(t, "set", bad, "--config", cfgPath)
+		require.Error(t, err, bad)
+		assert.Contains(t, err.Error(), "invalid port", bad)
+		assert.Contains(t, err.Error(), "must be 1-65535", bad)
+		assert.Empty(t, captured, "an invalid port aborts before any write")
+	}
+}
+
+func TestPortSetNothingToSet(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	_, _, err := runPort(t, "set", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nothing to set")
+	assert.Empty(t, captured, "no port and no flags makes no write")
+}
+
+func TestPortSetJSON(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "set", "51413", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	// The result is rendered in the same portState shape as "port get".
+	assert.JSONEq(t, `{
+		"port": 31129,
+		"random_on_start": false,
+		"forwarding_enabled": true
+	}`, out)
+}
+
+func TestPortSetJQ(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedPortServer(t, &captured)
+	defer closeSrv()
+
+	out, _, err := runPort(t, "set", "51413", "--config", cfgPath, "--jq", ".port")
+	require.NoError(t, err)
+	assert.Equal(t, "31129", strings.TrimSpace(out))
+}
+
+func TestPortSetNotConfigured(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	// Validation passes, but no server is configured, so dial fails before any
+	// network write.
+	_, _, err := runPort(t, "set", "51413", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
+
+func TestPortSetTooManyArgs(t *testing.T) {
+	cfgPath, closeSrv := portConfigPath(t)
+	defer closeSrv()
+
+	_, _, err := runPort(t, "set", "51413", "extra", "--config", cfgPath)
+	require.Error(t, err, "more than one positional argument is an error")
 }

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -43,6 +44,7 @@ func NewPortCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(newPortGetCmd())
+	cmd.AddCommand(newPortSetCmd())
 
 	return cmd
 }
@@ -96,6 +98,119 @@ func newPortGetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
 	return cmd
+}
+
+// newPortSetCmd builds "port set [<port>]", which writes the peer port and/or
+// the random-on-start and port-forwarding flags, then re-reads the session and
+// renders the resulting state in the same shape as "port get".
+//
+// A positional <port> sets peer-port and, unless --random was explicitly
+// passed, also disables peer-port-random-on-start so a forwarded port sticks
+// across restarts. --random and --forwarding write their flags directly and an
+// explicit --random always wins over the auto-disable. With neither a port nor
+// any flag, it returns a "nothing to set" error.
+func newPortSetCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+		random     bool
+		forwarding bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "set [<port>]",
+		Short: "Set the peer port and related settings",
+		Long: "Set the peer port and related settings.\n\n" +
+			"Given a port, sets peer-port and disables random-on-start so the " +
+			"port sticks across restarts (pass --random to keep it on). " +
+			"--random and --forwarding write those flags directly; an explicit " +
+			"--random overrides the auto-disable. After writing, the server's " +
+			"actual values are read back and reported.",
+		Args:          cobra.MaximumNArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			randomChanged := cmd.Flags().Changed("random")
+			forwardingChanged := cmd.Flags().Changed("forwarding")
+
+			if len(args) == 0 && !randomChanged && !forwardingChanged {
+				return fmt.Errorf("nothing to set: provide a port and/or --random/--forwarding")
+			}
+
+			changes := make(map[string]any)
+
+			if len(args) == 1 {
+				port, err := parsePort(args[0])
+				if err != nil {
+					return err
+				}
+				changes["peer-port"] = port
+
+				// Pin the port across restarts unless the user explicitly opted
+				// into random-on-start.
+				if !randomChanged {
+					changes["peer-port-random-on-start"] = false
+				}
+			}
+
+			if randomChanged {
+				changes["peer-port-random-on-start"] = random
+			}
+
+			if forwardingChanged {
+				changes["port-forwarding-enabled"] = forwarding
+			}
+
+			backend, serverURL, err := dial(configPath)
+			if err != nil {
+				return err
+			}
+
+			if err := backend.SetSession(cmd.Context(), changes); err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			session, err := backend.GetSession(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			state := portStateFromSession(session)
+
+			if jqExpr != "" {
+				return output.JQ(cmd.OutOrStdout(), state, jqExpr)
+			}
+
+			if asJSON {
+				return output.JSON(cmd.OutOrStdout(), state)
+			}
+
+			writePortState(cmd, state)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	cmd.Flags().BoolVar(&random, "random", false, "randomize the peer port on each server start")
+	cmd.Flags().BoolVar(&forwarding, "forwarding", false, "enable port forwarding (UPnP/NAT-PMP)")
+
+	return cmd
+}
+
+// parsePort validates a positional port argument: it must parse to an integer
+// in the inclusive [1, 65535] range. Any other value returns a clear error and
+// the caller performs no session write.
+func parsePort(raw string) (int, error) {
+	port, err := strconv.Atoi(raw)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid port %q: must be 1-65535", raw)
+	}
+
+	return port, nil
 }
 
 // writePortState renders a portState as an aligned "Label: value" plaintext
