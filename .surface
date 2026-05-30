@@ -10,17 +10,18 @@ CMD snatcher auth remove
 CMD snatcher auth set
 CMD snatcher auth show
 CMD snatcher auth test
-CMD snatcher list
-CMD snatcher remove
 CMD snatcher settings
 CMD snatcher settings get
 CMD snatcher settings reset
 CMD snatcher settings set
-CMD snatcher start
 CMD snatcher stats
-CMD snatcher stop
-CMD snatcher upload
-CMD snatcher verify
+CMD snatcher torrent
+CMD snatcher torrent list
+CMD snatcher torrent remove
+CMD snatcher torrent start
+CMD snatcher torrent stop
+CMD snatcher torrent upload
+CMD snatcher torrent verify
 FLAG snatcher --version type=bool
 FLAG snatcher api --config type=string
 FLAG snatcher api --field type=stringArray
@@ -37,20 +38,6 @@ FLAG snatcher auth show --config type=string
 FLAG snatcher auth show --json type=bool
 FLAG snatcher auth test --config type=string
 FLAG snatcher auth test --json type=bool
-FLAG snatcher list --config type=string
-FLAG snatcher list --fields type=string
-FLAG snatcher list --filter type=string
-FLAG snatcher list --jq type=string
-FLAG snatcher list --json type=bool
-FLAG snatcher list --reverse type=bool
-FLAG snatcher list --search type=string
-FLAG snatcher list --sort type=string
-FLAG snatcher remove --all type=bool
-FLAG snatcher remove --config type=string
-FLAG snatcher remove --delete-data type=bool
-FLAG snatcher remove --jq type=string
-FLAG snatcher remove --json type=bool
-FLAG snatcher remove --yes type=bool
 FLAG snatcher settings --category type=string
 FLAG snatcher settings --config type=string
 FLAG snatcher settings --jq type=string
@@ -65,27 +52,41 @@ FLAG snatcher settings reset --json type=bool
 FLAG snatcher settings set --config type=string
 FLAG snatcher settings set --jq type=string
 FLAG snatcher settings set --json type=bool
-FLAG snatcher start --all type=bool
-FLAG snatcher start --config type=string
-FLAG snatcher start --jq type=string
-FLAG snatcher start --json type=bool
-FLAG snatcher start --now type=bool
 FLAG snatcher stats --config type=string
 FLAG snatcher stats --jq type=string
 FLAG snatcher stats --json type=bool
-FLAG snatcher stop --all type=bool
-FLAG snatcher stop --config type=string
-FLAG snatcher stop --jq type=string
-FLAG snatcher stop --json type=bool
-FLAG snatcher upload --config type=string
-FLAG snatcher upload --delete type=bool
-FLAG snatcher upload --download-dir type=string
-FLAG snatcher upload --jq type=string
-FLAG snatcher upload --json type=bool
-FLAG snatcher upload --label type=stringArray
-FLAG snatcher upload --quiet type=bool
-FLAG snatcher upload --start type=bool
-FLAG snatcher verify --all type=bool
-FLAG snatcher verify --config type=string
-FLAG snatcher verify --jq type=string
-FLAG snatcher verify --json type=bool
+FLAG snatcher torrent list --config type=string
+FLAG snatcher torrent list --fields type=string
+FLAG snatcher torrent list --filter type=string
+FLAG snatcher torrent list --jq type=string
+FLAG snatcher torrent list --json type=bool
+FLAG snatcher torrent list --reverse type=bool
+FLAG snatcher torrent list --search type=string
+FLAG snatcher torrent list --sort type=string
+FLAG snatcher torrent remove --all type=bool
+FLAG snatcher torrent remove --config type=string
+FLAG snatcher torrent remove --delete-data type=bool
+FLAG snatcher torrent remove --jq type=string
+FLAG snatcher torrent remove --json type=bool
+FLAG snatcher torrent remove --yes type=bool
+FLAG snatcher torrent start --all type=bool
+FLAG snatcher torrent start --config type=string
+FLAG snatcher torrent start --jq type=string
+FLAG snatcher torrent start --json type=bool
+FLAG snatcher torrent start --now type=bool
+FLAG snatcher torrent stop --all type=bool
+FLAG snatcher torrent stop --config type=string
+FLAG snatcher torrent stop --jq type=string
+FLAG snatcher torrent stop --json type=bool
+FLAG snatcher torrent upload --config type=string
+FLAG snatcher torrent upload --delete type=bool
+FLAG snatcher torrent upload --download-dir type=string
+FLAG snatcher torrent upload --jq type=string
+FLAG snatcher torrent upload --json type=bool
+FLAG snatcher torrent upload --label type=stringArray
+FLAG snatcher torrent upload --quiet type=bool
+FLAG snatcher torrent upload --start type=bool
+FLAG snatcher torrent verify --all type=bool
+FLAG snatcher torrent verify --config type=string
+FLAG snatcher torrent verify --jq type=string
+FLAG snatcher torrent verify --json type=bool

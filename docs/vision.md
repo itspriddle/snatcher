@@ -33,16 +33,10 @@ Available Commands:
   auth        Manage server authentication
   completion  Generate the autocompletion script for the specified shell
   help        Help about any command
-  info        Show torrent details
-  list        List torrents
-  remove      Remove torrents
   settings    Manage server settings
   speed       View or toggle alt-speed limits
-  start       Start or resume torrents
   stats       Show session statistics
-  stop        Stop (pause) torrents
-  upload      Upload torrents from files, URLs, or magnet links
-  verify      Verify local torrent data
+  torrent     Manage torrents
   version     Print version information
 
 Flags:
