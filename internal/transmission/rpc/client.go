@@ -53,6 +53,18 @@ func (c *Client) SessionStats(ctx context.Context) (SessionStats, error) {
 	return proto.SessionStats(ctx, c.transport)
 }
 
+// TorrentGet detects the protocol (once) and returns the server's torrents as
+// canonical Torrents. A nil or empty ids slice requests all torrents; otherwise
+// the server filters to the given numeric ids.
+func (c *Client) TorrentGet(ctx context.Context, ids []int64) ([]Torrent, error) {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return proto.TorrentGet(ctx, c.transport, ids)
+}
+
 // Protocol returns the negotiated protocol name, detecting it if necessary. It
 // is primarily useful for diagnostics; typed calls detect on their own.
 func (c *Client) Protocol(ctx context.Context) (string, error) {

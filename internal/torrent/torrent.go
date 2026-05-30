@@ -91,4 +91,10 @@ type Backend interface {
 
 	// Stats returns the server's neutral session statistics.
 	Stats(ctx context.Context) (Stats, error)
+
+	// ListTorrents returns the server's torrents as neutral Torrents. A nil or
+	// empty ids slice returns all torrents; otherwise the server filters to the
+	// given numeric ids. The returned slice is never nil on success (it is empty
+	// when there are no matching torrents).
+	ListTorrents(ctx context.Context, ids []int64) ([]Torrent, error)
 }

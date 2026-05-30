@@ -1,0 +1,264 @@
+package torrent
+
+import (
+	"cmp"
+	"fmt"
+	"slices"
+	"strings"
+)
+
+// Filter is a named selection over a torrent's status, used by the list
+// command's --filter flag. Filters are coarser than Status: some (active,
+// downloading, seeding) match a group of related statuses.
+type Filter string
+
+const (
+	// FilterAll matches every torrent (the default; no filtering).
+	FilterAll Filter = "all"
+
+	// FilterActive matches torrents that are downloading or seeding, including
+	// their queued variants.
+	FilterActive Filter = "active"
+
+	// FilterDownloading matches downloading torrents and those queued to
+	// download.
+	FilterDownloading Filter = "downloading"
+
+	// FilterSeeding matches seeding torrents and those queued to seed.
+	FilterSeeding Filter = "seeding"
+
+	// FilterStopped matches stopped (paused) torrents.
+	FilterStopped Filter = "stopped"
+
+	// FilterVerifying matches torrents whose local data is being verified.
+	FilterVerifying Filter = "verifying"
+
+	// FilterQueuedToVerify matches torrents queued to verify.
+	FilterQueuedToVerify Filter = "queued-to-verify"
+
+	// FilterQueuedToDownload matches torrents queued to download.
+	FilterQueuedToDownload Filter = "queued-to-download"
+
+	// FilterQueuedToSeed matches torrents queued to seed.
+	FilterQueuedToSeed Filter = "queued-to-seed"
+
+	// FilterError matches torrents the backend reported an error for.
+	FilterError Filter = "error"
+)
+
+// filters lists every valid Filter in display order, so error messages and any
+// future completion share one source of truth.
+var filters = []Filter{
+	FilterAll,
+	FilterActive,
+	FilterDownloading,
+	FilterSeeding,
+	FilterStopped,
+	FilterVerifying,
+	FilterQueuedToVerify,
+	FilterQueuedToDownload,
+	FilterQueuedToSeed,
+	FilterError,
+}
+
+// ParseFilter parses a --filter value (case-insensitively) into a Filter. An
+// unrecognized value returns an error listing the valid options.
+func ParseFilter(s string) (Filter, error) {
+	f := Filter(strings.ToLower(strings.TrimSpace(s)))
+	if slices.Contains(filters, f) {
+		return f, nil
+	}
+
+	return "", fmt.Errorf("invalid filter %q: valid filters are %s", s, joinFilters())
+}
+
+// matches reports whether a torrent's status satisfies the filter.
+func (f Filter) matches(t Torrent) bool {
+	switch f {
+	case FilterAll:
+		return true
+	case FilterActive:
+		switch t.Status {
+		case StatusDownloading, StatusQueuedToDownload, StatusSeeding, StatusQueuedToSeed:
+			return true
+		default:
+			return false
+		}
+	case FilterDownloading:
+		return t.Status == StatusDownloading || t.Status == StatusQueuedToDownload
+	case FilterSeeding:
+		return t.Status == StatusSeeding || t.Status == StatusQueuedToSeed
+	case FilterStopped:
+		return t.Status == StatusStopped
+	case FilterVerifying:
+		return t.Status == StatusVerifying
+	case FilterQueuedToVerify:
+		return t.Status == StatusQueuedToVerify
+	case FilterQueuedToDownload:
+		return t.Status == StatusQueuedToDownload
+	case FilterQueuedToSeed:
+		return t.Status == StatusQueuedToSeed
+	case FilterError:
+		return t.Status == StatusError
+	default:
+		return false
+	}
+}
+
+func joinFilters() string {
+	names := make([]string, len(filters))
+	for i, f := range filters {
+		names[i] = string(f)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// FilterByStatus returns a new slice containing the torrents that satisfy the
+// filter, preserving their input order. The input is never mutated. The result
+// is non-nil even when empty so callers can rely on a stable slice.
+func FilterByStatus(torrents []Torrent, f Filter) []Torrent {
+	out := make([]Torrent, 0, len(torrents))
+	for _, t := range torrents {
+		if f.matches(t) {
+			out = append(out, t)
+		}
+	}
+
+	return out
+}
+
+// SearchByName returns a new slice containing the torrents whose name contains
+// query as a case-insensitive substring, preserving input order. An empty query
+// matches everything. The input is never mutated.
+func SearchByName(torrents []Torrent, query string) []Torrent {
+	if query == "" {
+		return slices.Clone(torrents)
+	}
+
+	needle := strings.ToLower(query)
+
+	out := make([]Torrent, 0, len(torrents))
+	for _, t := range torrents {
+		if strings.Contains(strings.ToLower(t.Name), needle) {
+			out = append(out, t)
+		}
+	}
+
+	return out
+}
+
+// SortField names a torrent attribute the list can be ordered by, used by the
+// --sort flag.
+type SortField string
+
+const (
+	// SortQueue orders by the backend queue position (the default).
+	SortQueue SortField = "queue"
+
+	// SortName orders by name (case-insensitive).
+	SortName SortField = "name"
+
+	// SortAdded orders by the date the torrent was added.
+	SortAdded SortField = "added"
+
+	// SortSize orders by total size.
+	SortSize SortField = "size"
+
+	// SortProgress orders by download completion (percentDone).
+	SortProgress SortField = "progress"
+
+	// SortRatio orders by upload ratio.
+	SortRatio SortField = "ratio"
+
+	// SortSpeed orders by combined transfer speed (download + upload rate).
+	SortSpeed SortField = "speed"
+)
+
+// sortFields lists every valid SortField in display order, so error messages
+// and any future completion share one source of truth.
+var sortFields = []SortField{
+	SortQueue,
+	SortName,
+	SortAdded,
+	SortSize,
+	SortProgress,
+	SortRatio,
+	SortSpeed,
+}
+
+// ParseSortField parses a --sort value (case-insensitively) into a SortField.
+// An unrecognized value returns an error listing the valid options.
+func ParseSortField(s string) (SortField, error) {
+	f := SortField(strings.ToLower(strings.TrimSpace(s)))
+	if slices.Contains(sortFields, f) {
+		return f, nil
+	}
+
+	return "", fmt.Errorf("invalid sort field %q: valid sort fields are %s", s, joinSortFields())
+}
+
+func joinSortFields() string {
+	names := make([]string, len(sortFields))
+	for i, f := range sortFields {
+		names[i] = string(f)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// SortTorrents returns a new slice sorted by the given field. The sort is
+// stable, with a deterministic name-then-id tiebreak, so equal keys keep a
+// predictable order across runs. When reverse is true the primary key is
+// inverted while the tiebreak stays ascending, so output remains deterministic.
+// The input is never mutated.
+func SortTorrents(torrents []Torrent, field SortField, reverse bool) []Torrent {
+	out := slices.Clone(torrents)
+
+	slices.SortStableFunc(out, func(a, b Torrent) int {
+		c := compareField(a, b, field)
+		if reverse {
+			c = -c
+		}
+		if c != 0 {
+			return c
+		}
+
+		return tiebreak(a, b)
+	})
+
+	return out
+}
+
+// compareField compares two torrents by the primary sort key (ascending).
+func compareField(a, b Torrent, field SortField) int {
+	switch field {
+	case SortName:
+		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	case SortAdded:
+		return cmp.Compare(a.AddedDate, b.AddedDate)
+	case SortSize:
+		return cmp.Compare(a.TotalSize, b.TotalSize)
+	case SortProgress:
+		return cmp.Compare(a.PercentDone, b.PercentDone)
+	case SortRatio:
+		return cmp.Compare(a.UploadRatio, b.UploadRatio)
+	case SortSpeed:
+		return cmp.Compare(a.RateDownload+a.RateUpload, b.RateDownload+b.RateUpload)
+	case SortQueue:
+		return cmp.Compare(a.QueuePosition, b.QueuePosition)
+	default:
+		return cmp.Compare(a.QueuePosition, b.QueuePosition)
+	}
+}
+
+// tiebreak gives a deterministic order to torrents whose primary key is equal:
+// by name (case-insensitive), then by numeric id. It is always ascending so the
+// overall order is stable regardless of reverse.
+func tiebreak(a, b Torrent) int {
+	if c := cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); c != 0 {
+		return c
+	}
+
+	return cmp.Compare(a.ID, b.ID)
+}

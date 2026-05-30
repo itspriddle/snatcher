@@ -177,6 +177,29 @@ func TestClientDetectSurfacesTransportError(t *testing.T) {
 	require.ErrorIs(t, err, ErrAuth)
 }
 
+func TestClientTorrentGetDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	// The CSRF probe carries a 6.0.0 header, so the client negotiates JSON-RPC
+	// 2.0 and TorrentGet decodes the snake_case payload.
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		sessionResponse: `{
+			"jsonrpc": "2.0",
+			"result": {"torrents": [{"id": 42, "hash_string": "deadbeef", "name": "debian.iso", "status": 6}]},
+			"id": 1
+		}`,
+	}.handler())
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	torrents, err := c.TorrentGet(context.Background(), nil)
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+	assert.Equal(t, int64(42), torrents[0].ID)
+	assert.Equal(t, "deadbeef", torrents[0].Hash)
+	assert.Equal(t, 6, torrents[0].Status)
+}
+
 func TestSemverMajor(t *testing.T) {
 	tests := []struct {
 		name      string

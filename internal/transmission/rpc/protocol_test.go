@@ -277,3 +277,209 @@ func TestProtocolNames(t *testing.T) {
 	assert.Equal(t, ProtocolJSONRPC, jsonrpcProtocol{}.Name()) //nolint:testifylint // encoded-compare false positive: ProtocolJSONRPC is an identifier name, not a JSON literal
 	assert.Equal(t, ProtocolBespoke, bespokeProtocol{}.Name())
 }
+
+func TestJSONRPCProtocolTorrentGet(t *testing.T) {
+	var rawBody []byte
+
+	// snake_case torrent fields matching the JSON-RPC 2.0 scheme.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"torrents": [{
+				"id": 7,
+				"hash_string": "abc123",
+				"name": "ubuntu.iso",
+				"status": 4,
+				"percent_done": 0.5,
+				"total_size": 2048,
+				"size_when_done": 2048,
+				"left_until_done": 1024,
+				"rate_download": 1000,
+				"rate_upload": 200,
+				"upload_ratio": 1.5,
+				"eta": 3600,
+				"peers_connected": 10,
+				"peers_sending_to_us": 4,
+				"peers_getting_from_us": 2,
+				"added_date": 1700000000,
+				"done_date": 0,
+				"activity_date": 1700000100,
+				"download_dir": "/downloads",
+				"error": 0,
+				"error_string": "",
+				"labels": ["linux", "iso"],
+				"queue_position": 3,
+				"is_finished": false,
+				"is_stalled": false
+			}]},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	torrents, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, nil)
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+
+	got := torrents[0]
+	assert.Equal(t, int64(7), got.ID)
+	assert.Equal(t, "abc123", got.Hash)
+	assert.Equal(t, "ubuntu.iso", got.Name)
+	assert.Equal(t, 4, got.Status)
+	assert.InDelta(t, 0.5, got.PercentDone, 0.0001)
+	assert.Equal(t, int64(2048), got.TotalSize)
+	assert.Equal(t, int64(1000), got.RateDownload)
+	assert.Equal(t, int64(200), got.RateUpload)
+	assert.InDelta(t, 1.5, got.UploadRatio, 0.0001)
+	assert.Equal(t, int64(3600), got.ETA)
+	assert.Equal(t, int64(10), got.PeersConnected)
+	assert.Equal(t, "/downloads", got.DownloadDir)
+	assert.Equal(t, []string{"linux", "iso"}, got.Labels)
+	assert.Equal(t, int64(3), got.QueuePosition)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// JSON-RPC 2.0 envelope: snake_case method, fields requested in params, no ids
+	// when none are requested.
+	assert.Equal(t, "torrent_get", gotBody["method"])
+	params, ok := gotBody["params"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, params, "fields")
+	assert.NotContains(t, params, "ids")
+}
+
+func TestBespokeProtocolTorrentGet(t *testing.T) {
+	var rawBody []byte
+
+	// camelCase torrent fields matching the bespoke scheme.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"arguments": {"torrents": [{
+				"id": 7,
+				"hashString": "abc123",
+				"name": "ubuntu.iso",
+				"status": 4,
+				"percentDone": 0.5,
+				"totalSize": 2048,
+				"sizeWhenDone": 2048,
+				"leftUntilDone": 1024,
+				"rateDownload": 1000,
+				"rateUpload": 200,
+				"uploadRatio": 1.5,
+				"eta": 3600,
+				"peersConnected": 10,
+				"peersSendingToUs": 4,
+				"peersGettingFromUs": 2,
+				"addedDate": 1700000000,
+				"doneDate": 0,
+				"activityDate": 1700000100,
+				"downloadDir": "/downloads",
+				"error": 0,
+				"errorString": "",
+				"labels": ["linux", "iso"],
+				"queuePosition": 3,
+				"isFinished": false,
+				"isStalled": false
+			}]},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	torrents, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, nil)
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+
+	got := torrents[0]
+	assert.Equal(t, int64(7), got.ID)
+	assert.Equal(t, "abc123", got.Hash)
+	assert.Equal(t, "ubuntu.iso", got.Name)
+	assert.Equal(t, 4, got.Status)
+	assert.InDelta(t, 0.5, got.PercentDone, 0.0001)
+	assert.Equal(t, int64(1000), got.RateDownload)
+	assert.InDelta(t, 1.5, got.UploadRatio, 0.0001)
+	assert.Equal(t, int64(3600), got.ETA)
+	assert.Equal(t, []string{"linux", "iso"}, got.Labels)
+	assert.Equal(t, int64(3), got.QueuePosition)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// Bespoke envelope: kebab-case method, fields in arguments.
+	assert.Equal(t, "torrent-get", gotBody["method"])
+	args, ok := gotBody["arguments"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, args, "fields")
+}
+
+func TestTorrentGetSendsIDs(t *testing.T) {
+	t.Run("jsonrpc includes ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": {"torrents": []}, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, []int64{1, 2})
+		require.NoError(t, err)
+		assert.Contains(t, string(rawBody), `"ids":[1,2]`)
+	})
+
+	t.Run("bespoke includes ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"arguments": {"torrents": []}, "result": "success", "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, []int64{3})
+		require.NoError(t, err)
+		assert.Contains(t, string(rawBody), `"ids":[3]`)
+	})
+}
+
+func TestJSONRPCProtocolTorrentGetMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32601, "message": "method not found"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, nil)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "method not found")
+}
+
+func TestBespokeProtocolTorrentGetMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "forbidden", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, nil)
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "forbidden")
+}

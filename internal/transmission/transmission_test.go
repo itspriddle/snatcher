@@ -3,6 +3,7 @@ package transmission
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -246,4 +247,168 @@ func TestBackendMapsRPCError(t *testing.T) {
 	require.ErrorIs(t, err, torrent.ErrUnreachable)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "no such session")
+}
+
+func TestBackendListTorrents(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // bespoke path: camelCase torrent fields
+		responses: map[string]string{
+			"torrent-get": `{
+				"arguments": {"torrents": [{
+					"id": 7,
+					"hashString": "abc123",
+					"name": "ubuntu.iso",
+					"status": 4,
+					"percentDone": 0.5,
+					"totalSize": 2048,
+					"sizeWhenDone": 2048,
+					"leftUntilDone": 1024,
+					"rateDownload": 1000,
+					"rateUpload": 200,
+					"uploadRatio": 1.5,
+					"eta": 3600,
+					"peersConnected": 10,
+					"peersSendingToUs": 4,
+					"peersGettingFromUs": 2,
+					"addedDate": 1700000000,
+					"doneDate": 0,
+					"activityDate": 1700000100,
+					"downloadDir": "/downloads",
+					"error": 0,
+					"errorString": "",
+					"labels": ["linux", "iso"],
+					"queuePosition": 3,
+					"isFinished": false,
+					"isStalled": false
+				}]},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	torrents, err := b.ListTorrents(context.Background(), nil)
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+
+	got := torrents[0]
+	assert.Equal(t, int64(7), got.ID)
+	assert.Equal(t, "abc123", got.Hash)
+	assert.Equal(t, "ubuntu.iso", got.Name)
+	assert.Equal(t, torrent.StatusDownloading, got.Status)
+	assert.InDelta(t, 0.5, got.PercentDone, 0.0001)
+	assert.Equal(t, int64(2048), got.TotalSize)
+	assert.Equal(t, int64(1000), got.RateDownload)
+	assert.Equal(t, int64(200), got.RateUpload)
+	assert.InDelta(t, 1.5, got.UploadRatio, 0.0001)
+	assert.Equal(t, int64(3600), got.ETA)
+	assert.Equal(t, int64(10), got.PeersConnected)
+	assert.Equal(t, "/downloads", got.DownloadDir)
+	assert.Equal(t, []string{"linux", "iso"}, got.Labels)
+	assert.Equal(t, int64(3), got.QueuePosition)
+}
+
+func TestBackendListTorrentsPromotesErrorStatus(t *testing.T) {
+	// A non-zero error code (or non-empty errorString) promotes status to error,
+	// even though the raw transfer status is "downloading" (4).
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"torrent-get": `{
+				"arguments": {"torrents": [{
+					"id": 1,
+					"hashString": "h",
+					"name": "broken",
+					"status": 4,
+					"error": 3,
+					"errorString": "tracker gave error"
+				}]},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	torrents, err := b.ListTorrents(context.Background(), nil)
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+
+	assert.Equal(t, torrent.StatusError, torrents[0].Status)
+	assert.Equal(t, "tracker gave error", torrents[0].Error)
+}
+
+func TestBackendListTorrentsEmpty(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"torrent-get": `{"arguments": {"torrents": []}, "result": "success", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	torrents, err := b.ListTorrents(context.Background(), nil)
+	require.NoError(t, err)
+	assert.NotNil(t, torrents)
+	assert.Empty(t, torrents)
+}
+
+func TestBackendListTorrentsFiltersByID(t *testing.T) {
+	var captured string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+
+		_, _ = w.Write([]byte(`{"arguments": {"torrents": [{"id": 2, "hashString": "h2", "name": "two", "status": 6}]}, "result": "success", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	torrents, err := b.ListTorrents(context.Background(), []int64{2})
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+	assert.Equal(t, int64(2), torrents[0].ID)
+	assert.Equal(t, torrent.StatusSeeding, torrents[0].Status)
+	assert.Contains(t, captured, `"ids":[2]`)
+}
+
+func TestBackendListTorrentsMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.ListTorrents(context.Background(), nil)
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendListTorrentsMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.ListTorrents(context.Background(), nil)
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }
