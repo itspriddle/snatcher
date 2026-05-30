@@ -10,6 +10,8 @@ CMD snatcher auth remove
 CMD snatcher auth set
 CMD snatcher auth show
 CMD snatcher auth test
+CMD snatcher port
+CMD snatcher port get
 CMD snatcher settings
 CMD snatcher settings get
 CMD snatcher settings reset
@@ -39,6 +41,9 @@ FLAG snatcher auth show --config type=string
 FLAG snatcher auth show --json type=bool
 FLAG snatcher auth test --config type=string
 FLAG snatcher auth test --json type=bool
+FLAG snatcher port get --config type=string
+FLAG snatcher port get --jq type=string
+FLAG snatcher port get --json type=bool
 FLAG snatcher settings --category type=string
 FLAG snatcher settings --config type=string
 FLAG snatcher settings --jq type=string

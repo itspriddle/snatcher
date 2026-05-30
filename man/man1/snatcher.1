@@ -177,6 +177,23 @@ are rejected. Accepts
 .B snatcher settings reset \fIkey\fR
 Restore a single setting to its Transmission default. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
+.SS "port"
+.B snatcher port
+.RI [ options ]
+.br
+View, change, and test the BitTorrent peer/listening port \(em a discoverable
+wrapper over the peer-port session settings. With no subcommand it prints help.
+.TP
+.B snatcher port get \fR[\fIoptions\fR]
+Show the current peer port alongside the random-on-start and port-forwarding
+flags read from the live session. Plaintext is an aligned
+.RI Label : " value"
+block;
+.B \-\-json
+emits a stable
+.RB { port ", " random_on_start ", " forwarding_enabled }
+object. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
 .SS "torrent"
 Manage individual torrents. All torrent operations live under the
 .B torrent
