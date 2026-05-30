@@ -425,6 +425,7 @@ func NewSettingsCmd() *cobra.Command {
 
 	cmd.AddCommand(newSettingsGetCmd())
 	cmd.AddCommand(newSettingsSetCmd())
+	cmd.AddCommand(newSettingsResetCmd())
 
 	return cmd
 }
@@ -612,6 +613,76 @@ func parseSettingAssignments(args []string) ([]settingDef, map[string]any, error
 	}
 
 	return ordered, changes, nil
+}
+
+// newSettingsResetCmd builds "settings reset <key>", which restores a single
+// setting to its Transmission default (baked into the registry, since the RPC
+// has no reset primitive). An unknown key errors with the valid-keys list and
+// the read-only blocklist-size is rejected before any network write. On success
+// it writes the default via backend.SetSession, re-fetches via GetSession, and
+// reports the server's confirmed value using the same output shape as set
+// (key: value on plaintext; the {key, category, value} array on --json/--jq).
+func newSettingsResetCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+	)
+
+	cmd := &cobra.Command{
+		Use:           "reset <key>",
+		Short:         "Reset one setting to its default",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			key := args[0]
+
+			def, ok := lookupSetting(key)
+			if !ok {
+				return fmt.Errorf("unknown setting %q: valid settings are %s", key, strings.Join(allSettingKeys(), ", "))
+			}
+
+			if def.readOnly {
+				return fmt.Errorf("setting %q is read-only", key)
+			}
+
+			backend, serverURL, err := dial(configPath)
+			if err != nil {
+				return err
+			}
+
+			changes := map[string]any{def.key: def.def}
+			if err := backend.SetSession(cmd.Context(), changes); err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			session, err := backend.GetSession(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			defs := []settingDef{def}
+
+			if jqExpr != "" {
+				return output.JQ(cmd.OutOrStdout(), settingRows(defs, session), jqExpr)
+			}
+
+			if asJSON {
+				return output.JSON(cmd.OutOrStdout(), settingRows(defs, session))
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", def.key, settingCell(def, session))
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
+	return cmd
 }
 
 // settingRows builds the {key, category, value} JSON rows for the given
