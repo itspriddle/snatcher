@@ -69,6 +69,11 @@ Use "snatcher [command] --help" for more information about a command.
     - Tracker Search (Prowlarr)
     - Settings
 
+- https://github.com/daltonsw/bubbleup - popups
+- https://github.com/lrstanley/bubblezone - mouse?
+- https://github.com/charmbracelet/huh - form fields
+- https://github.com/charmbracelet/gum - possible references, but not direct use
+
 ### Keybindings
 
 #### Global
