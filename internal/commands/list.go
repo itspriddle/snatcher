@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -14,39 +15,6 @@ import (
 	"github.com/itspriddle/snatcher/internal/torrent"
 )
 
-// listColumns are the default columns, in order, shown by the list command.
-// They are intentionally a fixed set in US-003; column selection (--fields)
-// arrives in US-005.
-var listColumns = []listColumn{
-	{header: "ID", rightAlign: true, value: func(t torrent.Torrent) string {
-		return fmt.Sprintf("%d", t.ID)
-	}},
-	{header: "Name", rightAlign: false, truncate: true, value: func(t torrent.Torrent) string {
-		return t.Name
-	}},
-	{header: "Status", rightAlign: false, value: func(t torrent.Torrent) string {
-		return t.Status.String()
-	}},
-	{header: "Done", rightAlign: true, value: func(t torrent.Torrent) string {
-		return output.Percent(t.PercentDone)
-	}},
-	{header: "Size", rightAlign: true, value: func(t torrent.Torrent) string {
-		return output.Bytes(t.TotalSize)
-	}},
-	{header: "Down", rightAlign: true, value: func(t torrent.Torrent) string {
-		return output.Speed(t.RateDownload)
-	}},
-	{header: "Up", rightAlign: true, value: func(t torrent.Torrent) string {
-		return output.Speed(t.RateUpload)
-	}},
-	{header: "Ratio", rightAlign: true, value: func(t torrent.Torrent) string {
-		return output.Ratio(t.UploadRatio)
-	}},
-	{header: "ETA", rightAlign: true, value: func(t torrent.Torrent) string {
-		return formatETA(t.ETA)
-	}},
-}
-
 // listColumn describes a single rendered column: its header, how a torrent's
 // value is derived, its alignment, and whether the Name-style truncation applies
 // on a TTY.
@@ -55,6 +23,108 @@ type listColumn struct {
 	value      func(torrent.Torrent) string
 	rightAlign bool
 	truncate   bool
+}
+
+// listFields is the field registry: it maps a selectable --fields key to the
+// column that renders it. It is the single source of truth for headers,
+// accessors, and alignment, shared by both the TTY aligned output and the piped
+// tab-separated output. New columns are added here.
+var listFields = map[string]listColumn{
+	"id": {header: "ID", rightAlign: true, value: func(t torrent.Torrent) string {
+		return fmt.Sprintf("%d", t.ID)
+	}},
+	"hash": {header: "Hash", value: func(t torrent.Torrent) string {
+		return t.Hash
+	}},
+	"name": {header: "Name", truncate: true, value: func(t torrent.Torrent) string {
+		return t.Name
+	}},
+	"status": {header: "Status", value: func(t torrent.Torrent) string {
+		return t.Status.String()
+	}},
+	"done": {header: "Done", rightAlign: true, value: func(t torrent.Torrent) string {
+		return output.Percent(t.PercentDone)
+	}},
+	"size": {header: "Size", rightAlign: true, value: func(t torrent.Torrent) string {
+		return output.Bytes(t.TotalSize)
+	}},
+	"down": {header: "Down", rightAlign: true, value: func(t torrent.Torrent) string {
+		return output.Speed(t.RateDownload)
+	}},
+	"up": {header: "Up", rightAlign: true, value: func(t torrent.Torrent) string {
+		return output.Speed(t.RateUpload)
+	}},
+	"ratio": {header: "Ratio", rightAlign: true, value: func(t torrent.Torrent) string {
+		return output.Ratio(t.UploadRatio)
+	}},
+	"eta": {header: "ETA", rightAlign: true, value: func(t torrent.Torrent) string {
+		return formatETA(t.ETA)
+	}},
+	"peers": {header: "Peers", rightAlign: true, value: func(t torrent.Torrent) string {
+		return fmt.Sprintf("%d", t.PeersConnected)
+	}},
+	"added": {header: "Added", value: func(t torrent.Torrent) string {
+		return output.Date(t.AddedDate)
+	}},
+	"download_dir": {header: "Download Dir", value: func(t torrent.Torrent) string {
+		return t.DownloadDir
+	}},
+	"error": {header: "Error", value: func(t torrent.Torrent) string {
+		return t.Error
+	}},
+	"labels": {header: "Labels", value: func(t torrent.Torrent) string {
+		return strings.Join(t.Labels, ",")
+	}},
+}
+
+// defaultFieldKeys is the default column set, in order, shown when --fields is
+// not given (the US-003 default: ID, Name, Status, Done, Size, Down, Up, Ratio,
+// ETA).
+var defaultFieldKeys = []string{
+	"id", "name", "status", "done", "size", "down", "up", "ratio", "eta",
+}
+
+// validFieldKeys returns every selectable --fields key in sorted order, for the
+// error message listing the valid keys.
+func validFieldKeys() string {
+	keys := make([]string, 0, len(listFields))
+	for k := range listFields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	return strings.Join(keys, ", ")
+}
+
+// parseFields resolves a --fields value into the ordered columns to render. An
+// empty value selects the default column set. An unknown key returns an error
+// listing the valid keys. Keys are matched case-insensitively after trimming
+// whitespace.
+func parseFields(spec string) ([]listColumn, error) {
+	keys := defaultFieldKeys
+	if strings.TrimSpace(spec) != "" {
+		keys = nil
+		for _, raw := range strings.Split(spec, ",") {
+			key := strings.ToLower(strings.TrimSpace(raw))
+			if key == "" {
+				continue
+			}
+			if _, ok := listFields[key]; !ok {
+				return nil, fmt.Errorf("invalid field %q: valid fields are %s", strings.TrimSpace(raw), validFieldKeys())
+			}
+			keys = append(keys, key)
+		}
+		if len(keys) == 0 {
+			return nil, fmt.Errorf("no fields selected: valid fields are %s", validFieldKeys())
+		}
+	}
+
+	cols := make([]listColumn, len(keys))
+	for i, key := range keys {
+		cols[i] = listFields[key]
+	}
+
+	return cols, nil
 }
 
 // NewListCmd builds the "list" command, which dials the backend, fetches all
@@ -71,6 +141,7 @@ func NewListCmd() *cobra.Command {
 		sortFlag   string
 		searchFlag string
 		reverse    bool
+		fieldsFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -86,6 +157,11 @@ func NewListCmd() *cobra.Command {
 			}
 
 			sortField, err := torrent.ParseSortField(sortFlag)
+			if err != nil {
+				return err
+			}
+
+			columns, err := parseFields(fieldsFlag)
 			if err != nil {
 				return err
 			}
@@ -115,7 +191,7 @@ func NewListCmd() *cobra.Command {
 				return output.JSON(cmd.OutOrStdout(), jsonTorrents(torrents))
 			}
 
-			writeListPlaintext(cmd, torrents)
+			writeListPlaintext(cmd, torrents, columns)
 
 			return nil
 		},
@@ -128,6 +204,7 @@ func NewListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sortFlag, "sort", "queue", "sort by field (queue, name, added, size, progress, ratio, speed)")
 	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to torrents whose name contains this text (case-insensitive)")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "reverse the sort order")
+	cmd.Flags().StringVar(&fieldsFlag, "fields", "", "comma-separated columns to show (id, hash, name, status, done, size, down, up, ratio, eta, peers, added, download_dir, error, labels)")
 
 	return cmd
 }
@@ -145,23 +222,23 @@ func jsonTorrents(torrents []torrent.Torrent) []torrent.Torrent {
 // writeListPlaintext renders torrents in the appropriate plaintext mode for the
 // command's output: an aligned, header-and-truncation table on a TTY, or plain
 // tab-separated, full-value, header-less rows when piped or when NO_COLOR is set.
-func writeListPlaintext(cmd *cobra.Command, torrents []torrent.Torrent) {
+func writeListPlaintext(cmd *cobra.Command, torrents []torrent.Torrent, columns []listColumn) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {
-		writeListTable(out, torrents, terminalWidth(out))
+		writeListTable(out, torrents, columns, terminalWidth(out))
 		return
 	}
 
-	writeListPiped(out, torrents)
+	writeListPiped(out, torrents, columns)
 }
 
 // writeListPiped writes plain, tab-separated, full-value rows with no header —
 // the stable scripting contract. An empty list writes nothing.
-func writeListPiped(w io.Writer, torrents []torrent.Torrent) {
+func writeListPiped(w io.Writer, torrents []torrent.Torrent, columns []listColumn) {
 	for _, t := range torrents {
-		cells := make([]string, len(listColumns))
-		for i, col := range listColumns {
+		cells := make([]string, len(columns))
+		for i, col := range columns {
 			cells[i] = col.value(t)
 		}
 
@@ -173,25 +250,25 @@ func writeListPiped(w io.Writer, torrents []torrent.Torrent) {
 // columns right-aligned and text columns left-aligned, truncating truncatable
 // columns (Name) with an ellipsis so rows fit width. An empty list writes a
 // friendly "No torrents." line. A width of 0 disables truncation.
-func writeListTable(w io.Writer, torrents []torrent.Torrent, width int) {
+func writeListTable(w io.Writer, torrents []torrent.Torrent, columns []listColumn, width int) {
 	if len(torrents) == 0 {
 		_, _ = fmt.Fprintln(w, "No torrents.")
 		return
 	}
 
-	nameLimit := nameColumnLimit(torrents, width)
+	nameLimit := nameColumnLimit(torrents, columns, width)
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 
-	headers := make([]string, len(listColumns))
-	for i, col := range listColumns {
+	headers := make([]string, len(columns))
+	for i, col := range columns {
 		headers[i] = col.header
 	}
 	_, _ = fmt.Fprintln(tw, strings.Join(headers, "\t"))
 
 	for _, t := range torrents {
-		cells := make([]string, len(listColumns))
-		for i, col := range listColumns {
+		cells := make([]string, len(columns))
+		for i, col := range columns {
 			cell := col.value(t)
 			if col.truncate && nameLimit > 0 {
 				cell = truncate(cell, nameLimit)
@@ -213,8 +290,9 @@ func writeListTable(w io.Writer, torrents []torrent.Torrent, width int) {
 
 // nameColumnLimit computes how many runes the truncatable (Name) column may
 // occupy so the widest row fits within width. It returns 0 (no truncation) when
-// the width is unknown or already roomy enough.
-func nameColumnLimit(torrents []torrent.Torrent, width int) int {
+// the width is unknown or already roomy enough. Only the first truncatable
+// column is considered.
+func nameColumnLimit(torrents []torrent.Torrent, columns []listColumn, width int) int {
 	if width <= 0 {
 		return 0
 	}
@@ -225,8 +303,8 @@ func nameColumnLimit(torrents []torrent.Torrent, width int) int {
 
 	fixed := 0
 	nameIndex := -1
-	for i, col := range listColumns {
-		if col.truncate {
+	for i, col := range columns {
+		if col.truncate && nameIndex == -1 {
 			nameIndex = i
 			continue
 		}
@@ -244,7 +322,7 @@ func nameColumnLimit(torrents []torrent.Torrent, width int) int {
 		return 0
 	}
 
-	gutters := (len(listColumns) - 1) * gutter
+	gutters := (len(columns) - 1) * gutter
 	available := width - fixed - gutters
 
 	// Keep a small floor so a very narrow terminal still shows a sliver of the
@@ -255,9 +333,9 @@ func nameColumnLimit(torrents []torrent.Torrent, width int) int {
 	}
 
 	// Don't truncate when the longest name already fits.
-	longest := len(listColumns[nameIndex].header)
+	longest := len(columns[nameIndex].header)
 	for _, t := range torrents {
-		if w := len([]rune(listColumns[nameIndex].value(t))); w > longest {
+		if w := len([]rune(columns[nameIndex].value(t))); w > longest {
 			longest = w
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"time"
 
 	"github.com/itchyny/gojq"
 )
@@ -160,6 +161,16 @@ func Ratio(ratio float64) string {
 	}
 
 	return fmt.Sprintf("%.2f", ratio)
+}
+
+// Date formats a Unix timestamp (seconds) as a local "2006-01-02" date. A
+// non-positive timestamp (unset/unknown) renders as a dash.
+func Date(unix int64) string {
+	if unix <= 0 {
+		return "-"
+	}
+
+	return time.Unix(unix, 0).Format("2006-01-02")
 }
 
 // Duration formats a number of seconds as a compact "Nd Nh Nm Ns" string,

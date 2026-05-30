@@ -194,9 +194,12 @@ func TestWriteListTableAligned(t *testing.T) {
 		{ID: 200, Name: "debian", Status: torrent.StatusSeeding, PercentDone: 1.0, TotalSize: 4096, RateUpload: 256, UploadRatio: 2.0, ETA: -1},
 	}
 
+	cols, err := parseFields("")
+	require.NoError(t, err)
+
 	var buf bytes.Buffer
 	// width 0 disables truncation so the full names show.
-	writeListTable(&buf, torrents, 0)
+	writeListTable(&buf, torrents, cols, 0)
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -218,10 +221,77 @@ func TestWriteListTableAligned(t *testing.T) {
 }
 
 func TestWriteListTableEmpty(t *testing.T) {
+	cols, err := parseFields("")
+	require.NoError(t, err)
+
 	var buf bytes.Buffer
-	writeListTable(&buf, nil, 80)
+	writeListTable(&buf, nil, cols, 80)
 
 	assert.Equal(t, "No torrents.", strings.TrimSpace(buf.String()))
+}
+
+func TestListFieldsSelectsAndOrdersColumns(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	// Order is honored (hash before id) and only the requested columns appear.
+	out, _, err := runList(t, "--config", cfgPath, "--fields", "hash,id,name")
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 2, "piped output is header-less, one row per torrent")
+
+	first := strings.Split(lines[0], "\t")
+	require.Len(t, first, 3, "only the three selected columns are rendered")
+	assert.Equal(t, "aaa111", first[0], "hash is first")
+	assert.Equal(t, "1", first[1], "id is second")
+	assert.Equal(t, "ubuntu-24.04.iso", first[2], "name is third")
+}
+
+func TestListFieldsComposesWithFilterAndSort(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	// --fields composes with --filter and --sort: only the seeding torrent,
+	// rendered with the selected columns.
+	out, _, err := runList(t, "--config", cfgPath, "--filter", "seeding", "--sort", "name", "--fields", "id,labels")
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 1, "only the seeding torrent matches")
+
+	cells := strings.Split(lines[0], "\t")
+	require.Len(t, cells, 2)
+	assert.Equal(t, "2", cells[0])
+}
+
+func TestListFieldsInvalidKeyErrors(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	_, _, err := runList(t, "--config", cfgPath, "--fields", "id,bogus,name")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid field "bogus"`)
+	assert.Contains(t, err.Error(), "valid fields are", "the error lists the valid keys")
+	assert.Contains(t, err.Error(), "download_dir", "the valid-keys list includes registry keys")
+}
+
+func TestParseFieldsDefault(t *testing.T) {
+	cols, err := parseFields("")
+	require.NoError(t, err)
+	require.Len(t, cols, len(defaultFieldKeys))
+
+	assert.Equal(t, "ID", cols[0].header)
+	assert.Equal(t, "Name", cols[1].header)
+	assert.Equal(t, "ETA", cols[len(cols)-1].header)
+}
+
+func TestParseFieldsTrimsAndLowercases(t *testing.T) {
+	cols, err := parseFields(" ID , Name ")
+	require.NoError(t, err)
+	require.Len(t, cols, 2)
+	assert.Equal(t, "ID", cols[0].header)
+	assert.Equal(t, "Name", cols[1].header)
 }
 
 func TestWriteListTableTruncatesName(t *testing.T) {
@@ -229,9 +299,12 @@ func TestWriteListTableTruncatesName(t *testing.T) {
 		{ID: 1, Name: "this-is-a-very-long-torrent-name-that-will-not-fit", Status: torrent.StatusSeeding},
 	}
 
+	cols, err := parseFields("")
+	require.NoError(t, err)
+
 	var buf bytes.Buffer
 	// A narrow width forces the Name column to truncate with an ellipsis.
-	writeListTable(&buf, torrents, 40)
+	writeListTable(&buf, torrents, cols, 40)
 
 	out := buf.String()
 	assert.Contains(t, out, "…", "long name is truncated with an ellipsis")
