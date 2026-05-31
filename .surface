@@ -1,4 +1,5 @@
 ARG snatcher api 0 method
+ARG snatcher auth default 0 alias
 ARG snatcher server settings get 0 key
 ARG snatcher server settings reset 0 key
 ARG snatcher server settings set 0 key
@@ -9,6 +10,8 @@ ARG snatcher torrent move 1 location
 CMD snatcher
 CMD snatcher api
 CMD snatcher auth
+CMD snatcher auth default
+CMD snatcher auth list
 CMD snatcher auth remove
 CMD snatcher auth set
 CMD snatcher auth show
@@ -46,8 +49,14 @@ FLAG snatcher api --input type=string
 FLAG snatcher api --jq type=string
 FLAG snatcher api --raw type=bool
 FLAG snatcher api --raw-field type=stringArray
+FLAG snatcher api --server type=string
+FLAG snatcher auth default --config type=string
+FLAG snatcher auth list --config type=string
+FLAG snatcher auth list --jq type=string
+FLAG snatcher auth list --json type=bool
 FLAG snatcher auth remove --config type=string
 FLAG snatcher auth set --config type=string
+FLAG snatcher auth set --name type=string
 FLAG snatcher auth set --password-stdin type=bool
 FLAG snatcher auth set --url type=string
 FLAG snatcher auth set --username type=string
@@ -58,35 +67,44 @@ FLAG snatcher auth test --json type=bool
 FLAG snatcher server port get --config type=string
 FLAG snatcher server port get --jq type=string
 FLAG snatcher server port get --json type=bool
+FLAG snatcher server port get --server type=string
 FLAG snatcher server port set --config type=string
 FLAG snatcher server port set --forwarding type=bool
 FLAG snatcher server port set --jq type=string
 FLAG snatcher server port set --json type=bool
 FLAG snatcher server port set --random type=bool
+FLAG snatcher server port set --server type=string
 FLAG snatcher server port test --config type=string
 FLAG snatcher server port test --jq type=string
 FLAG snatcher server port test --json type=bool
+FLAG snatcher server port test --server type=string
 FLAG snatcher server settings --category type=string
 FLAG snatcher server settings --config type=string
 FLAG snatcher server settings --jq type=string
 FLAG snatcher server settings --json type=bool
 FLAG snatcher server settings --search type=string
+FLAG snatcher server settings --server type=string
 FLAG snatcher server settings get --config type=string
 FLAG snatcher server settings get --jq type=string
 FLAG snatcher server settings get --json type=bool
+FLAG snatcher server settings get --server type=string
 FLAG snatcher server settings reset --config type=string
 FLAG snatcher server settings reset --jq type=string
 FLAG snatcher server settings reset --json type=bool
+FLAG snatcher server settings reset --server type=string
 FLAG snatcher server settings set --config type=string
 FLAG snatcher server settings set --jq type=string
 FLAG snatcher server settings set --json type=bool
+FLAG snatcher server settings set --server type=string
 FLAG snatcher server stats --config type=string
 FLAG snatcher server stats --jq type=string
 FLAG snatcher server stats --json type=bool
+FLAG snatcher server stats --server type=string
 FLAG snatcher torrent info --config type=string
 FLAG snatcher torrent info --fields type=string
 FLAG snatcher torrent info --jq type=string
 FLAG snatcher torrent info --json type=bool
+FLAG snatcher torrent info --server type=string
 FLAG snatcher torrent list --config type=string
 FLAG snatcher torrent list --fields type=string
 FLAG snatcher torrent list --filter type=string
@@ -94,32 +112,40 @@ FLAG snatcher torrent list --jq type=string
 FLAG snatcher torrent list --json type=bool
 FLAG snatcher torrent list --reverse type=bool
 FLAG snatcher torrent list --search type=string
+FLAG snatcher torrent list --server type=string
 FLAG snatcher torrent list --sort type=string
 FLAG snatcher torrent move --config type=string
 FLAG snatcher torrent move --in-place type=bool
 FLAG snatcher torrent move --jq type=string
 FLAG snatcher torrent move --json type=bool
+FLAG snatcher torrent move --server type=string
 FLAG snatcher torrent queue bottom --config type=string
 FLAG snatcher torrent queue bottom --jq type=string
 FLAG snatcher torrent queue bottom --json type=bool
+FLAG snatcher torrent queue bottom --server type=string
 FLAG snatcher torrent queue down --config type=string
 FLAG snatcher torrent queue down --jq type=string
 FLAG snatcher torrent queue down --json type=bool
+FLAG snatcher torrent queue down --server type=string
 FLAG snatcher torrent queue top --config type=string
 FLAG snatcher torrent queue top --jq type=string
 FLAG snatcher torrent queue top --json type=bool
+FLAG snatcher torrent queue top --server type=string
 FLAG snatcher torrent queue up --config type=string
 FLAG snatcher torrent queue up --jq type=string
 FLAG snatcher torrent queue up --json type=bool
+FLAG snatcher torrent queue up --server type=string
 FLAG snatcher torrent reannounce --all type=bool
 FLAG snatcher torrent reannounce --config type=string
 FLAG snatcher torrent reannounce --jq type=string
 FLAG snatcher torrent reannounce --json type=bool
+FLAG snatcher torrent reannounce --server type=string
 FLAG snatcher torrent remove --all type=bool
 FLAG snatcher torrent remove --config type=string
 FLAG snatcher torrent remove --delete-data type=bool
 FLAG snatcher torrent remove --jq type=string
 FLAG snatcher torrent remove --json type=bool
+FLAG snatcher torrent remove --server type=string
 FLAG snatcher torrent remove --yes type=bool
 FLAG snatcher torrent set --all type=bool
 FLAG snatcher torrent set --clear-labels type=bool
@@ -137,6 +163,7 @@ FLAG snatcher torrent set --queue-position type=int
 FLAG snatcher torrent set --seed-idle type=string
 FLAG snatcher torrent set --seed-ratio type=string
 FLAG snatcher torrent set --sequential-download type=bool
+FLAG snatcher torrent set --server type=string
 FLAG snatcher torrent set --tracker type=stringArray
 FLAG snatcher torrent set --upload-limit type=string
 FLAG snatcher torrent start --all type=bool
@@ -144,10 +171,12 @@ FLAG snatcher torrent start --config type=string
 FLAG snatcher torrent start --jq type=string
 FLAG snatcher torrent start --json type=bool
 FLAG snatcher torrent start --now type=bool
+FLAG snatcher torrent start --server type=string
 FLAG snatcher torrent stop --all type=bool
 FLAG snatcher torrent stop --config type=string
 FLAG snatcher torrent stop --jq type=string
 FLAG snatcher torrent stop --json type=bool
+FLAG snatcher torrent stop --server type=string
 FLAG snatcher torrent upload --config type=string
 FLAG snatcher torrent upload --delete type=bool
 FLAG snatcher torrent upload --download-dir type=string
@@ -155,8 +184,10 @@ FLAG snatcher torrent upload --jq type=string
 FLAG snatcher torrent upload --json type=bool
 FLAG snatcher torrent upload --label type=stringArray
 FLAG snatcher torrent upload --quiet type=bool
+FLAG snatcher torrent upload --server type=string
 FLAG snatcher torrent upload --start type=bool
 FLAG snatcher torrent verify --all type=bool
 FLAG snatcher torrent verify --config type=string
 FLAG snatcher torrent verify --jq type=string
 FLAG snatcher torrent verify --json type=bool
+FLAG snatcher torrent verify --server type=string

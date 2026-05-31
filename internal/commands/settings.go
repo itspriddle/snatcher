@@ -372,6 +372,7 @@ type settingRow struct {
 func NewSettingsCmd() *cobra.Command {
 	var (
 		configPath   string
+		server       string
 		asJSON       bool
 		jqExpr       string
 		categoryFlag string
@@ -401,7 +402,7 @@ func NewSettingsCmd() *cobra.Command {
 				category = parsed
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -428,6 +429,7 @@ func NewSettingsCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().StringVar(&categoryFlag, "category", "", "filter by category (download, network, bandwidth, queue)")
@@ -448,6 +450,7 @@ func NewSettingsCmd() *cobra.Command {
 func newSettingsGetCmd() *cobra.Command {
 	var (
 		configPath string
+		server     string
 		asJSON     bool
 		jqExpr     string
 	)
@@ -464,7 +467,7 @@ func newSettingsGetCmd() *cobra.Command {
 				return fmt.Errorf("unknown setting %q: valid settings are %s", args[0], strings.Join(allSettingKeys(), ", "))
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -495,6 +498,7 @@ func newSettingsGetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
@@ -512,6 +516,7 @@ func newSettingsGetCmd() *cobra.Command {
 func newSettingsSetCmd() *cobra.Command {
 	var (
 		configPath string
+		server     string
 		asJSON     bool
 		jqExpr     string
 	)
@@ -536,7 +541,7 @@ func newSettingsSetCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -568,6 +573,7 @@ func newSettingsSetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
@@ -643,6 +649,7 @@ func parseSettingAssignments(args []string) ([]settingDef, map[string]any, error
 func newSettingsResetCmd() *cobra.Command {
 	var (
 		configPath string
+		server     string
 		asJSON     bool
 		jqExpr     string
 	)
@@ -665,7 +672,7 @@ func newSettingsResetCmd() *cobra.Command {
 				return fmt.Errorf("setting %q is read-only", key)
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -697,6 +704,7 @@ func newSettingsResetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 

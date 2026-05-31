@@ -30,6 +30,7 @@ var errUploadFailures = errors.New("one or more sources failed")
 func NewUploadCmd() *cobra.Command {
 	var (
 		configPath  string
+		server      string
 		asJSON      bool
 		jqExpr      string
 		start       bool
@@ -64,7 +65,7 @@ func NewUploadCmd() *cobra.Command {
 				return errors.New("specify at least one file, url, or magnet link")
 			}
 
-			backend, _, err := dial(configPath)
+			backend, _, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -105,6 +106,7 @@ func NewUploadCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().BoolVar(&start, "start", false, "start torrents immediately instead of adding them paused")

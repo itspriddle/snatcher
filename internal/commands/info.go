@@ -23,6 +23,7 @@ import (
 func NewInfoCmd() *cobra.Command {
 	var (
 		configPath string
+		server     string
 		asJSON     bool
 		jqExpr     string
 		fieldsFlag string
@@ -45,7 +46,7 @@ func NewInfoCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -70,6 +71,7 @@ func NewInfoCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().StringVar(&fieldsFlag, "fields", "", "comma-separated fields to show, in order (default: all; id, hash, name, status, done, size, down, up, ratio, eta, peers, added, download_dir, error, labels)")

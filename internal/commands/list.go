@@ -151,6 +151,7 @@ func parseFields(spec string, defaults []string) ([]listColumn, error) {
 func NewListCmd() *cobra.Command {
 	var (
 		configPath string
+		server     string
 		asJSON     bool
 		jqExpr     string
 		filterFlag string
@@ -183,7 +184,7 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -215,6 +216,7 @@ func NewListCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().StringVar(&filterFlag, "filter", "all", "filter by status (all, active, downloading, seeding, stopped, verifying, queued-to-verify, queued-to-download, queued-to-seed, error)")

@@ -44,7 +44,7 @@ Show help for
 or any subcommand and exit.
 .SS Common options
 These options are accepted by every command that talks to the server
-.RB ( auth\ show ", " auth\ test )
+.RB ( auth\ list ", " auth\ show ", " auth\ test )
 and by all the
 .B server
 and
@@ -67,6 +67,20 @@ Read configuration from
 instead of the default location (see
 .BR FILES ).
 .TP
+.BR \-\-server " " \fIalias\fR
+Target the configured server named
+.IR alias
+instead of the default. When omitted, snatcher uses the
+.B SNATCHER_SERVER
+environment variable if set, otherwise the configured default server. This
+option is accepted only by commands that connect to a server; it never appears
+on the
+.B auth
+subcommands,
+.BR version ,
+or
+.BR completion .
+.TP
 .B \-\-json
 Emit JSON instead of plaintext.
 .TP
@@ -78,19 +92,25 @@ Implies JSON and takes precedence over
 .SH COMMANDS
 .SS "auth"
 Manage server authentication. Configure and verify the connection to your
-Transmission server. The
+Transmission servers. The
 .B auth
-command has four subcommands.
+command manages an inventory of named servers.
 .TP
 .B snatcher auth set \fR[\fIoptions\fR]
-Store the server URL and username in the config file and the password in the
-OS keyring. The password is read from a hidden, non-echoing prompt (with
-confirmation) or, for scripting, from standard input with
+Add or update a named server. Its URL and username are stored in the config
+file under the server's alias and the password in the OS keyring. The password
+is read from a hidden, non-echoing prompt (with confirmation) or, for
+scripting, from standard input with
 .BR \-\-password\-stdin .
 An empty password is a valid choice (a server with authentication disabled)
-and stores no secret. Rekeying to a different URL deletes the old URL's keyring
-entry. Options:
+and stores no secret. When the alias's URL changes, the old URL's keyring entry
+is deleted. The first server registered when no default is set becomes the
+default. Options:
 .RS
+.TP
+.BR \-\-name " " \fIalias\fR
+Alias the server is stored under. When omitted it defaults to the lowercased
+URL host (including the port).
 .TP
 .BR \-\-url " " \fIurl\fR
 Transmission RPC URL, e.g.\&
@@ -104,20 +124,51 @@ Username for HTTP Basic Auth.
 Read the password from standard input instead of prompting.
 .RE
 .TP
-.B snatcher auth show \fR[\fIoptions\fR]
-Show the current server URL, username, resolved config path, and whether a
-keyring secret exists. The secret value itself is never revealed. Accepts
-.BR \-\-config " and " \-\-json .
-.TP
-.B snatcher auth test \fR[\fIoptions\fR]
-Dial the configured server and perform a real round-trip, reporting the
-connection status, server version, negotiated protocol, and RPC semver. Exits
-non-zero on failure. Accepts
-.BR \-\-config " and " \-\-json .
-.TP
-.B snatcher auth remove \fR[\fIoptions\fR]
-Delete the keyring secret and clear the credentials from the config file.
+.B snatcher auth list \fR[\fIoptions\fR]
+List every configured server, sorted by alias, showing its name, URL, username,
+whether a keyring secret is stored, and whether it is the default. Plaintext is
+an aligned table on a terminal and tab-separated, header-less rows when piped or
+when
+.B NO_COLOR
+is set (the same contract as
+.BR list ).
 Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher auth default \fIalias\fR \fR[\fIoptions\fR]
+Set the default server to the existing alias
+.IR alias .
+The default is used by every command that connects to a server when
+.B \-\-server
+and
+.B SNATCHER_SERVER
+are not given. An unknown alias is rejected, listing the configured names.
+Accepts
+.BR \-\-config .
+.TP
+.B snatcher auth show \fR[\fIalias\fR] \fR[\fIoptions\fR]
+Show a server's name, URL, username, resolved config path, whether a keyring
+secret exists, and whether it is the default. Shows the named server
+.IR alias ,
+or the configured default when the alias is omitted. The secret value itself is
+never revealed. Accepts
+.BR \-\-config " and " \-\-json .
+.TP
+.B snatcher auth test \fR[\fIalias\fR] \fR[\fIoptions\fR]
+Dial a server and perform a real round-trip, reporting the connection status,
+server version, negotiated protocol, and RPC semver. Tests the named server
+.IR alias ,
+or the configured default when the alias is omitted. Exits non-zero on failure.
+Accepts
+.BR \-\-config " and " \-\-json .
+.TP
+.B snatcher auth remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
+Remove a configured server: delete its keyring secret, drop its entry from the
+config file, and persist. Removes the named server
+.IR alias ,
+or the configured default when the alias is omitted. When the removed server was
+the default, the default is repointed to the sole remaining server if exactly
+one remains, otherwise it is cleared. An unknown alias is rejected. Accepts
 .BR \-\-config .
 .SS "server"
 Manage the server itself: session settings, statistics, and the BitTorrent
@@ -607,15 +658,13 @@ selectors matched no torrents, a confirmation was refused, or at least one
 source failed.
 .SH ENVIRONMENT
 .TP
-.B SNATCHER_SERVER_URL
-Overrides the
-.B server_url
-from the config file.
-.TP
-.B SNATCHER_USERNAME
-Overrides the
-.B username
-from the config file.
+.B SNATCHER_SERVER
+Selects the configured server alias to connect to, equivalent to passing
+.BR \-\-server .
+The
+.B \-\-server
+flag takes precedence; when neither is set, the configured default server is
+used.
 .TP
 .B NO_COLOR
 When set to a non-empty value, forces
@@ -628,11 +677,15 @@ When set, the default config path is
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/snatcher/config.json
-Non-secret configuration (JSON keys
-.B server_url
+Non-secret configuration (a
+.B servers
+map of named server aliases, each with a
+.B url
 and
-.BR username ),
-created with mode 0600. Falls back to
+.BR username ,
+plus a
+.B default_server
+alias), created with mode 0600. Falls back to
 .I ~/.config/snatcher/config.json
 when
 .B XDG_CONFIG_HOME

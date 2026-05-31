@@ -54,6 +54,7 @@ type apiEnvelope struct {
 func NewAPICmd() *cobra.Command {
 	var (
 		configPath string
+		server     string
 		jqExpr     string
 		raw        bool
 		rawFields  []string
@@ -104,7 +105,7 @@ func NewAPICmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -134,6 +135,7 @@ func NewAPICmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter the normalized response with a jq expression")
 	cmd.Flags().BoolVar(&raw, "raw", false, "print the server's exact response bytes, bypassing normalization")
 	cmd.Flags().StringArrayVarP(&rawFields, "raw-field", "f", nil, "add a string argument field (key=value); repeatable")

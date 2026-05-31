@@ -11,8 +11,8 @@ vision and the target CLI surface.
 Inner loop: **edit → `make check` → fix → repeat → push.**
 
 `make check` is the local CI gate and must pass green before every push. It
-runs `fmt-check`, `vet`, `lint`, `test`, `check-surface`, and `tidy-check` —
-the same checks CI enforces.
+runs `fmt-check`, `vet`, `lint`, `test`, `check-surface`, `check-man`, and
+`tidy-check` — the same checks CI enforces.
 
 ```sh
 make build         # build bin/snatcher with version ldflags
@@ -36,7 +36,7 @@ internal/commands/        # one cobra command group per file (auth, list, …)
 internal/torrent/         # vendor-neutral Backend interface + types + transforms
 internal/transmission/    # Transmission adapter (the only importer of rpc)
 internal/transmission/rpc # typed Transmission RPC client (Client→Protocol→Transport)
-internal/config/          # non-secret config (viper, XDG path)
+internal/config/          # non-secret config (named servers, JSON, XDG path)
 internal/secrets/         # passwords in the OS keyring
 internal/output/          # JSON / jq / human formatters + terminal sanitizer
 internal/surface/         # CLI surface snapshot generator
@@ -86,10 +86,21 @@ on `--json`/`--jq` output (a structured contract consumers handle themselves).
 `list` plaintext is a TTY-aligned table on a terminal, and tab-separated,
 header-less rows when piped or when `NO_COLOR` is set.
 
-**Config vs secrets.** Non-secret config (server URL, username) is JSON at
-`$XDG_CONFIG_HOME/snatcher/config.json` via an isolated viper instance
-(precedence: flag > env `SNATCHER_*` > file > default). The password lives only
-in the OS keyring (`internal/secrets`), keyed by server URL — never on disk.
+**Config vs secrets.** Non-secret config is JSON at
+`$XDG_CONFIG_HOME/snatcher/config.json`, read and written directly by
+`internal/config` (no viper — it lowercases map keys, which would corrupt
+case-sensitive aliases). The file holds a `servers` map of named aliases (each
+with a `url` and `username`) plus a `default_server` alias; legacy single-server
+files are migrated on read. The config package no longer reads env vars. Server
+selection precedence (`--server` flag > `SNATCHER_SERVER` env > `default_server`)
+is resolved at the command layer by `dial`/`config.Resolve`, not in the config
+package. The password lives only in the OS keyring (`internal/secrets`), keyed by
+server URL — never on disk.
+
+`config.json` is trusted, operator-owned input. The `validateURL` userinfo guard
+(rejecting embedded `user:pass@` credentials) applies only at `auth set` time;
+URLs loaded from a legacy or hand-edited config are used as-is, with no
+load-time re-validation.
 
 Adding a command: create a file in `internal/commands`, register it in
 `internal/cli/root.go`, then regenerate `.surface` (see below).
