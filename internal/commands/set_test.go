@@ -540,6 +540,136 @@ func TestSetCombinesScalarAndLimitFields(t *testing.T) {
 	assert.Contains(t, body, `"seedRatioMode":1`)
 }
 
+// TestSetLabelsBespoke asserts --label replaces the label set on the bespoke
+// wire (labels passes through the mechanical transform unchanged).
+func TestSetLabelsBespoke(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--label", "linux", "--label", "iso", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok, "the bespoke torrent-set method was called")
+	assert.Contains(t, body, `"labels":["linux","iso"]`)
+}
+
+// TestSetLabelsJSONRPC asserts --label reaches the JSON-RPC wire.
+func TestSetLabelsJSONRPC(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--label", "linux", "--label", "iso", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent_set")
+	require.True(t, ok, "the JSON-RPC torrent_set method was called")
+	assert.Contains(t, body, `"labels":["linux","iso"]`)
+}
+
+// TestSetClearLabels asserts --clear-labels sends an empty label list.
+func TestSetClearLabels(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--clear-labels", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok, "the bespoke torrent-set method was called")
+	assert.Contains(t, body, `"labels":[]`)
+}
+
+// TestSetLabelMutualExclusion guards that --label and --clear-labels together
+// are rejected before any RPC call.
+func TestSetLabelMutualExclusion(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--label", "linux", "--clear-labels", "1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--label and --clear-labels cannot be used together")
+
+	_, ok := stub.request("torrent-set")
+	assert.False(t, ok, "the set method must not be called for the mutual-exclusion error")
+}
+
+// TestSetTrackersBespoke asserts --tracker replaces the tracker list as a
+// newline-joined string on the bespoke wire (camelCase trackerList).
+func TestSetTrackersBespoke(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath,
+		"--tracker", "https://a.example/announce",
+		"--tracker", "https://b.example/announce",
+		"1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok, "the bespoke torrent-set method was called")
+	assert.Contains(t, body, `"trackerList":"https://a.example/announce\nhttps://b.example/announce"`)
+}
+
+// TestSetTrackersJSONRPC asserts --tracker reaches the JSON-RPC wire as a
+// newline-joined string with the canonical snake_case key.
+func TestSetTrackersJSONRPC(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath,
+		"--tracker", "https://a.example/announce",
+		"--tracker", "https://b.example/announce",
+		"1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent_set")
+	require.True(t, ok, "the JSON-RPC torrent_set method was called")
+	assert.Contains(t, body, `"tracker_list":"https://a.example/announce\nhttps://b.example/announce"`)
+}
+
+// TestSetClearTrackers asserts --clear-trackers sends an empty tracker list.
+func TestSetClearTrackers(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--clear-trackers", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok, "the bespoke torrent-set method was called")
+	assert.Contains(t, body, `"trackerList":""`)
+}
+
+// TestSetTrackerMutualExclusion guards that --tracker and --clear-trackers
+// together are rejected before any RPC call.
+func TestSetTrackerMutualExclusion(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath,
+		"--tracker", "https://a.example/announce", "--clear-trackers", "1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--tracker and --clear-trackers cannot be used together")
+
+	_, ok := stub.request("torrent-set")
+	assert.False(t, ok, "the set method must not be called for the mutual-exclusion error")
+}
+
+// TestSetGroup asserts --group sends the bandwidth group name verbatim (group
+// passes through the mechanical transform unchanged on both protocols).
+func TestSetGroup(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--group", "throttled", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok, "the bespoke torrent-set method was called")
+	assert.Contains(t, body, `"group":"throttled"`)
+}
+
 func TestSetNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")

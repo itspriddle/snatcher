@@ -13,9 +13,9 @@ import (
 
 // NewSetCmd builds the "set" command, which writes mutable per-torrent fields
 // (priority, queue position, peer limit, the session-limit/sequential toggles,
-// and the speed and seeding limits) on the torrents selected by positional
-// id/hash arguments (or --all). It maps to the Transmission RPC torrent-set
-// method.
+// the speed and seeding limits, and the labels, tracker list, and bandwidth
+// group) on the torrents selected by positional id/hash arguments (or --all).
+// It maps to the Transmission RPC torrent-set method.
 //
 // Only the fields whose flags were explicitly set are written (detected via
 // cmd.Flags().Changed), so unspecified fields are never clobbered. With no field
@@ -24,19 +24,11 @@ import (
 // mirrors list: --jq → --json → plaintext.
 func NewSetCmd() *cobra.Command {
 	var (
-		configPath          string
-		asJSON              bool
-		jqExpr              string
-		all                 bool
-		priority            string
-		queuePosition       int
-		peerLimit           int
-		honorsSessionLimits bool
-		sequentialDownload  bool
-		downloadLimit       string
-		uploadLimit         string
-		seedRatio           string
-		seedIdle            string
+		configPath string
+		asJSON     bool
+		jqExpr     string
+		all        bool
+		flags      setFlags
 	)
 
 	cmd := &cobra.Command{
@@ -56,60 +48,9 @@ func NewSetCmd() *cobra.Command {
 				return err
 			}
 
-			changes := make(map[string]any)
-
-			if cmd.Flags().Changed("priority") {
-				v, err := parsePriority(priority)
-				if err != nil {
-					return err
-				}
-				changes["bandwidth-priority"] = v
-			}
-
-			if cmd.Flags().Changed("queue-position") {
-				if queuePosition < 0 {
-					return fmt.Errorf("invalid value for --queue-position: must be 0 or greater")
-				}
-				changes["queue-position"] = queuePosition
-			}
-
-			if cmd.Flags().Changed("peer-limit") {
-				if peerLimit < 1 {
-					return fmt.Errorf("invalid value for --peer-limit: must be 1 or greater")
-				}
-				changes["peer-limit"] = peerLimit
-			}
-
-			if cmd.Flags().Changed("honors-session-limits") {
-				changes["honors-session-limits"] = honorsSessionLimits
-			}
-
-			if cmd.Flags().Changed("sequential-download") {
-				changes["sequential-download"] = sequentialDownload
-			}
-
-			if cmd.Flags().Changed("download-limit") {
-				if err := applyRateLimit(changes, "download", downloadLimit); err != nil {
-					return err
-				}
-			}
-
-			if cmd.Flags().Changed("upload-limit") {
-				if err := applyRateLimit(changes, "upload", uploadLimit); err != nil {
-					return err
-				}
-			}
-
-			if cmd.Flags().Changed("seed-ratio") {
-				if err := applySeedRatio(changes, seedRatio); err != nil {
-					return err
-				}
-			}
-
-			if cmd.Flags().Changed("seed-idle") {
-				if err := applySeedIdle(changes, seedIdle); err != nil {
-					return err
-				}
+			changes, err := flags.collectChanges(cmd)
+			if err != nil {
+				return err
 			}
 
 			if len(changes) == 0 {
@@ -145,17 +86,118 @@ func NewSetCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().BoolVar(&all, "all", false, "set the fields on every torrent")
-	cmd.Flags().StringVar(&priority, "priority", "", "bandwidth priority: low, normal, or high")
-	cmd.Flags().IntVar(&queuePosition, "queue-position", 0, "position in the download/seed queue (0-based)")
-	cmd.Flags().IntVar(&peerLimit, "peer-limit", 0, "maximum number of peers for the torrent")
-	cmd.Flags().BoolVar(&honorsSessionLimits, "honors-session-limits", false, "honor the global session speed limits")
-	cmd.Flags().BoolVar(&sequentialDownload, "sequential-download", false, "download pieces in sequential order (Transmission 4.1+)")
-	cmd.Flags().StringVar(&downloadLimit, "download-limit", "", "download speed limit in kB/s, or 'off' to disable")
-	cmd.Flags().StringVar(&uploadLimit, "upload-limit", "", "upload speed limit in kB/s, or 'off' to disable")
-	cmd.Flags().StringVar(&seedRatio, "seed-ratio", "", "seed ratio limit, or 'global'/'unlimited'")
-	cmd.Flags().StringVar(&seedIdle, "seed-idle", "", "seed idle limit in minutes or as a duration (30m, 1h), or 'global'/'unlimited'")
+	cmd.Flags().StringVar(&flags.priority, "priority", "", "bandwidth priority: low, normal, or high")
+	cmd.Flags().IntVar(&flags.queuePosition, "queue-position", 0, "position in the download/seed queue (0-based)")
+	cmd.Flags().IntVar(&flags.peerLimit, "peer-limit", 0, "maximum number of peers for the torrent")
+	cmd.Flags().BoolVar(&flags.honorsSessionLimits, "honors-session-limits", false, "honor the global session speed limits")
+	cmd.Flags().BoolVar(&flags.sequentialDownload, "sequential-download", false, "download pieces in sequential order (Transmission 4.1+)")
+	cmd.Flags().StringVar(&flags.downloadLimit, "download-limit", "", "download speed limit in kB/s, or 'off' to disable")
+	cmd.Flags().StringVar(&flags.uploadLimit, "upload-limit", "", "upload speed limit in kB/s, or 'off' to disable")
+	cmd.Flags().StringVar(&flags.seedRatio, "seed-ratio", "", "seed ratio limit, or 'global'/'unlimited'")
+	cmd.Flags().StringVar(&flags.seedIdle, "seed-idle", "", "seed idle limit in minutes or as a duration (30m, 1h), or 'global'/'unlimited'")
+	cmd.Flags().StringArrayVar(&flags.labels, "label", nil, "label to apply, replacing the torrent's labels (repeatable)")
+	cmd.Flags().BoolVar(&flags.clearLabels, "clear-labels", false, "remove all labels from the torrent")
+	cmd.Flags().StringArrayVar(&flags.trackers, "tracker", nil, "announce URL, replacing the torrent's tracker list (repeatable)")
+	cmd.Flags().BoolVar(&flags.clearTrackers, "clear-trackers", false, "remove all trackers from the torrent")
+	cmd.Flags().StringVar(&flags.group, "group", "", "bandwidth group name")
 
 	return cmd
+}
+
+// setFlags holds the per-torrent field flag values for the set command, bound by
+// NewSetCmd. collectChanges reads the values that were explicitly set into a
+// neutral kebab-case changes map.
+type setFlags struct {
+	priority            string
+	queuePosition       int
+	peerLimit           int
+	honorsSessionLimits bool
+	sequentialDownload  bool
+	downloadLimit       string
+	uploadLimit         string
+	seedRatio           string
+	seedIdle            string
+	labels              []string
+	clearLabels         bool
+	trackers            []string
+	clearTrackers       bool
+	group               string
+}
+
+// collectChanges builds the neutral kebab-case changes map from the flags that
+// were explicitly set (detected via cmd.Flags().Changed), validating each value
+// and returning a clear error (and no map entry) on bad input. Unset flags are
+// never written, so unspecified fields are left untouched on the server.
+func (f *setFlags) collectChanges(cmd *cobra.Command) (map[string]any, error) {
+	changes := make(map[string]any)
+
+	if cmd.Flags().Changed("priority") {
+		v, err := parsePriority(f.priority)
+		if err != nil {
+			return nil, err
+		}
+		changes["bandwidth-priority"] = v
+	}
+
+	if cmd.Flags().Changed("queue-position") {
+		if f.queuePosition < 0 {
+			return nil, fmt.Errorf("invalid value for --queue-position: must be 0 or greater")
+		}
+		changes["queue-position"] = f.queuePosition
+	}
+
+	if cmd.Flags().Changed("peer-limit") {
+		if f.peerLimit < 1 {
+			return nil, fmt.Errorf("invalid value for --peer-limit: must be 1 or greater")
+		}
+		changes["peer-limit"] = f.peerLimit
+	}
+
+	if cmd.Flags().Changed("honors-session-limits") {
+		changes["honors-session-limits"] = f.honorsSessionLimits
+	}
+
+	if cmd.Flags().Changed("sequential-download") {
+		changes["sequential-download"] = f.sequentialDownload
+	}
+
+	if cmd.Flags().Changed("download-limit") {
+		if err := applyRateLimit(changes, "download", f.downloadLimit); err != nil {
+			return nil, err
+		}
+	}
+
+	if cmd.Flags().Changed("upload-limit") {
+		if err := applyRateLimit(changes, "upload", f.uploadLimit); err != nil {
+			return nil, err
+		}
+	}
+
+	if cmd.Flags().Changed("seed-ratio") {
+		if err := applySeedRatio(changes, f.seedRatio); err != nil {
+			return nil, err
+		}
+	}
+
+	if cmd.Flags().Changed("seed-idle") {
+		if err := applySeedIdle(changes, f.seedIdle); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := applyLabels(cmd, changes, f.labels, f.clearLabels); err != nil {
+		return nil, err
+	}
+
+	if err := applyTrackers(cmd, changes, f.trackers, f.clearTrackers); err != nil {
+		return nil, err
+	}
+
+	if cmd.Flags().Changed("group") {
+		changes["group"] = f.group
+	}
+
+	return changes, nil
 }
 
 // parsePriority maps a --priority value (low, normal, or high, matched
@@ -265,4 +307,45 @@ func applySeedIdle(changes map[string]any, raw string) error {
 
 func invalidSeedIdleErr() error {
 	return fmt.Errorf("invalid value for --seed-idle: must be whole minutes (integer or duration like 30m/1h), 'global', or 'unlimited'")
+}
+
+// applyLabels writes the labels key from --label / --clear-labels. --label
+// (repeatable) replaces the torrent's full label set; --clear-labels sets it to
+// an empty list. The two flags are mutually exclusive.
+func applyLabels(cmd *cobra.Command, changes map[string]any, labels []string, clearAll bool) error {
+	hasLabels := cmd.Flags().Changed("label")
+
+	if hasLabels && clearAll {
+		return fmt.Errorf("--label and --clear-labels cannot be used together")
+	}
+
+	switch {
+	case clearAll:
+		changes["labels"] = []string{}
+	case hasLabels:
+		changes["labels"] = labels
+	}
+
+	return nil
+}
+
+// applyTrackers writes the tracker-list key from --tracker / --clear-trackers.
+// --tracker (repeatable) replaces the torrent's announce list, newline-joined as
+// Transmission's tracker_list expects; --clear-trackers sets it to the empty
+// string. The two flags are mutually exclusive.
+func applyTrackers(cmd *cobra.Command, changes map[string]any, trackers []string, clearAll bool) error {
+	hasTrackers := cmd.Flags().Changed("tracker")
+
+	if hasTrackers && clearAll {
+		return fmt.Errorf("--tracker and --clear-trackers cannot be used together")
+	}
+
+	switch {
+	case clearAll:
+		changes["tracker-list"] = ""
+	case hasTrackers:
+		changes["tracker-list"] = strings.Join(trackers, "\n")
+	}
+
+	return nil
 }

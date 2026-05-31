@@ -472,6 +472,25 @@ duration such as
 follows the session default;
 .B unlimited
 seeds without an idle limit.
+.TP
+.BR \-\-label " " \fIname\fR
+Label to apply, replacing the torrent's entire label set. May be repeated.
+Mutually exclusive with
+.BR \-\-clear\-labels .
+.TP
+.B \-\-clear\-labels
+Remove all labels from the torrent.
+.TP
+.BR \-\-tracker " " \fIurl\fR
+Announce URL, replacing the torrent's entire tracker list. May be repeated.
+Mutually exclusive with
+.BR \-\-clear\-trackers .
+.TP
+.B \-\-clear\-trackers
+Remove all trackers from the torrent.
+.TP
+.BR \-\-group " " \fIname\fR
+Bandwidth group name for the torrent.
 .RE
 .TP
 .B snatcher torrent upload \fR[\fIoptions\fR] [\fIfile | url | magnet\fR]...
