@@ -21,6 +21,10 @@ var ErrAuth = errors.New("torrent: authentication failed")
 // errors.Is.
 var ErrUnreachable = errors.New("torrent: server unreachable")
 
+// ErrUnsupported signals that the backend server is older than the minimum
+// version snatcher supports. It is matchable with errors.Is.
+var ErrUnsupported = errors.New("torrent: unsupported server version")
+
 // ServerInfo is the vendor-neutral description of a connected server, returned
 // by Backend.ServerInfo.
 type ServerInfo struct {

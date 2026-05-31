@@ -16,6 +16,11 @@ is a modern CLI for managing BitTorrent clients, Transmission first.
 It is built so that anything the (forthcoming) TUI can do is also scriptable
 from the command line.
 .PP
+snatcher requires
+.B Transmission 4.0 or newer
+(RPC version 17 or higher) and refuses to operate against older servers,
+reporting an unsupported\-version error instead of failing in confusing ways.
+.PP
 Commands speak to a single configured Transmission server over its RPC
 interface. The non-secret connection settings (server URL and username) are
 stored in a JSON config file; the password is stored only in the operating

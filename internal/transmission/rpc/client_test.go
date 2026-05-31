@@ -101,6 +101,29 @@ func TestClientFallsBackToBespokeWhenHeaderAbsent(t *testing.T) {
 	assert.Equal(t, "2.93 (3c5870d4f5)", session.Version)
 }
 
+// TestClientRejectsServerBelowMinVersion verifies the Transmission 4.0+ floor: a
+// bespoke server positively reporting an rpc-version below 17 (e.g. Transmission
+// 3.00 = 16) is refused with ErrUnsupported, and the message names both the
+// detected and the required version.
+func TestClientRejectsServerBelowMinVersion(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		sessionResponse: `{
+			"arguments": {"version": "3.00 (bb6b5a062e)", "rpc-version": 16},
+			"result": "success",
+			"tag": 1
+		}`,
+	}.handler())
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	_, err := c.Protocol(context.Background())
+	require.ErrorIs(t, err, ErrUnsupported)
+	require.ErrorContains(t, err, "rpc-version 16")
+	require.ErrorContains(t, err, "rpc-version 17")
+	require.ErrorContains(t, err, "3.00")
+}
+
 func TestClientDetectsOncePerClient(t *testing.T) {
 	var probes atomic.Int32
 

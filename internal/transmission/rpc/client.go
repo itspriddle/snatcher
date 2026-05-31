@@ -6,6 +6,8 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +16,17 @@ import (
 // jsonrpcMajorMin is the semver major version (of rpc-version-semver) at which
 // Transmission supports JSON-RPC 2.0. 4.1.0 ships rpc-version-semver 6.0.0.
 const jsonrpcMajorMin = 6
+
+// minRPCVersion is the lowest integer rpc-version snatcher operates against:
+// Transmission 4.0.0 reports rpc-version 17. Older servers are refused with
+// ErrUnsupported. The integer rpc-version (present since Transmission 1.50) is
+// the dependable cross-version signal; rpc-version-semver only exists from 4.0.0
+// and the CSRF version header only from 4.1.0.
+const minRPCVersion = 17
+
+// ErrUnsupported signals that the server is older than the minimum Transmission
+// version snatcher supports (see minRPCVersion). It is matchable with errors.Is.
+var ErrUnsupported = errors.New("rpc: unsupported server version")
 
 // Client is the typed Transmission RPC client. It probes the server once to
 // detect the RPC scheme, then dispatches typed calls through the negotiated
@@ -271,25 +284,39 @@ func (c *Client) Protocol(ctx context.Context) (string, error) {
 // run the CSRF handshake (which surfaces the X-Transmission-Rpc-Version header on
 // the 409), then selects JSON-RPC 2.0 when that header's semver major is >=
 // jsonrpcMajorMin, falling back to the bespoke scheme when the header is absent
-// or older.
+// or older. It also enforces the Transmission 4.0+ floor: a JSON-RPC server is
+// necessarily >= 4.1.0 and clears it for free, while a bespoke server is
+// confirmed against minRPCVersion using the probe's own session-get body — no
+// extra round-trip.
 func (c *Client) detect(ctx context.Context) (Protocol, error) {
 	c.detectOnce.Do(func() {
 		// A minimal session-get probe doubles as the CSRF handshake. Use the
 		// bespoke envelope: a 4.1.x server still answers it, and the captured
-		// header (not the body) drives the decision. The body is discarded — only
-		// the handshake matters here.
+		// header drives the protocol choice. The body is reused only to enforce
+		// the version floor on the bespoke path below.
 		body, err := marshalRequest(bespokeRequest{Method: methodSessionGetBespoke, Tag: 1})
 		if err != nil {
 			c.detectErr = err
 			return
 		}
 
-		if _, _, err := c.transport.Probe(ctx, body); err != nil {
+		probeBody, _, err := c.transport.Probe(ctx, body)
+		if err != nil {
 			c.detectErr = err
 			return
 		}
 
 		c.protocol = selectProtocol(c.transport.RPCVersion())
+
+		// Only the bespoke path needs verification: a JSON-RPC server is >= 4.1.0
+		// (the CSRF version header starts at semver 6.0.0), so it already clears
+		// the floor.
+		if c.protocol.Name() == ProtocolBespoke {
+			if err := enforceMinVersion(probeBody); err != nil {
+				c.detectErr = err
+				return
+			}
+		}
 	})
 
 	if c.detectErr != nil {
@@ -297,6 +324,36 @@ func (c *Client) detect(ctx context.Context) (Protocol, error) {
 	}
 
 	return c.protocol, nil
+}
+
+// enforceMinVersion reads the integer rpc-version from a bespoke session-get
+// response body and reports ErrUnsupported when the server positively reports a
+// version below minRPCVersion. Every Transmission 2.x/3.x server reports
+// rpc-version (it has existed since 1.50), so the realistic "too old" case is
+// caught here. An absent rpc-version — a pre-1.50 server, or a non-Transmission
+// endpoint that happens to answer — is left to fail naturally downstream rather
+// than be mislabeled as a version problem. The wrapped message names the
+// detected version so callers (e.g. "auth test") can explain the refusal.
+func enforceMinVersion(probeBody []byte) error {
+	var resp struct {
+		Arguments struct {
+			Version    string `json:"version"`
+			RPCVersion *int   `json:"rpc-version"`
+		} `json:"arguments"`
+	}
+	_ = json.Unmarshal(probeBody, &resp)
+
+	if resp.Arguments.RPCVersion == nil || *resp.Arguments.RPCVersion >= minRPCVersion {
+		return nil
+	}
+
+	versionDesc := strings.TrimSpace(resp.Arguments.Version)
+	if versionDesc == "" {
+		versionDesc = "unknown"
+	}
+
+	return fmt.Errorf("%w: server reports rpc-version %d (Transmission %s); snatcher requires Transmission 4.0+ (rpc-version %d)",
+		ErrUnsupported, *resp.Arguments.RPCVersion, versionDesc, minRPCVersion)
 }
 
 // selectProtocol picks a Protocol from the rpc-version-semver captured during
