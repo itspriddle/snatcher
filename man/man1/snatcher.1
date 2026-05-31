@@ -97,14 +97,20 @@ Transmission server. The
 command has four subcommands.
 .TP
 .B snatcher auth set \fR[\fIoptions\fR]
-Store the server URL and username in the config file and the password in the
-OS keyring. The password is read from a hidden, non-echoing prompt (with
-confirmation) or, for scripting, from standard input with
+Add or update a named server. Its URL and username are stored in the config
+file under the server's alias and the password in the OS keyring. The password
+is read from a hidden, non-echoing prompt (with confirmation) or, for
+scripting, from standard input with
 .BR \-\-password\-stdin .
 An empty password is a valid choice (a server with authentication disabled)
-and stores no secret. Rekeying to a different URL deletes the old URL's keyring
-entry. Options:
+and stores no secret. When the alias's URL changes, the old URL's keyring entry
+is deleted. The first server registered when no default is set becomes the
+default. Options:
 .RS
+.TP
+.BR \-\-name " " \fIalias\fR
+Alias the server is stored under. When omitted it defaults to the lowercased
+URL host (including the port).
 .TP
 .BR \-\-url " " \fIurl\fR
 Transmission RPC URL, e.g.\&

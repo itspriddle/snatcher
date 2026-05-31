@@ -166,12 +166,19 @@ func TestAuthSetRekeyRemovesOldSecret(t *testing.T) {
 	const oldURL = "http://old:9091/transmission/rpc"
 	const newURL = "http://new:9091/transmission/rpc"
 
-	require.NoError(t, config.Save(config.Config{ServerURL: oldURL, Username: "alice"}, cfgPath))
+	// Register a server under an explicit alias, then re-set that same alias to a
+	// new URL. The rekey (old URL's secret deletion) is scoped to the alias being
+	// changed.
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"seedbox": {URL: oldURL, Username: "alice"}},
+		DefaultServer: "seedbox",
+	}, cfgPath))
 	require.NoError(t, secrets.Set(oldURL, "oldpw"))
 
 	_, _, err := runAuth(t, "newpw\n",
 		"set",
 		"--config", cfgPath,
+		"--name", "seedbox",
 		"--url", newURL,
 		"--username", "bob",
 		"--password-stdin",
@@ -189,7 +196,87 @@ func TestAuthSetRekeyRemovesOldSecret(t *testing.T) {
 
 	cfg, loadErr := config.Load(cfgPath)
 	require.NoError(t, loadErr)
-	assert.Equal(t, newURL, cfg.ServerURL)
+	assert.Equal(t, newURL, cfg.Servers["seedbox"].URL)
+	assert.Equal(t, "bob", cfg.Servers["seedbox"].Username)
+}
+
+func TestAuthSetDifferentNameKeepsOtherSecret(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const localURL = "http://local:9091/transmission/rpc"
+	const remoteURL = "http://remote:9091/transmission/rpc"
+
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"local": {URL: localURL, Username: "alice"}},
+		DefaultServer: "local",
+	}, cfgPath))
+	require.NoError(t, secrets.Set(localURL, "localpw"))
+
+	_, _, err := runAuth(t, "remotepw\n",
+		"set",
+		"--config", cfgPath,
+		"--name", "remote",
+		"--url", remoteURL,
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+
+	// Registering a second, distinct server leaves the first server's secret and
+	// config entry untouched.
+	localPW, getErr := secrets.Get(localURL)
+	require.NoError(t, getErr)
+	assert.Equal(t, "localpw", localPW)
+
+	remotePW, remoteErr := secrets.Get(remoteURL)
+	require.NoError(t, remoteErr)
+	assert.Equal(t, "remotepw", remotePW)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, localURL, cfg.Servers["local"].URL)
+	assert.Equal(t, remoteURL, cfg.Servers["remote"].URL)
+	// The existing default is preserved; only the first server claims it.
+	assert.Equal(t, "local", cfg.DefaultServer)
+}
+
+func TestAuthSetFirstServerBecomesDefault(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runAuth(t, "pw\n",
+		"set",
+		"--config", cfgPath,
+		"--name", "seedbox",
+		"--url", "http://host:9091/transmission/rpc",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, "seedbox", cfg.DefaultServer)
+}
+
+func TestAuthSetNameDefaultsToHost(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	out, _, err := runAuth(t, "pw\n",
+		"set",
+		"--config", cfgPath,
+		"--url", "http://Host:9091/transmission/rpc",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+	// The derived alias is the lowercased host (with port).
+	assert.Contains(t, out, `"host:9091"`)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	_, ok := cfg.Servers["host:9091"]
+	assert.True(t, ok)
+	assert.Equal(t, "host:9091", cfg.DefaultServer)
 }
 
 func TestAuthSetSameURLKeepsSecret(t *testing.T) {

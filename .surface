@@ -49,6 +49,7 @@ FLAG snatcher api --raw-field type=stringArray
 FLAG snatcher api --server type=string
 FLAG snatcher auth remove --config type=string
 FLAG snatcher auth set --config type=string
+FLAG snatcher auth set --name type=string
 FLAG snatcher auth set --password-stdin type=bool
 FLAG snatcher auth set --url type=string
 FLAG snatcher auth set --username type=string

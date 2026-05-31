@@ -50,6 +50,7 @@ func NewAuthCmd() *cobra.Command {
 func newAuthSetCmd() *cobra.Command {
 	var (
 		configPath    string
+		name          string
 		serverURL     string
 		username      string
 		passwordStdin bool
@@ -57,7 +58,7 @@ func newAuthSetCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "set",
-		Short:         "Set server URL, username, and password",
+		Short:         "Add or update a named server's URL, username, and password",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -69,24 +70,51 @@ func newAuthSetCmd() *cobra.Command {
 				return err
 			}
 
+			// An omitted --name defaults to the lowercased URL host, matching the
+			// legacy-migration rule so a single-server upgrade stays addressable by
+			// the same alias.
+			alias := name
+			if alias == "" {
+				alias = config.HostAlias(serverURL)
+			}
+
 			password, err := readPassword(cmd, passwordStdin)
 			if err != nil {
 				return err
 			}
 
-			// When rekeying to a different server URL, drop the old URL's keyring
-			// entry so no orphaned secret is left behind. A missing entry is fine.
-			existing, _, err := loadConfig(configPath)
+			cfg, _, err := loadConfig(configPath)
 			if err != nil {
 				return err
 			}
-			if existing.ServerURL != "" && existing.ServerURL != serverURL {
-				if err := secrets.Delete(existing.ServerURL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+			if cfg.Servers == nil {
+				cfg.Servers = map[string]config.Server{}
+			}
+
+			// When updating an existing alias to a different URL, drop the old URL's
+			// keyring entry so no orphaned secret is left behind. Scope this to the
+			// alias being changed; other servers' secrets are untouched. A missing
+			// entry is fine.
+			if prev, ok := cfg.Servers[alias]; ok && prev.URL != "" && prev.URL != serverURL {
+				if err := secrets.Delete(prev.URL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
 					return err
 				}
 			}
 
-			if err := config.Save(config.Config{ServerURL: serverURL, Username: username}, configPath); err != nil {
+			cfg.Servers[alias] = config.Server{URL: serverURL, Username: username}
+
+			// The first server registered when no default exists becomes the
+			// default.
+			if cfg.DefaultServer == "" {
+				cfg.DefaultServer = alias
+			}
+
+			// Clear the transitional shim fields so Save persists Servers verbatim
+			// rather than re-deriving a server from them.
+			cfg.ServerURL = ""
+			cfg.Username = ""
+
+			if err := config.Save(cfg, configPath); err != nil {
 				return err
 			}
 
@@ -98,7 +126,7 @@ func newAuthSetCmd() *cobra.Command {
 					return err
 				}
 
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved %s with no password stored\n", serverURL)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved server %q (%s) with no password stored\n", alias, serverURL)
 
 				return nil
 			}
@@ -107,13 +135,14 @@ func newAuthSetCmd() *cobra.Command {
 				return err
 			}
 
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved credentials for %s\n", serverURL)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved credentials for server %q (%s)\n", alias, serverURL)
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().StringVar(&name, "name", "", "server alias (default: the URL host)")
 	cmd.Flags().StringVar(&serverURL, "url", "", "Transmission RPC URL (e.g. http://host:9091/transmission/rpc)")
 	cmd.Flags().StringVar(&username, "username", "", "username for HTTP Basic Auth")
 	cmd.Flags().BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin instead of a prompt")

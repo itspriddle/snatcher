@@ -238,7 +238,7 @@ func migrateLegacy(cfg *Config, legacyURL, legacyUser string) {
 		return
 	}
 
-	alias := hostAlias(legacyURL)
+	alias := HostAlias(legacyURL)
 
 	cfg.Servers = map[string]Server{
 		alias: {URL: legacyURL, Username: legacyUser},
@@ -254,7 +254,7 @@ func normalizeForSave(cfg *Config) {
 		return
 	}
 
-	alias := hostAlias(cfg.ServerURL)
+	alias := HostAlias(cfg.ServerURL)
 
 	cfg.Servers = map[string]Server{
 		alias: {URL: cfg.ServerURL, Username: cfg.Username},
@@ -292,12 +292,13 @@ func validate(cfg Config) error {
 	return nil
 }
 
-// hostAlias derives a server alias from a URL: the lowercased host, including
+// HostAlias derives a server alias from a URL: the lowercased host, including
 // the port when present (e.g. "localhost:9091"), so servers that share a
 // hostname but differ by port do not collide. It falls back to the lowercased
 // raw string when the URL cannot be parsed, so a server is never dropped during
-// migration.
-func hostAlias(raw string) string {
+// migration. It is exported so the "auth set --name" default matches the
+// migration rule.
+func HostAlias(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
 		return strings.ToLower(raw)
