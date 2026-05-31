@@ -1,5 +1,5 @@
 ARG snatcher api 0 method
-ARG snatcher auth default 0 alias
+ARG snatcher server default 0 alias
 ARG snatcher server settings get 0 key
 ARG snatcher server settings reset 0 key
 ARG snatcher server settings set 0 key
@@ -9,22 +9,21 @@ ARG snatcher torrent move 0 id|hash
 ARG snatcher torrent move 1 location
 CMD snatcher
 CMD snatcher api
-CMD snatcher auth
-CMD snatcher auth default
-CMD snatcher auth list
-CMD snatcher auth remove
-CMD snatcher auth set
-CMD snatcher auth show
-CMD snatcher auth test
 CMD snatcher server
+CMD snatcher server add
+CMD snatcher server default
+CMD snatcher server list
+CMD snatcher server ping
 CMD snatcher server port
 CMD snatcher server port get
 CMD snatcher server port set
 CMD snatcher server port test
+CMD snatcher server remove
 CMD snatcher server settings
 CMD snatcher server settings get
 CMD snatcher server settings reset
 CMD snatcher server settings set
+CMD snatcher server show
 CMD snatcher server stats
 CMD snatcher torrent
 CMD snatcher torrent info
@@ -50,20 +49,17 @@ FLAG snatcher api --jq type=string
 FLAG snatcher api --raw type=bool
 FLAG snatcher api --raw-field type=stringArray
 FLAG snatcher api --server type=string
-FLAG snatcher auth default --config type=string
-FLAG snatcher auth list --config type=string
-FLAG snatcher auth list --jq type=string
-FLAG snatcher auth list --json type=bool
-FLAG snatcher auth remove --config type=string
-FLAG snatcher auth set --config type=string
-FLAG snatcher auth set --name type=string
-FLAG snatcher auth set --password-stdin type=bool
-FLAG snatcher auth set --url type=string
-FLAG snatcher auth set --username type=string
-FLAG snatcher auth show --config type=string
-FLAG snatcher auth show --json type=bool
-FLAG snatcher auth test --config type=string
-FLAG snatcher auth test --json type=bool
+FLAG snatcher server add --config type=string
+FLAG snatcher server add --name type=string
+FLAG snatcher server add --password-stdin type=bool
+FLAG snatcher server add --url type=string
+FLAG snatcher server add --username type=string
+FLAG snatcher server default --config type=string
+FLAG snatcher server list --config type=string
+FLAG snatcher server list --jq type=string
+FLAG snatcher server list --json type=bool
+FLAG snatcher server ping --config type=string
+FLAG snatcher server ping --json type=bool
 FLAG snatcher server port get --config type=string
 FLAG snatcher server port get --jq type=string
 FLAG snatcher server port get --json type=bool
@@ -78,6 +74,7 @@ FLAG snatcher server port test --config type=string
 FLAG snatcher server port test --jq type=string
 FLAG snatcher server port test --json type=bool
 FLAG snatcher server port test --server type=string
+FLAG snatcher server remove --config type=string
 FLAG snatcher server settings --category type=string
 FLAG snatcher server settings --config type=string
 FLAG snatcher server settings --jq type=string
@@ -96,6 +93,8 @@ FLAG snatcher server settings set --config type=string
 FLAG snatcher server settings set --jq type=string
 FLAG snatcher server settings set --json type=bool
 FLAG snatcher server settings set --server type=string
+FLAG snatcher server show --config type=string
+FLAG snatcher server show --json type=bool
 FLAG snatcher server stats --config type=string
 FLAG snatcher server stats --jq type=string
 FLAG snatcher server stats --json type=bool

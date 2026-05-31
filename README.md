@@ -57,10 +57,10 @@ bundles the binary, `LICENSE`, and the `snatcher(1)` man page.
 
 ```sh
 # Point snatcher at your Transmission RPC endpoint (prompts for a password)
-snatcher auth set --url http://localhost:9091/transmission/rpc --username admin
+snatcher server add --url http://localhost:9091/transmission/rpc --username admin
 
 # Confirm the connection works
-snatcher auth test
+snatcher server ping
 
 # List your torrents
 snatcher torrent list
@@ -70,7 +70,7 @@ snatcher torrent list
 
 | Command | Description |
 | --- | --- |
-| `auth set\|list\|default\|show\|test\|remove` | Register, list, and verify named servers |
+| `server add\|list\|default\|show\|ping\|remove` | Register, list, and verify named servers |
 | `server stats` | Session statistics: counts, speeds, transfer totals |
 | `server settings [get\|set\|reset]` | View and change server (session) settings |
 | `server port get\|set\|test` | View, change, or test the peer/listening port |
@@ -115,14 +115,14 @@ snatcher can hold an inventory of named servers and target one per invocation.
 - **Config (non-secret):** JSON at `$XDG_CONFIG_HOME/snatcher/config.json`
   (falls back to `~/.config/snatcher/config.json`), holding a `servers` map of
   named aliases (each with a `url` and `username`) plus a `default_server`
-  alias. Register servers with `auth set --name <alias>`; an omitted `--name`
+  alias. Register servers with `server add --name <alias>`; an omitted `--name`
   defaults to the URL host. Legacy single-server configs are migrated on read.
   The config file is trusted, operator-owned input.
 - **Password (secret):** stored only in the OS keyring under the service name
   `snatcher`, keyed by server URL. Never written to disk.
 
 Every command that connects to a server accepts `--server <alias>` to pick one
-of your configured servers; `snatcher auth default <alias>` sets the one used
+of your configured servers; `snatcher server default <alias>` sets the one used
 when `--server` is omitted. Selection precedence is `--server` flag >
 `SNATCHER_SERVER` env var > `default_server`.
 

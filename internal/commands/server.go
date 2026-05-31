@@ -5,19 +5,21 @@ import (
 )
 
 // NewServerCmd builds the "server" command group, the namespace for every
-// server-scoped action: settings, stats, and port. It owns no behavior of its
-// own — a bare "snatcher server" prints subcommand help — and re-parents the
-// existing per-command constructors so their full paths become "snatcher
-// server <cmd>". It mirrors the torrent group's structure (parent command plus
-// AddCommand children).
+// server-scoped action. It owns two kinds of subcommands: a registry of named
+// servers (add/list/default/show/ping/remove), modeled after "git remote", and
+// the live operations against the selected server (settings, stats, port). It
+// owns no behavior of its own — a bare "snatcher server" prints subcommand help.
+// It mirrors the torrent group's structure (parent command plus AddCommand
+// children).
 func NewServerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
-		Short: "Manage server settings, stats, and port",
-		Long: "Manage the server itself.\n\n" +
-			"Group of commands for session settings, statistics, and the " +
-			"BitTorrent listening port. Run a subcommand (settings, stats, " +
-			"port) to act on the server.",
+		Short: "Manage servers, settings, stats, and port",
+		Long: "Manage configured servers and the server itself.\n\n" +
+			"Maintain the inventory of named servers (add, list, default, " +
+			"show, ping, remove) and operate on the selected server's session " +
+			"settings, statistics, and BitTorrent listening port (settings, " +
+			"stats, port).",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -26,6 +28,15 @@ func NewServerCmd() *cobra.Command {
 		},
 	}
 
+	// Named-server registry (local config + keyring).
+	cmd.AddCommand(newServerAddCmd())
+	cmd.AddCommand(newServerListCmd())
+	cmd.AddCommand(newServerDefaultCmd())
+	cmd.AddCommand(newServerShowCmd())
+	cmd.AddCommand(newServerPingCmd())
+	cmd.AddCommand(newServerRemoveCmd())
+
+	// Live operations against the selected server.
 	cmd.AddCommand(NewSettingsCmd())
 	cmd.AddCommand(NewStatsCmd())
 	cmd.AddCommand(NewPortCmd())

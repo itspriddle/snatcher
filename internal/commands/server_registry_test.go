@@ -58,12 +58,12 @@ func (s transmissionStub) handler() http.HandlerFunc {
 	}
 }
 
-// runAuth executes the auth command tree with args, returning its stdout, the
-// combined stderr, and the error from Execute.
-func runAuth(t *testing.T, stdin string, args ...string) (string, string, error) {
+// runServer executes the server command tree with args, returning its stdout,
+// the combined stderr, and the error from Execute.
+func runServer(t *testing.T, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 
-	root := NewAuthCmd()
+	root := NewServerCmd()
 
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
@@ -76,12 +76,12 @@ func runAuth(t *testing.T, stdin string, args ...string) (string, string, error)
 	return out.String(), errOut.String(), err
 }
 
-func TestAuthSetStoresConfigAndKeyring(t *testing.T) {
+func TestServerAddStoresConfigAndKeyring(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	out, _, err := runAuth(t, "hunter2\n",
-		"set",
+	out, _, err := runServer(t, "hunter2\n",
+		"add",
 		"--config", cfgPath,
 		"--url", "http://localhost:9091/transmission/rpc",
 		"--username", "alice",
@@ -101,12 +101,12 @@ func TestAuthSetStoresConfigAndKeyring(t *testing.T) {
 	assert.Equal(t, "hunter2", pw)
 }
 
-func TestAuthSetTrimsTrailingNewline(t *testing.T) {
+func TestServerAddTrimsTrailingNewline(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runAuth(t, "secret\r\n",
-		"set",
+	_, _, err := runServer(t, "secret\r\n",
+		"add",
 		"--config", cfgPath,
 		"--url", "http://host:9091/transmission/rpc",
 		"--password-stdin",
@@ -118,21 +118,21 @@ func TestAuthSetTrimsTrailingNewline(t *testing.T) {
 	assert.Equal(t, "secret", pw)
 }
 
-func TestAuthSetRequiresURL(t *testing.T) {
+func TestServerAddRequiresURL(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runAuth(t, "pw\n", "set", "--config", cfgPath, "--password-stdin")
+	_, _, err := runServer(t, "pw\n", "add", "--config", cfgPath, "--password-stdin")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--url is required")
 }
 
-func TestAuthSetRejectsInvalidURL(t *testing.T) {
+func TestServerAddRejectsInvalidURL(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runAuth(t, "pw\n",
-		"set",
+	_, _, err := runServer(t, "pw\n",
+		"add",
 		"--config", cfgPath,
 		"--url", "ftp://nope",
 		"--password-stdin",
@@ -141,12 +141,12 @@ func TestAuthSetRejectsInvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "scheme must be http or https")
 }
 
-func TestAuthSetRejectsEmbeddedCredentials(t *testing.T) {
+func TestServerAddRejectsEmbeddedCredentials(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runAuth(t, "pw\n",
-		"set",
+	_, _, err := runServer(t, "pw\n",
+		"add",
 		"--config", cfgPath,
 		"--url", "http://user:pass@host:9091/transmission/rpc",
 		"--password-stdin",
@@ -159,7 +159,7 @@ func TestAuthSetRejectsEmbeddedCredentials(t *testing.T) {
 	require.ErrorIs(t, loadErr, config.ErrNotConfigured)
 }
 
-func TestAuthSetRekeyRemovesOldSecret(t *testing.T) {
+func TestServerAddRekeyRemovesOldSecret(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -175,8 +175,8 @@ func TestAuthSetRekeyRemovesOldSecret(t *testing.T) {
 	}, cfgPath))
 	require.NoError(t, secrets.Set(oldURL, "oldpw"))
 
-	_, _, err := runAuth(t, "newpw\n",
-		"set",
+	_, _, err := runServer(t, "newpw\n",
+		"add",
 		"--config", cfgPath,
 		"--name", "seedbox",
 		"--url", newURL,
@@ -200,7 +200,7 @@ func TestAuthSetRekeyRemovesOldSecret(t *testing.T) {
 	assert.Equal(t, "bob", cfg.Servers["seedbox"].Username)
 }
 
-func TestAuthSetDifferentNameKeepsOtherSecret(t *testing.T) {
+func TestServerAddDifferentNameKeepsOtherSecret(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -213,8 +213,8 @@ func TestAuthSetDifferentNameKeepsOtherSecret(t *testing.T) {
 	}, cfgPath))
 	require.NoError(t, secrets.Set(localURL, "localpw"))
 
-	_, _, err := runAuth(t, "remotepw\n",
-		"set",
+	_, _, err := runServer(t, "remotepw\n",
+		"add",
 		"--config", cfgPath,
 		"--name", "remote",
 		"--url", remoteURL,
@@ -240,12 +240,12 @@ func TestAuthSetDifferentNameKeepsOtherSecret(t *testing.T) {
 	assert.Equal(t, "local", cfg.DefaultServer)
 }
 
-func TestAuthSetFirstServerBecomesDefault(t *testing.T) {
+func TestServerAddFirstServerBecomesDefault(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runAuth(t, "pw\n",
-		"set",
+	_, _, err := runServer(t, "pw\n",
+		"add",
 		"--config", cfgPath,
 		"--name", "seedbox",
 		"--url", "http://host:9091/transmission/rpc",
@@ -258,12 +258,12 @@ func TestAuthSetFirstServerBecomesDefault(t *testing.T) {
 	assert.Equal(t, "seedbox", cfg.DefaultServer)
 }
 
-func TestAuthSetNameDefaultsToHost(t *testing.T) {
+func TestServerAddNameDefaultsToHost(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	out, _, err := runAuth(t, "pw\n",
-		"set",
+	out, _, err := runServer(t, "pw\n",
+		"add",
 		"--config", cfgPath,
 		"--url", "http://Host:9091/transmission/rpc",
 		"--password-stdin",
@@ -279,7 +279,7 @@ func TestAuthSetNameDefaultsToHost(t *testing.T) {
 	assert.Equal(t, "host:9091", cfg.DefaultServer)
 }
 
-func TestAuthSetSameURLKeepsSecret(t *testing.T) {
+func TestServerAddSameURLKeepsSecret(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -288,8 +288,8 @@ func TestAuthSetSameURLKeepsSecret(t *testing.T) {
 	require.NoError(t, config.Save(config.Config{ServerURL: url, Username: "alice"}, cfgPath))
 	require.NoError(t, secrets.Set(url, "oldpw"))
 
-	_, _, err := runAuth(t, "newpw\n",
-		"set",
+	_, _, err := runServer(t, "newpw\n",
+		"add",
 		"--config", cfgPath,
 		"--url", url,
 		"--password-stdin",
@@ -302,12 +302,12 @@ func TestAuthSetSameURLKeepsSecret(t *testing.T) {
 	assert.Equal(t, "newpw", pw)
 }
 
-func TestAuthSetEmptyPasswordStoresNoSecret(t *testing.T) {
+func TestServerAddEmptyPasswordStoresNoSecret(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	out, _, err := runAuth(t, "",
-		"set",
+	out, _, err := runServer(t, "",
+		"add",
 		"--config", cfgPath,
 		"--url", "http://host:9091/transmission/rpc",
 		"--username", "alice",
@@ -326,7 +326,7 @@ func TestAuthSetEmptyPasswordStoresNoSecret(t *testing.T) {
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
 }
 
-func TestAuthSetEmptyPasswordDropsExistingSecret(t *testing.T) {
+func TestServerAddEmptyPasswordDropsExistingSecret(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -334,8 +334,8 @@ func TestAuthSetEmptyPasswordDropsExistingSecret(t *testing.T) {
 	require.NoError(t, config.Save(config.Config{ServerURL: url, Username: "alice"}, cfgPath))
 	require.NoError(t, secrets.Set(url, "oldpw"))
 
-	_, _, err := runAuth(t, "",
-		"set",
+	_, _, err := runServer(t, "",
+		"add",
 		"--config", cfgPath,
 		"--url", url,
 		"--password-stdin",
@@ -347,7 +347,7 @@ func TestAuthSetEmptyPasswordDropsExistingSecret(t *testing.T) {
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
 }
 
-func TestAuthListPlaintext(t *testing.T) {
+func TestServerListPlaintext(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -363,7 +363,7 @@ func TestAuthListPlaintext(t *testing.T) {
 	}, cfgPath))
 	require.NoError(t, secrets.Set(localURL, "pw"))
 
-	out, _, err := runAuth(t, "", "list", "--config", cfgPath)
+	out, _, err := runServer(t, "", "list", "--config", cfgPath)
 	require.NoError(t, err)
 
 	// Not a TTY in tests: tab-separated, header-less rows sorted by alias.
@@ -374,7 +374,7 @@ func TestAuthListPlaintext(t *testing.T) {
 	assert.Equal(t, "seedbox\t"+seedboxURL+"\tbob\tno\tno", lines[1])
 }
 
-func TestAuthListJSON(t *testing.T) {
+func TestServerListJSON(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -390,10 +390,10 @@ func TestAuthListJSON(t *testing.T) {
 	}, cfgPath))
 	require.NoError(t, secrets.Set(seedboxURL, "pw"))
 
-	out, _, err := runAuth(t, "", "list", "--config", cfgPath, "--json")
+	out, _, err := runServer(t, "", "list", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
-	var results []authListResult
+	var results []serverListResult
 	require.NoError(t, json.Unmarshal([]byte(out), &results))
 	require.Len(t, results, 2)
 
@@ -409,31 +409,31 @@ func TestAuthListJSON(t *testing.T) {
 	assert.True(t, results[1].IsDefault)
 }
 
-func TestAuthListEmpty(t *testing.T) {
+func TestServerListEmpty(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	out, _, err := runAuth(t, "", "list", "--config", cfgPath, "--json")
+	out, _, err := runServer(t, "", "list", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
 	// An empty inventory serializes as "[]", never "null".
 	assert.Equal(t, "[]\n", out)
 }
 
-func TestWriteAuthListTableEmpty(t *testing.T) {
+func TestWriteServerListTableEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	writeAuthListTable(&buf, nil)
+	writeServerListTable(&buf, nil)
 
 	assert.Equal(t, "No servers configured.", strings.TrimSpace(buf.String()))
 }
 
-func TestWriteAuthListTableHeader(t *testing.T) {
+func TestWriteServerListTableHeader(t *testing.T) {
 	rows := [][]string{
 		{"local", "http://local:9091/rpc", "alice", "yes", "yes"},
 	}
 
 	var buf bytes.Buffer
-	writeAuthListTable(&buf, rows)
+	writeServerListTable(&buf, rows)
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -451,8 +451,8 @@ func TestWriteAuthListTableHeader(t *testing.T) {
 	assert.Contains(t, out, "alice")
 }
 
-func TestWriteAuthListPlaintextSanitizesControlChars(t *testing.T) {
-	results := []authListResult{
+func TestWriteServerListPlaintextSanitizesControlChars(t *testing.T) {
+	results := []serverListResult{
 		{
 			Name:         "\x1b[2Jevil",
 			ServerURL:    "http://h\x1bost:9091/rpc",
@@ -463,11 +463,11 @@ func TestWriteAuthListPlaintextSanitizesControlChars(t *testing.T) {
 	}
 
 	// A bytes.Buffer is not a TTY, so this exercises the piped tab-separated path.
-	cmd := NewAuthCmd()
+	cmd := NewServerCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 
-	writeAuthListPlaintext(cmd, results)
+	writeServerListPlaintext(cmd, results)
 
 	out := buf.String()
 	assert.NotContains(t, out, "\x1b", "raw ESC must not reach the plaintext output")
@@ -477,7 +477,7 @@ func TestWriteAuthListPlaintextSanitizesControlChars(t *testing.T) {
 	assert.Contains(t, out, "alice")
 }
 
-func TestAuthListJSONPreservesControlChars(t *testing.T) {
+func TestServerListJSONPreservesControlChars(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -491,10 +491,10 @@ func TestAuthListJSONPreservesControlChars(t *testing.T) {
 		DefaultServer: "\x1b[2Jevil",
 	}, cfgPath))
 
-	jsonOut, _, err := runAuth(t, "", "list", "--config", cfgPath, "--json")
+	jsonOut, _, err := runServer(t, "", "list", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
-	var results []authListResult
+	var results []serverListResult
 	require.NoError(t, json.Unmarshal([]byte(jsonOut), &results))
 	require.Len(t, results, 1)
 	assert.Equal(t, "\x1b[2Jevil", results[0].Name, "JSON output preserves the raw name verbatim")
@@ -504,20 +504,20 @@ func TestAuthListJSONPreservesControlChars(t *testing.T) {
 	assert.NotContains(t, jsonOut, "\x1b", "the raw ESC byte is JSON-escaped, not emitted literally")
 	assert.Contains(t, jsonOut, "\\u001b", "the control char is preserved as a JSON escape, not dropped")
 
-	jqOut, _, err := runAuth(t, "", "list", "--config", cfgPath, "--jq", ".[].name")
+	jqOut, _, err := runServer(t, "", "list", "--config", cfgPath, "--jq", ".[].name")
 	require.NoError(t, err)
 	var jqName string
 	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(jqOut)), &jqName))
 	assert.Equal(t, "\x1b[2Jevil", jqName, "jq output preserves the raw name verbatim")
 
 	// The plaintext (piped) path strips the escape from the same alias.
-	plainOut, _, err := runAuth(t, "", "list", "--config", cfgPath)
+	plainOut, _, err := runServer(t, "", "list", "--config", cfgPath)
 	require.NoError(t, err)
 	assert.NotContains(t, plainOut, "\x1b", "plaintext path strips the control sequence")
 	assert.Contains(t, plainOut, "[2Jevil", "visible text survives on the plaintext path")
 }
 
-func TestAuthDefaultSwitches(t *testing.T) {
+func TestServerDefaultSwitches(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -529,7 +529,7 @@ func TestAuthDefaultSwitches(t *testing.T) {
 		DefaultServer: "local",
 	}, cfgPath))
 
-	out, _, err := runAuth(t, "", "default", "seedbox", "--config", cfgPath)
+	out, _, err := runServer(t, "", "default", "seedbox", "--config", cfgPath)
 	require.NoError(t, err)
 	assert.Contains(t, out, "seedbox")
 
@@ -538,7 +538,7 @@ func TestAuthDefaultSwitches(t *testing.T) {
 	assert.Equal(t, "seedbox", cfg.DefaultServer)
 }
 
-func TestAuthDefaultUnknownAlias(t *testing.T) {
+func TestServerDefaultUnknownAlias(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -547,7 +547,7 @@ func TestAuthDefaultUnknownAlias(t *testing.T) {
 		DefaultServer: "local",
 	}, cfgPath))
 
-	_, _, err := runAuth(t, "", "default", "nope", "--config", cfgPath)
+	_, _, err := runServer(t, "", "default", "nope", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown server "nope"`)
 	assert.Contains(t, err.Error(), "local")
@@ -558,13 +558,13 @@ func TestAuthDefaultUnknownAlias(t *testing.T) {
 	assert.Equal(t, "local", cfg.DefaultServer)
 }
 
-func TestAuthShowPlaintext(t *testing.T) {
+func TestServerShowPlaintext(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: "http://host:9091/rpc", Username: "bob"}, cfgPath))
 	require.NoError(t, secrets.Set("http://host:9091/rpc", "pw"))
 
-	out, _, err := runAuth(t, "", "show", "--config", cfgPath)
+	out, _, err := runServer(t, "", "show", "--config", cfgPath)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "http://host:9091/rpc")
@@ -575,15 +575,15 @@ func TestAuthShowPlaintext(t *testing.T) {
 	assert.NotContains(t, out, "pw\n")
 }
 
-func TestAuthShowJSON(t *testing.T) {
+func TestServerShowJSON(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: "http://host:9091/rpc", Username: "bob"}, cfgPath))
 
-	out, _, err := runAuth(t, "", "show", "--config", cfgPath, "--json")
+	out, _, err := runServer(t, "", "show", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
-	var result authShowResult
+	var result serverShowResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.Equal(t, "host:9091", result.Name)
 	assert.Equal(t, "http://host:9091/rpc", result.ServerURL)
@@ -594,7 +594,7 @@ func TestAuthShowJSON(t *testing.T) {
 	assert.True(t, result.Configured)
 }
 
-func TestAuthShowNamedServer(t *testing.T) {
+func TestServerShowNamedServer(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -606,10 +606,10 @@ func TestAuthShowNamedServer(t *testing.T) {
 		DefaultServer: "local",
 	}, cfgPath))
 
-	out, _, err := runAuth(t, "", "show", "seedbox", "--config", cfgPath, "--json")
+	out, _, err := runServer(t, "", "show", "seedbox", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
-	var result authShowResult
+	var result serverShowResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.Equal(t, "seedbox", result.Name)
 	assert.Equal(t, "http://seedbox:9091/rpc", result.ServerURL)
@@ -619,7 +619,7 @@ func TestAuthShowNamedServer(t *testing.T) {
 	assert.True(t, result.Configured)
 }
 
-func TestAuthShowUnknownAlias(t *testing.T) {
+func TestServerShowUnknownAlias(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -628,27 +628,27 @@ func TestAuthShowUnknownAlias(t *testing.T) {
 		DefaultServer: "local",
 	}, cfgPath))
 
-	_, _, err := runAuth(t, "", "show", "nope", "--config", cfgPath, "--json")
+	_, _, err := runServer(t, "", "show", "nope", "--config", cfgPath, "--json")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown server "nope"`)
-	assert.Contains(t, err.Error(), "auth list")
+	assert.Contains(t, err.Error(), "server list")
 }
 
-func TestAuthShowNotConfigured(t *testing.T) {
+func TestServerShowNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	out, _, err := runAuth(t, "", "show", "--config", cfgPath, "--json")
+	out, _, err := runServer(t, "", "show", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
-	var result authShowResult
+	var result serverShowResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.Empty(t, result.ServerURL)
 	assert.False(t, result.Configured)
 	assert.False(t, result.SecretStored)
 }
 
-func TestAuthTestJSONRPC(t *testing.T) {
+func TestServerPingJSONRPC(t *testing.T) {
 	keyring.MockInit()
 	srv := httptest.NewServer(transmissionStub{
 		rpcVersionHeader: "6.0.0",
@@ -666,10 +666,10 @@ func TestAuthTestJSONRPC(t *testing.T) {
 	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL, Username: "alice"}, cfgPath))
 	require.NoError(t, secrets.Set(srv.URL, "pw"))
 
-	out, _, err := runAuth(t, "", "test", "--config", cfgPath, "--json")
+	out, _, err := runServer(t, "", "ping", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
-	var result authTestResult
+	var result serverPingResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.True(t, result.Connected)
 	assert.Equal(t, "4.1.0 (ae226418eb)", result.Version)
@@ -677,11 +677,11 @@ func TestAuthTestJSONRPC(t *testing.T) {
 	assert.Equal(t, "jsonrpc-2.0", result.Protocol)
 }
 
-func TestAuthTestNamedServer(t *testing.T) {
+func TestServerPingNamedServer(t *testing.T) {
 	keyring.MockInit()
 
 	// Two servers; the alias picks which one is dialed. The default (local) is a
-	// dead address, so a successful round-trip proves --positional alias reached
+	// dead address, so a successful round-trip proves the positional alias reached
 	// the named seedbox.
 	seedbox := httptest.NewServer(transmissionStub{
 		rpcVersionHeader: "6.0.0",
@@ -704,17 +704,17 @@ func TestAuthTestNamedServer(t *testing.T) {
 		DefaultServer: "local",
 	}, cfgPath))
 
-	out, _, err := runAuth(t, "", "test", "seedbox", "--config", cfgPath, "--json")
+	out, _, err := runServer(t, "", "ping", "seedbox", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
-	var result authTestResult
+	var result serverPingResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.True(t, result.Connected)
 	assert.Equal(t, seedbox.URL, result.ServerURL)
 	assert.Equal(t, "4.1.0 (ae226418eb)", result.Version)
 }
 
-func TestAuthTestUnknownAlias(t *testing.T) {
+func TestServerPingUnknownAlias(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{
@@ -722,13 +722,13 @@ func TestAuthTestUnknownAlias(t *testing.T) {
 		DefaultServer: "local",
 	}, cfgPath))
 
-	_, _, err := runAuth(t, "", "test", "nope", "--config", cfgPath)
+	_, _, err := runServer(t, "", "ping", "nope", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown server "nope"`)
-	assert.Contains(t, err.Error(), "auth list")
+	assert.Contains(t, err.Error(), "server list")
 }
 
-func TestAuthTestBespokePlaintext(t *testing.T) {
+func TestServerPingBespokePlaintext(t *testing.T) {
 	keyring.MockInit()
 	srv := httptest.NewServer(transmissionStub{
 		rpcVersionHeader: "",
@@ -745,7 +745,7 @@ func TestAuthTestBespokePlaintext(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
 
-	out, _, err := runAuth(t, "", "test", "--config", cfgPath)
+	out, _, err := runServer(t, "", "ping", "--config", cfgPath)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "Connected to "+srv.URL)
@@ -754,16 +754,16 @@ func TestAuthTestBespokePlaintext(t *testing.T) {
 	assert.Contains(t, out, "bespoke")
 }
 
-func TestAuthTestNotConfigured(t *testing.T) {
+func TestServerPingNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runAuth(t, "", "test", "--config", cfgPath)
+	_, _, err := runServer(t, "", "ping", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-func TestAuthTestConnectionFailure(t *testing.T) {
+func TestServerPingConnectionFailure(t *testing.T) {
 	keyring.MockInit()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -773,12 +773,12 @@ func TestAuthTestConnectionFailure(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
 
-	_, _, err := runAuth(t, "", "test", "--config", cfgPath)
+	_, _, err := runServer(t, "", "ping", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), srv.URL)
 }
 
-func TestAuthTestHTMLResponseHint(t *testing.T) {
+func TestServerPingHTMLResponseHint(t *testing.T) {
 	keyring.MockInit()
 	srv := httptest.NewServer(transmissionStub{
 		responses: map[string]string{
@@ -790,7 +790,7 @@ func TestAuthTestHTMLResponseHint(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
 
-	_, _, err := runAuth(t, "", "test", "--config", cfgPath)
+	_, _, err := runServer(t, "", "ping", "--config", cfgPath)
 	require.Error(t, err)
 	// A non-RPC endpoint that answers with HTML yields an actionable hint, not a
 	// raw json syntax error.
@@ -798,14 +798,14 @@ func TestAuthTestHTMLResponseHint(t *testing.T) {
 	assert.Contains(t, err.Error(), "/transmission/rpc")
 }
 
-func TestAuthRemoveDefaultClearsConfigAndKeyring(t *testing.T) {
+func TestServerRemoveDefaultClearsConfigAndKeyring(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: "http://host:9091/rpc", Username: "bob"}, cfgPath))
 	require.NoError(t, secrets.Set("http://host:9091/rpc", "pw"))
 
 	// Omitting the alias removes the configured default.
-	out, _, err := runAuth(t, "", "remove", "--config", cfgPath)
+	out, _, err := runServer(t, "", "remove", "--config", cfgPath)
 	require.NoError(t, err)
 	assert.Contains(t, out, "Removed server")
 	assert.Contains(t, out, "http://host:9091/rpc")
@@ -819,7 +819,7 @@ func TestAuthRemoveDefaultClearsConfigAndKeyring(t *testing.T) {
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
 }
 
-func TestAuthRemoveNamedServer(t *testing.T) {
+func TestServerRemoveNamedServer(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -838,7 +838,7 @@ func TestAuthRemoveNamedServer(t *testing.T) {
 
 	// Removing a named non-default server leaves the default and other servers
 	// untouched.
-	out, _, err := runAuth(t, "", "remove", "seedbox", "--config", cfgPath)
+	out, _, err := runServer(t, "", "remove", "seedbox", "--config", cfgPath)
 	require.NoError(t, err)
 	assert.Contains(t, out, "seedbox")
 
@@ -857,7 +857,7 @@ func TestAuthRemoveNamedServer(t *testing.T) {
 	assert.Equal(t, "localpw", localPW)
 }
 
-func TestAuthRemoveDefaultRepointsToSoleRemaining(t *testing.T) {
+func TestServerRemoveDefaultRepointsToSoleRemaining(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -871,7 +871,7 @@ func TestAuthRemoveDefaultRepointsToSoleRemaining(t *testing.T) {
 
 	// Removing the default with exactly one server remaining repoints the default
 	// to that survivor.
-	_, _, err := runAuth(t, "", "remove", "local", "--config", cfgPath)
+	_, _, err := runServer(t, "", "remove", "local", "--config", cfgPath)
 	require.NoError(t, err)
 
 	cfg, loadErr := config.Load(cfgPath)
@@ -879,7 +879,7 @@ func TestAuthRemoveDefaultRepointsToSoleRemaining(t *testing.T) {
 	assert.Equal(t, "seedbox", cfg.DefaultServer)
 }
 
-func TestAuthRemoveDefaultClearsWhenMultipleRemain(t *testing.T) {
+func TestServerRemoveDefaultClearsWhenMultipleRemain(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -894,7 +894,7 @@ func TestAuthRemoveDefaultClearsWhenMultipleRemain(t *testing.T) {
 
 	// Removing the default with more than one server remaining clears the default
 	// (the user must pick a new one).
-	_, _, err := runAuth(t, "", "remove", "local", "--config", cfgPath)
+	_, _, err := runServer(t, "", "remove", "local", "--config", cfgPath)
 	require.NoError(t, err)
 
 	cfg, loadErr := config.Load(cfgPath)
@@ -902,7 +902,7 @@ func TestAuthRemoveDefaultClearsWhenMultipleRemain(t *testing.T) {
 	assert.Empty(t, cfg.DefaultServer)
 }
 
-func TestAuthRemoveUnknownAlias(t *testing.T) {
+func TestServerRemoveUnknownAlias(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
@@ -911,10 +911,10 @@ func TestAuthRemoveUnknownAlias(t *testing.T) {
 		DefaultServer: "local",
 	}, cfgPath))
 
-	_, _, err := runAuth(t, "", "remove", "nope", "--config", cfgPath)
+	_, _, err := runServer(t, "", "remove", "nope", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown server "nope"`)
-	assert.Contains(t, err.Error(), "auth list")
+	assert.Contains(t, err.Error(), "server list")
 
 	// The configured server is left untouched.
 	cfg, loadErr := config.Load(cfgPath)
@@ -923,27 +923,33 @@ func TestAuthRemoveUnknownAlias(t *testing.T) {
 	assert.True(t, ok)
 }
 
-func TestAuthRemoveWhenNothingStored(t *testing.T) {
+func TestServerRemoveWhenNothingStored(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runAuth(t, "", "remove", "--config", cfgPath)
+	_, _, err := runServer(t, "", "remove", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no servers configured")
 }
 
-// compile-time guard that NewAuthCmd wires the documented subcommands.
-func TestAuthSubcommands(t *testing.T) {
-	cmd := NewAuthCmd()
+// TestServerRegistrySubcommands is a compile-time guard that NewServerCmd wires
+// the documented registry subcommands and each accepts --config.
+func TestServerRegistrySubcommands(t *testing.T) {
+	cmd := NewServerCmd()
 
-	names := make(map[string]bool)
+	found := map[string]bool{
+		"add": false, "list": false, "default": false,
+		"show": false, "ping": false, "remove": false,
+	}
 	for _, c := range cmd.Commands() {
-		names[c.Name()] = true
-		// Every auth subcommand must accept --config.
-		assert.NotNilf(t, c.Flags().Lookup("config"), "%s missing --config", c.Name())
+		if _, ok := found[c.Name()]; ok {
+			found[c.Name()] = true
+			// Every registry subcommand reads or writes local config.
+			assert.NotNilf(t, c.Flags().Lookup("config"), "%s missing --config", c.Name())
+		}
 	}
 
-	for _, want := range []string{"set", "list", "default", "show", "test", "remove"} {
-		assert.Truef(t, names[want], "missing subcommand %q", want)
+	for name, ok := range found {
+		assert.Truef(t, ok, "missing subcommand %q", name)
 	}
 }

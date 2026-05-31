@@ -100,7 +100,7 @@ func TestServerFlagUnknownAliasErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown server")
 	assert.Contains(t, err.Error(), "nope")
 	// Points the user at how to discover valid aliases.
-	assert.Contains(t, err.Error(), "auth list")
+	assert.Contains(t, err.Error(), "server list")
 }
 
 func TestServerEnvVarSelectsServer(t *testing.T) {
@@ -148,15 +148,23 @@ func TestServerNoDefaultErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "no default server")
 	// Lists the configured aliases and how to set a default.
 	assert.Contains(t, err.Error(), "alpha")
-	assert.Contains(t, err.Error(), "auth default")
+	assert.Contains(t, err.Error(), "server default")
 }
 
 // TestServerFlagOnlyOnDialingCommands guards the FR-8 invariant: --server is
-// registered on dialing commands but never on the auth subcommands.
+// registered on dialing commands but never on the named-server registry
+// subcommands (which select a server by positional [alias] instead).
 func TestServerFlagOnlyOnDialingCommands(t *testing.T) {
-	auth := NewAuthCmd()
-	for _, c := range auth.Commands() {
-		assert.Nilf(t, c.Flags().Lookup("server"), "auth %s must not have --server", c.Name())
+	// The registry subcommands manage local config; ping takes a positional
+	// [alias]. None of them carry --server.
+	registry := map[string]bool{
+		"add": true, "list": true, "default": true,
+		"show": true, "ping": true, "remove": true,
+	}
+	for _, c := range NewServerCmd().Commands() {
+		if registry[c.Name()] {
+			assert.Nilf(t, c.Flags().Lookup("server"), "server %s must not have --server", c.Name())
+		}
 	}
 
 	// Spot-check representative dialing commands carry --server.

@@ -32,7 +32,7 @@ installs the dev toolchain from the `Brewfile`. `direnv` (`.envrc`) puts
 ```
 cmd/snatcher/             # thin entrypoint: os.Exit(cli.Execute())
 internal/cli/             # root command wiring + Execute()
-internal/commands/        # one cobra command group per file (auth, list, …)
+internal/commands/        # one cobra command group per file (server, torrent, …)
 internal/torrent/         # vendor-neutral Backend interface + types + transforms
 internal/transmission/    # Transmission adapter (the only importer of rpc)
 internal/transmission/rpc # typed Transmission RPC client (Client→Protocol→Transport)
@@ -56,9 +56,10 @@ Layers, outermost to innermost:
 - **`internal/cli`** — builds the root cobra command and wires subcommands.
 - **`internal/commands`** — one command group per file. Depends only on
   `torrent.Backend` plus `config`/`secrets`/`output`. `commands.dial()` (in
-  `auth.go`) is the *single* seam where a command crosses into the concrete
-  backend: it loads config, reads the keyring password, and returns a
-  `torrent.Backend`.
+  `server_registry.go`) is the *single* seam where a command crosses into the
+  concrete backend: it loads config, reads the keyring password, and returns a
+  `torrent.Backend`. That same file holds the named-server registry subcommands
+  (`server add`/`list`/`default`/`show`/`ping`/`remove`).
 - **`internal/torrent`** — the neutral seam itself: the `Backend` interface, the
   `Torrent`/`Stats`/`ServerInfo` types, the `Selector` (id/hash/`--all` parsing
   for mutation commands), and the in-memory list transforms (filter/search/sort).
@@ -113,7 +114,7 @@ package. The password lives only in the OS keyring (`internal/secrets`), keyed b
 server URL — never on disk.
 
 `config.json` is trusted, operator-owned input. The `validateURL` userinfo guard
-(rejecting embedded `user:pass@` credentials) applies only at `auth set` time;
+(rejecting embedded `user:pass@` credentials) applies only at `server add` time;
 URLs loaded from a legacy or hand-edited config are used as-is, with no
 load-time re-validation.
 

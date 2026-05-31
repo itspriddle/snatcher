@@ -333,7 +333,7 @@ func (c *Client) detect(ctx context.Context) (Protocol, error) {
 // caught here. An absent rpc-version — a pre-1.50 server, or a non-Transmission
 // endpoint that happens to answer — is left to fail naturally downstream rather
 // than be mislabeled as a version problem. The wrapped message names the
-// detected version so callers (e.g. "auth test") can explain the refusal.
+// detected version so callers (e.g. "server ping") can explain the refusal.
 func enforceMinVersion(probeBody []byte) error {
 	var resp struct {
 		Arguments struct {
