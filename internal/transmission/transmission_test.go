@@ -966,6 +966,107 @@ func TestBackendMoveTorrentsMapsTransportError(t *testing.T) {
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }
 
+func TestBackendSetTorrentsTranslatesKeys(t *testing.T) {
+	tests := []struct {
+		name       string
+		rpcVersion string
+		// wantWire are wire-key fragments expected in the captured request body:
+		// snake_case for JSON-RPC, the bespoke camelCase/kebab spelling otherwise.
+		wantWire []string
+	}{
+		{
+			name:       "jsonrpc",
+			rpcVersion: "6.0.0",
+			wantWire: []string{
+				`"method":"torrent_set"`,
+				`"ids":[3,"deadbeef"]`,
+				`"bandwidth_priority":1`,
+				`"seed_ratio_mode":1`,
+				`"peer_limit":50`,
+			},
+		},
+		{
+			name:       "bespoke",
+			rpcVersion: "",
+			wantWire: []string{
+				`"method":"torrent-set"`,
+				`"ids":[3,"deadbeef"]`,
+				`"bandwidthPriority":1`,
+				`"seedRatioMode":1`,
+				`"peer-limit":50`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{3}, Hashes: []string{"deadbeef"}}
+			err := b.SetTorrents(context.Background(), sel, map[string]any{
+				"bandwidth-priority": 1,
+				"seed-ratio-mode":    1,
+				"peer-limit":         50,
+			})
+			require.NoError(t, err)
+
+			for _, want := range tt.wantWire {
+				assert.Contains(t, captured, want)
+			}
+		})
+	}
+}
+
+func TestBackendSetTorrentsAllOmitsIDs(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.SetTorrents(context.Background(), torrent.Selector{All: true}, map[string]any{
+		"honors-session-limits": false,
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent_set"`)
+	assert.Contains(t, captured, `"honors_session_limits":false`)
+	assert.NotContains(t, captured, `"ids"`)
+}
+
+func TestBackendSetTorrentsMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.SetTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, map[string]any{"peer-limit": 50})
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, rpc.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendSetTorrentsMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.SetTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, map[string]any{"peer-limit": 50})
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, torrent.ErrAuth)
+}
+
 // captureAddServer is a Transmission stub that records the body of the
 // non-handshake request and answers with a valid torrent-add result (a new
 // add). The reply shape differs per scheme — JSON-RPC's "result" must be the

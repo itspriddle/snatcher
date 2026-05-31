@@ -179,6 +179,9 @@ func (noAPIBackend) RemoveTorrents(context.Context, torrent.Selector, bool) erro
 func (noAPIBackend) MoveTorrents(context.Context, torrent.Selector, string, bool) error {
 	return nil
 }
+func (noAPIBackend) SetTorrents(context.Context, torrent.Selector, map[string]any) error {
+	return nil
+}
 func (noAPIBackend) AddTorrent(context.Context, torrent.AddRequest) (torrent.AddResult, error) {
 	return torrent.AddResult{}, nil
 }

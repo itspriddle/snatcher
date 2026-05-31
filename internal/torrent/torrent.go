@@ -160,6 +160,14 @@ type Backend interface {
 	// validate that it exists or is writable.
 	MoveTorrents(ctx context.Context, sel Selector, location string, move bool) error
 
+	// SetTorrents writes per-torrent fields on the torrents matched by sel. The
+	// changes map is keyed by neutral kebab-case field key (e.g. "bandwidth-
+	// priority", "seed-ratio-mode") with the parsed typed value; the backend
+	// translates each key to its own wire scheme. Only the keys present in changes
+	// are written; unspecified fields are left untouched. An All selector targets
+	// every torrent. The call confirms success and carries no response payload.
+	SetTorrents(ctx context.Context, sel Selector, changes map[string]any) error
+
 	// AddTorrent adds a single torrent described by req (exactly one of Metainfo,
 	// URL, or Magnet identifies the source) and returns the neutral AddResult. A
 	// torrent that was already present is reported via AddResult.Duplicate rather

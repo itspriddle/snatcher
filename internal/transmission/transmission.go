@@ -240,6 +240,23 @@ func (b *Backend) MoveTorrents(ctx context.Context, sel torrent.Selector, locati
 	return mapError(b.client.TorrentSetLocation(ctx, sel.RPCIDs(), location, move))
 }
 
+// SetTorrents writes per-torrent fields on the torrents matched by sel. The
+// changes map is keyed by neutral kebab-case field key with typed values; each
+// key is translated to the snake_case rpc key (a mechanical "-"->"_"
+// replacement, reusing rpcSettingKey) before forwarding to rpc.Client.TorrentSet,
+// which owns the per-wire-scheme translation (including the bespoke camelCase
+// names). Only the keys present in changes are written. An All selector omits
+// the ids argument so the server targets every torrent. RPC failures are mapped
+// to the neutral sentinels.
+func (b *Backend) SetTorrents(ctx context.Context, sel torrent.Selector, changes map[string]any) error {
+	settings := make(map[string]any, len(changes))
+	for key, value := range changes {
+		settings[rpcSettingKey(key)] = value
+	}
+
+	return mapError(b.client.TorrentSet(ctx, sel.RPCIDs(), settings))
+}
+
 // AddTorrent adds a single torrent via the rpc client's TorrentAdd. It
 // base64-encodes raw Metainfo into the RPC metainfo field, maps URL/Magnet to
 // the RPC filename field, and passes DownloadDir/Paused/Labels through. The
