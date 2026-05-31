@@ -297,6 +297,249 @@ func TestSetJQ(t *testing.T) {
 	assert.Equal(t, "1", strings.TrimSpace(out))
 }
 
+// TestSetRateLimitsBespoke asserts the --download-limit / --upload-limit
+// sentinel branches reach the bespoke wire with the paired camelCase keys.
+func TestSetRateLimitsBespoke(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			"download numeric",
+			[]string{"--download-limit", "500"},
+			[]string{`"downloadLimit":500`, `"downloadLimited":true`},
+		},
+		{
+			"download off",
+			[]string{"--download-limit", "off"},
+			[]string{`"downloadLimited":false`},
+		},
+		{
+			"upload numeric",
+			[]string{"--upload-limit", "250"},
+			[]string{`"uploadLimit":250`, `"uploadLimited":true`},
+		},
+		{
+			"upload off",
+			[]string{"--upload-limit", "OFF"},
+			[]string{`"uploadLimited":false`},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+			defer closeSrv()
+
+			args := append([]string{"--config", cfgPath}, tc.args...)
+			args = append(args, "1")
+
+			_, _, err := runSet(t, args...)
+			require.NoError(t, err)
+
+			body, ok := stub.request("torrent-set")
+			require.True(t, ok, "the bespoke torrent-set method was called")
+			for _, want := range tc.want {
+				assert.Contains(t, body, want)
+			}
+		})
+	}
+}
+
+// TestSetRateLimitOffOmitsLimit guards that disabling a limit with "off" does
+// not also send a limit value (only the *Limited toggle is written).
+func TestSetRateLimitOffOmitsLimit(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--download-limit", "off", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok, "the bespoke torrent-set method was called")
+	assert.Contains(t, body, `"downloadLimited":false`)
+	assert.NotContains(t, body, "downloadLimit\":", "a disabled limit must not send a limit value")
+}
+
+// TestSetRateLimitsJSONRPC asserts the rate-limit branches reach the JSON-RPC
+// wire with canonical snake_case keys.
+func TestSetRateLimitsJSONRPC(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath,
+		"--download-limit", "500",
+		"--upload-limit", "off",
+		"1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent_set")
+	require.True(t, ok, "the JSON-RPC torrent_set method was called")
+	assert.Contains(t, body, `"download_limit":500`)
+	assert.Contains(t, body, `"download_limited":true`)
+	assert.Contains(t, body, `"upload_limited":false`)
+}
+
+// TestSetSeedRatioBespoke asserts each --seed-ratio sentinel branch maps to the
+// paired seedRatioLimit / seedRatioMode wire keys.
+func TestSetSeedRatioBespoke(t *testing.T) {
+	cases := []struct {
+		name string
+		val  string
+		want []string
+		miss string
+	}{
+		{"numeric", "2", []string{`"seedRatioLimit":2`, `"seedRatioMode":1`}, ""},
+		{"global", "global", []string{`"seedRatioMode":0`}, "seedRatioLimit"},
+		{"unlimited", "unlimited", []string{`"seedRatioMode":2`}, "seedRatioLimit"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+			defer closeSrv()
+
+			_, _, err := runSet(t, "--config", cfgPath, "--seed-ratio", tc.val, "1")
+			require.NoError(t, err)
+
+			body, ok := stub.request("torrent-set")
+			require.True(t, ok, "the bespoke torrent-set method was called")
+			for _, want := range tc.want {
+				assert.Contains(t, body, want)
+			}
+			if tc.miss != "" {
+				assert.NotContains(t, body, tc.miss, "a mode-only ratio must not send a limit value")
+			}
+		})
+	}
+}
+
+// TestSetSeedRatioJSONRPC asserts a fractional ratio reaches the JSON-RPC wire
+// with canonical snake_case keys.
+func TestSetSeedRatioJSONRPC(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--seed-ratio", "1.5", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent_set")
+	require.True(t, ok, "the JSON-RPC torrent_set method was called")
+	assert.Contains(t, body, `"seed_ratio_limit":1.5`)
+	assert.Contains(t, body, `"seed_ratio_mode":1`)
+}
+
+// TestSetSeedIdleBespoke asserts each --seed-idle sentinel branch maps to the
+// paired seedIdleLimit / seedIdleMode wire keys, including duration parsing to
+// whole minutes.
+func TestSetSeedIdleBespoke(t *testing.T) {
+	cases := []struct {
+		name string
+		val  string
+		want []string
+		miss string
+	}{
+		{"minutes", "30", []string{`"seedIdleLimit":30`, `"seedIdleMode":1`}, ""},
+		{"duration minutes", "45m", []string{`"seedIdleLimit":45`, `"seedIdleMode":1`}, ""},
+		{"duration hours", "1h30m", []string{`"seedIdleLimit":90`, `"seedIdleMode":1`}, ""},
+		{"global", "global", []string{`"seedIdleMode":0`}, "seedIdleLimit"},
+		{"unlimited", "unlimited", []string{`"seedIdleMode":2`}, "seedIdleLimit"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+			defer closeSrv()
+
+			_, _, err := runSet(t, "--config", cfgPath, "--seed-idle", tc.val, "1")
+			require.NoError(t, err)
+
+			body, ok := stub.request("torrent-set")
+			require.True(t, ok, "the bespoke torrent-set method was called")
+			for _, want := range tc.want {
+				assert.Contains(t, body, want)
+			}
+			if tc.miss != "" {
+				assert.NotContains(t, body, tc.miss, "a mode-only idle limit must not send a limit value")
+			}
+		})
+	}
+}
+
+// TestSetSeedIdleJSONRPC asserts a duration reaches the JSON-RPC wire as whole
+// minutes with canonical snake_case keys.
+func TestSetSeedIdleJSONRPC(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath, "--seed-idle", "2h", "1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent_set")
+	require.True(t, ok, "the JSON-RPC torrent_set method was called")
+	assert.Contains(t, body, `"seed_idle_limit":120`)
+	assert.Contains(t, body, `"seed_idle_mode":1`)
+}
+
+// TestSetInvalidLimitErrors guards that bad sentinel values are rejected before
+// any RPC call.
+func TestSetInvalidLimitErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"negative download", []string{"--download-limit", "-5"}, "invalid value for --download-limit"},
+		{"non-numeric download", []string{"--download-limit", "fast"}, "invalid value for --download-limit"},
+		{"negative upload", []string{"--upload-limit", "-1"}, "invalid value for --upload-limit"},
+		{"bad seed-ratio", []string{"--seed-ratio", "lots"}, "invalid value for --seed-ratio"},
+		{"negative seed-ratio", []string{"--seed-ratio", "-2"}, "invalid value for --seed-ratio"},
+		{"sub-minute seed-idle", []string{"--seed-idle", "90s"}, "invalid value for --seed-idle"},
+		{"bad seed-idle", []string{"--seed-idle", "soon"}, "invalid value for --seed-idle"},
+		{"negative seed-idle", []string{"--seed-idle", "-30"}, "invalid value for --seed-idle"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+			defer closeSrv()
+
+			args := append([]string{"--config", cfgPath}, tc.args...)
+			args = append(args, "1")
+
+			_, _, err := runSet(t, args...)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+
+			_, ok := stub.request("torrent-set")
+			assert.False(t, ok, "the set method must not be called for an invalid value")
+		})
+	}
+}
+
+// TestSetCombinesScalarAndLimitFields guards that scalar (US-003) and limit
+// (US-004) flags combine into a single torrent-set request.
+func TestSetCombinesScalarAndLimitFields(t *testing.T) {
+	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
+	defer closeSrv()
+
+	_, _, err := runSet(t, "--config", cfgPath,
+		"--priority", "high",
+		"--download-limit", "500",
+		"--seed-ratio", "2.0",
+		"1")
+	require.NoError(t, err)
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok, "the bespoke torrent-set method was called")
+	assert.Contains(t, body, `"bandwidthPriority":1`)
+	assert.Contains(t, body, `"downloadLimit":500`)
+	assert.Contains(t, body, `"downloadLimited":true`)
+	assert.Contains(t, body, `"seedRatioLimit":2`)
+	assert.Contains(t, body, `"seedRatioMode":1`)
+}
+
 func TestSetNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")

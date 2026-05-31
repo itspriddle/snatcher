@@ -446,6 +446,32 @@ Whether the torrent honors the global session speed limits.
 .TP
 .BR \-\-sequential\-download [= true | false ]
 Download pieces in sequential order (Transmission 4.1+).
+.TP
+.BR \-\-download\-limit " " \fIkBps | off\fR
+Per-torrent download speed limit in kB/s, enabling the limit; the literal
+.B off
+disables it.
+.TP
+.BR \-\-upload\-limit " " \fIkBps | off\fR
+Per-torrent upload speed limit in kB/s, enabling the limit; the literal
+.B off
+disables it.
+.TP
+.BR \-\-seed\-ratio " " \fIratio | global | unlimited\fR
+Per-torrent seed ratio limit. A number sets the limit;
+.B global
+follows the session default;
+.B unlimited
+seeds without a ratio limit.
+.TP
+.BR \-\-seed\-idle " " \fIminutes | duration | global | unlimited\fR
+Per-torrent idle-seeding limit, as whole minutes (a bare integer or a Go-style
+duration such as
+.IR 30m ", " 1h ", or " 1h30m );
+.B global
+follows the session default;
+.B unlimited
+seeds without an idle limit.
 .RE
 .TP
 .B snatcher torrent upload \fR[\fIoptions\fR] [\fIfile | url | magnet\fR]...

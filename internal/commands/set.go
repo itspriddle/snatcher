@@ -2,7 +2,9 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -10,9 +12,10 @@ import (
 )
 
 // NewSetCmd builds the "set" command, which writes mutable per-torrent fields
-// (priority, queue position, peer limit, and the session-limit/sequential
-// toggles) on the torrents selected by positional id/hash arguments (or --all).
-// It maps to the Transmission RPC torrent-set method.
+// (priority, queue position, peer limit, the session-limit/sequential toggles,
+// and the speed and seeding limits) on the torrents selected by positional
+// id/hash arguments (or --all). It maps to the Transmission RPC torrent-set
+// method.
 //
 // Only the fields whose flags were explicitly set are written (detected via
 // cmd.Flags().Changed), so unspecified fields are never clobbered. With no field
@@ -30,6 +33,10 @@ func NewSetCmd() *cobra.Command {
 		peerLimit           int
 		honorsSessionLimits bool
 		sequentialDownload  bool
+		downloadLimit       string
+		uploadLimit         string
+		seedRatio           string
+		seedIdle            string
 	)
 
 	cmd := &cobra.Command{
@@ -81,6 +88,30 @@ func NewSetCmd() *cobra.Command {
 				changes["sequential-download"] = sequentialDownload
 			}
 
+			if cmd.Flags().Changed("download-limit") {
+				if err := applyRateLimit(changes, "download", downloadLimit); err != nil {
+					return err
+				}
+			}
+
+			if cmd.Flags().Changed("upload-limit") {
+				if err := applyRateLimit(changes, "upload", uploadLimit); err != nil {
+					return err
+				}
+			}
+
+			if cmd.Flags().Changed("seed-ratio") {
+				if err := applySeedRatio(changes, seedRatio); err != nil {
+					return err
+				}
+			}
+
+			if cmd.Flags().Changed("seed-idle") {
+				if err := applySeedIdle(changes, seedIdle); err != nil {
+					return err
+				}
+			}
+
 			if len(changes) == 0 {
 				return fmt.Errorf("nothing to set: provide at least one field flag")
 			}
@@ -119,6 +150,10 @@ func NewSetCmd() *cobra.Command {
 	cmd.Flags().IntVar(&peerLimit, "peer-limit", 0, "maximum number of peers for the torrent")
 	cmd.Flags().BoolVar(&honorsSessionLimits, "honors-session-limits", false, "honor the global session speed limits")
 	cmd.Flags().BoolVar(&sequentialDownload, "sequential-download", false, "download pieces in sequential order (Transmission 4.1+)")
+	cmd.Flags().StringVar(&downloadLimit, "download-limit", "", "download speed limit in kB/s, or 'off' to disable")
+	cmd.Flags().StringVar(&uploadLimit, "upload-limit", "", "upload speed limit in kB/s, or 'off' to disable")
+	cmd.Flags().StringVar(&seedRatio, "seed-ratio", "", "seed ratio limit, or 'global'/'unlimited'")
+	cmd.Flags().StringVar(&seedIdle, "seed-idle", "", "seed idle limit in minutes or as a duration (30m, 1h), or 'global'/'unlimited'")
 
 	return cmd
 }
@@ -138,4 +173,96 @@ func parsePriority(raw string) (int, error) {
 	default:
 		return 0, fmt.Errorf("invalid value for --priority: must be low, normal, or high")
 	}
+}
+
+// applyRateLimit writes the paired <kind>-limit / <kind>-limited keys for a
+// --download-limit / --upload-limit value. "off" (case-insensitive) disables the
+// limit by setting <kind>-limited=false and leaves the limit value untouched; a
+// non-negative integer sets the limit (in kB/s) and enables it via
+// <kind>-limited=true. Any other value is rejected.
+func applyRateLimit(changes map[string]any, kind, raw string) error {
+	value := strings.TrimSpace(raw)
+
+	if strings.EqualFold(value, "off") {
+		changes[kind+"-limited"] = false
+		return nil
+	}
+
+	kbps, err := strconv.Atoi(value)
+	if err != nil || kbps < 0 {
+		return fmt.Errorf("invalid value for --%s-limit: must be a non-negative integer (kB/s) or 'off'", kind)
+	}
+
+	changes[kind+"-limit"] = kbps
+	changes[kind+"-limited"] = true
+
+	return nil
+}
+
+// applySeedRatio writes the paired seed-ratio-limit / seed-ratio-mode keys for a
+// --seed-ratio value. A numeric ratio sets the limit and seed-ratio-mode=1
+// (single); "global" sets mode=0; "unlimited" sets mode=2. Any other value is
+// rejected.
+func applySeedRatio(changes map[string]any, raw string) error {
+	value := strings.TrimSpace(raw)
+
+	switch strings.ToLower(value) {
+	case "global":
+		changes["seed-ratio-mode"] = 0
+		return nil
+	case "unlimited":
+		changes["seed-ratio-mode"] = 2
+		return nil
+	}
+
+	ratio, err := strconv.ParseFloat(value, 64)
+	if err != nil || ratio < 0 {
+		return fmt.Errorf("invalid value for --seed-ratio: must be a non-negative number, 'global', or 'unlimited'")
+	}
+
+	changes["seed-ratio-limit"] = ratio
+	changes["seed-ratio-mode"] = 1
+
+	return nil
+}
+
+// applySeedIdle writes the paired seed-idle-limit / seed-idle-mode keys for a
+// --seed-idle value. A bare integer (minutes) or a Go-style duration string
+// (30m, 1h, 1h30m) sets the limit in whole minutes and seed-idle-mode=1
+// (single); "global" sets mode=0; "unlimited" sets mode=2. Durations with
+// sub-minute precision (e.g. 90s) and any other value are rejected.
+func applySeedIdle(changes map[string]any, raw string) error {
+	value := strings.TrimSpace(raw)
+
+	switch strings.ToLower(value) {
+	case "global":
+		changes["seed-idle-mode"] = 0
+		return nil
+	case "unlimited":
+		changes["seed-idle-mode"] = 2
+		return nil
+	}
+
+	if minutes, err := strconv.Atoi(value); err == nil {
+		if minutes < 0 {
+			return invalidSeedIdleErr()
+		}
+		changes["seed-idle-limit"] = minutes
+		changes["seed-idle-mode"] = 1
+		return nil
+	}
+
+	d, err := time.ParseDuration(value)
+	if err != nil || d < 0 || d%time.Minute != 0 {
+		return invalidSeedIdleErr()
+	}
+
+	changes["seed-idle-limit"] = int(d / time.Minute)
+	changes["seed-idle-mode"] = 1
+
+	return nil
+}
+
+func invalidSeedIdleErr() error {
+	return fmt.Errorf("invalid value for --seed-idle: must be whole minutes (integer or duration like 30m/1h), 'global', or 'unlimited'")
 }
