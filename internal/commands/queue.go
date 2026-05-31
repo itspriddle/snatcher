@@ -79,6 +79,7 @@ func NewQueueCmd() *cobra.Command {
 func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Command {
 	var (
 		configPath string
+		server     string
 		asJSON     bool
 		jqExpr     string
 	)
@@ -104,7 +105,7 @@ func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Co
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -128,6 +129,7 @@ func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Co
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 

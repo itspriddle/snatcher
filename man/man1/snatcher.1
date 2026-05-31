@@ -67,6 +67,20 @@ Read configuration from
 instead of the default location (see
 .BR FILES ).
 .TP
+.BR \-\-server " " \fIalias\fR
+Target the configured server named
+.IR alias
+instead of the default. When omitted, snatcher uses the
+.B SNATCHER_SERVER
+environment variable if set, otherwise the configured default server. This
+option is accepted only by commands that connect to a server; it never appears
+on the
+.B auth
+subcommands,
+.BR version ,
+or
+.BR completion .
+.TP
 .B \-\-json
 Emit JSON instead of plaintext.
 .TP
@@ -607,15 +621,13 @@ selectors matched no torrents, a confirmation was refused, or at least one
 source failed.
 .SH ENVIRONMENT
 .TP
-.B SNATCHER_SERVER_URL
-Overrides the
-.B server_url
-from the config file.
-.TP
-.B SNATCHER_USERNAME
-Overrides the
-.B username
-from the config file.
+.B SNATCHER_SERVER
+Selects the configured server alias to connect to, equivalent to passing
+.BR \-\-server .
+The
+.B \-\-server
+flag takes precedence; when neither is set, the configured default server is
+used.
 .TP
 .B NO_COLOR
 When set to a non-empty value, forces
@@ -628,11 +640,15 @@ When set, the default config path is
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/snatcher/config.json
-Non-secret configuration (JSON keys
-.B server_url
+Non-secret configuration (a
+.B servers
+map of named server aliases, each with a
+.B url
 and
-.BR username ),
-created with mode 0600. Falls back to
+.BR username ,
+plus a
+.B default_server
+alias), created with mode 0600. Falls back to
 .I ~/.config/snatcher/config.json
 when
 .B XDG_CONFIG_HOME

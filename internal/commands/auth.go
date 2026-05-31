@@ -219,7 +219,7 @@ func newAuthTestCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, "")
 			if err != nil {
 				return err
 			}
@@ -295,28 +295,63 @@ func newAuthRemoveCmd() *cobra.Command {
 	return cmd
 }
 
-// dial loads config (honoring configPath), reads the password from the keyring,
-// and constructs the Transmission backend as a torrent.Backend. It returns the
-// backend and the resolved server URL. It is the single seam where commands
-// cross into a concrete backend.
-func dial(configPath string) (torrent.Backend, string, error) {
+// dial loads config (honoring configPath), resolves which named server to use,
+// reads that server's password from the keyring, and constructs the Transmission
+// backend as a torrent.Backend. It returns the backend and the resolved server
+// URL. It is the single seam where commands cross into a concrete backend.
+//
+// Server selection precedence is: the server argument (the --server flag) >
+// the SNATCHER_SERVER environment variable > the configured default server.
+func dial(configPath, server string) (torrent.Backend, string, error) {
 	cfg, configured, err := loadConfig(configPath)
 	if err != nil {
 		return nil, "", err
 	}
 
-	if !configured || cfg.ServerURL == "" {
+	if !configured || len(cfg.Servers) == 0 {
 		return nil, "", errors.New("not configured: run 'snatcher auth set' first")
 	}
 
-	password, err := secrets.Get(cfg.ServerURL)
+	if server == "" {
+		server = os.Getenv("SNATCHER_SERVER")
+	}
+
+	_, srv, err := config.Resolve(cfg, server)
+	if err != nil {
+		return nil, "", resolveServerError(cfg, server, err)
+	}
+
+	password, err := secrets.Get(srv.URL)
 	if err != nil && !errors.Is(err, secrets.ErrNotFound) {
 		return nil, "", err
 	}
 
-	backend := transmission.New(cfg.ServerURL, transmission.WithBasicAuth(cfg.Username, password))
+	backend := transmission.New(srv.URL, transmission.WithBasicAuth(srv.Username, password))
 
-	return backend, cfg.ServerURL, nil
+	return backend, srv.URL, nil
+}
+
+// resolveServerError turns a config.Resolve sentinel into a clear, actionable
+// error message: an unknown alias names the offending value and points at
+// 'auth list'; a missing default explains how to pick a server or set one.
+func resolveServerError(cfg config.Config, server string, err error) error {
+	switch {
+	case errors.Is(err, config.ErrUnknownServer):
+		return fmt.Errorf("unknown server %q: run 'snatcher auth list' to see configured servers", server)
+	case errors.Is(err, config.ErrNoDefaultServer):
+		names := strings.Join(cfg.Names(), ", ")
+		return fmt.Errorf("no default server set: pass --server <alias> or set one with 'snatcher auth default <alias>' (configured: %s)", names)
+	default:
+		return err
+	}
+}
+
+// addServerFlag registers the shared --server flag on a dialing command, binding
+// it to target. Every command that connects to a server registers it through
+// this helper so the flag name and usage stay consistent and it appears only on
+// dialing commands.
+func addServerFlag(cmd *cobra.Command, target *string) {
+	cmd.Flags().StringVar(target, "server", "", "target configured server (default: configured default)")
 }
 
 // loadConfig loads the config at configPath (or the default path) and reports

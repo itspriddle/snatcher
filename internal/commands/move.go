@@ -24,6 +24,7 @@ import (
 func NewMoveCmd() *cobra.Command {
 	var (
 		configPath string
+		server     string
 		asJSON     bool
 		jqExpr     string
 		inPlace    bool
@@ -52,7 +53,7 @@ func NewMoveCmd() *cobra.Command {
 				return fmt.Errorf("location must not be empty")
 			}
 
-			backend, serverURL, err := dial(configPath)
+			backend, serverURL, err := dial(configPath, server)
 			if err != nil {
 				return err
 			}
@@ -93,6 +94,7 @@ func NewMoveCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().BoolVar(&inPlace, "in-place", false, "repoint to an existing path without relocating files")
