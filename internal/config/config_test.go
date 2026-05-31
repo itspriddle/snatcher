@@ -37,13 +37,36 @@ func TestDefaultPathWithXDGUnset(t *testing.T) {
 func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.json")
 
-	want := Config{ServerURL: "http://localhost:9091/transmission/rpc", Username: "alice"}
+	want := Config{
+		Servers: map[string]Server{
+			"local":   {URL: "http://localhost:9091/transmission/rpc", Username: "alice"},
+			"seedbox": {URL: "https://seedbox.example:443/rpc", Username: "bob"},
+		},
+		DefaultServer: "local",
+	}
 
 	require.NoError(t, Save(want, path))
 
 	got, err := Load(path)
 	require.NoError(t, err)
-	assert.Equal(t, want, got)
+	assert.Equal(t, want.Servers, got.Servers)
+	assert.Equal(t, want.DefaultServer, got.DefaultServer)
+}
+
+func TestSaveLoadPreservesMixedCaseAlias(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	want := Config{
+		Servers:       map[string]Server{"MixedCase": {URL: "http://example:9091/rpc", Username: "alice"}},
+		DefaultServer: "MixedCase",
+	}
+
+	require.NoError(t, Save(want, path))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, want.Servers, got.Servers, "alias case must be preserved on round-trip")
+	assert.Equal(t, "MixedCase", got.DefaultServer)
 }
 
 func TestSaveCreatesParentDirsAndEnforcesPermissions(t *testing.T) {
@@ -54,7 +77,11 @@ func TestSaveCreatesParentDirsAndEnforcesPermissions(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "snatcher")
 	path := filepath.Join(dir, "config.json")
 
-	require.NoError(t, Save(Config{ServerURL: "http://example"}, path))
+	cfg := Config{
+		Servers:       map[string]Server{"local": {URL: "http://example"}},
+		DefaultServer: "local",
+	}
+	require.NoError(t, Save(cfg, path))
 
 	dirInfo, err := os.Stat(dir)
 	require.NoError(t, err)
@@ -65,10 +92,14 @@ func TestSaveCreatesParentDirsAndEnforcesPermissions(t *testing.T) {
 	assert.Equal(t, os.FileMode(filePerm), fileInfo.Mode().Perm())
 }
 
-func TestSaveWritesNoSecretField(t *testing.T) {
+func TestSaveWritesNewSchemaAndNoLegacyOrSecretKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 
-	require.NoError(t, Save(Config{ServerURL: "http://example", Username: "bob"}, path))
+	cfg := Config{
+		Servers:       map[string]Server{"local": {URL: "http://example", Username: "bob"}},
+		DefaultServer: "local",
+	}
+	require.NoError(t, Save(cfg, path))
 
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -81,8 +112,67 @@ func TestSaveWritesNoSecretField(t *testing.T) {
 		assert.Falsef(t, exists, "config file must not contain %q", secretKey)
 	}
 
-	assert.Equal(t, "http://example", on["server_url"])
-	assert.Equal(t, "bob", on["username"])
+	for _, legacyKey := range []string{"server_url", "username"} {
+		_, exists := on[legacyKey]
+		assert.Falsef(t, exists, "config file must not contain legacy key %q", legacyKey)
+	}
+
+	assert.Equal(t, "local", on["default_server"])
+
+	servers, ok := on["servers"].(map[string]any)
+	require.True(t, ok, "servers must be an object")
+	local, ok := servers["local"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "http://example", local["url"])
+	assert.Equal(t, "bob", local["username"])
+}
+
+func TestSaveMigratesLegacyFlatFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	// A caller that still builds a Config with only the transitional flat fields.
+	require.NoError(t, Save(Config{ServerURL: "http://host:9091/rpc", Username: "carol"}, path))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, "host:9091", got.DefaultServer)
+	assert.Equal(t, Server{URL: "http://host:9091/rpc", Username: "carol"}, got.Servers["host:9091"])
+	// The transitional shim is populated from the default server.
+	assert.Equal(t, "http://host:9091/rpc", got.ServerURL)
+	assert.Equal(t, "carol", got.Username)
+}
+
+func TestLoadMigratesLegacyConfigOnRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	// A legacy on-disk file written by an older snatcher.
+	legacy := `{"server_url":"http://Localhost:9091/transmission/rpc","username":"dave"}`
+	require.NoError(t, os.WriteFile(path, []byte(legacy), filePerm))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+
+	// Keyed by the lowercased URL host (with port), set as the default.
+	assert.Equal(t, "localhost:9091", got.DefaultServer)
+	assert.Equal(t, map[string]Server{
+		"localhost:9091": {URL: "http://Localhost:9091/transmission/rpc", Username: "dave"},
+	}, got.Servers)
+}
+
+func TestLoadPrefersServersOverLegacyFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	// A file that has both the new servers map and stray legacy keys: the
+	// servers map wins and migration does not run.
+	mixed := `{"servers":{"a":{"url":"http://a","username":"x"}},"default_server":"a","server_url":"http://legacy","username":"y"}`
+	require.NoError(t, os.WriteFile(path, []byte(mixed), filePerm))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"a"}, got.Names())
+	assert.Equal(t, "a", got.DefaultServer)
 }
 
 func TestLoadMissingFileReturnsZeroConfigAndNotConfigured(t *testing.T) {
@@ -93,23 +183,25 @@ func TestLoadMissingFileReturnsZeroConfigAndNotConfigured(t *testing.T) {
 	assert.Equal(t, Config{}, got)
 }
 
-func TestLoadEnvOverridesFile(t *testing.T) {
+func TestLoadRejectsDefaultServerWithoutMatch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, Save(Config{ServerURL: "http://from-file", Username: "file-user"}, path))
 
-	t.Setenv("SNATCHER_SERVER_URL", "http://from-env")
+	bad := `{"servers":{"a":{"url":"http://a"}},"default_server":"missing"}`
+	require.NoError(t, os.WriteFile(path, []byte(bad), filePerm))
 
-	got, err := Load(path)
-	require.NoError(t, err)
-	assert.Equal(t, "http://from-env", got.ServerURL, "env var should override file value")
-	assert.Equal(t, "file-user", got.Username, "unset env var should fall back to file value")
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing")
 }
 
 func TestLoadDefaultPathHonorsXDG(t *testing.T) {
 	xdg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdg)
 
-	want := Config{ServerURL: "http://default-path", Username: "carol"}
+	want := Config{
+		Servers:       map[string]Server{"local": {URL: "http://default-path", Username: "carol"}},
+		DefaultServer: "local",
+	}
 	require.NoError(t, Save(want, ""))
 
 	// Confirm it landed at the XDG-derived default path.
@@ -119,5 +211,72 @@ func TestLoadDefaultPathHonorsXDG(t *testing.T) {
 
 	got, err := Load("")
 	require.NoError(t, err)
-	assert.Equal(t, want, got)
+	assert.Equal(t, want.Servers, got.Servers)
+	assert.Equal(t, want.DefaultServer, got.DefaultServer)
+}
+
+func TestResolveDefault(t *testing.T) {
+	cfg := Config{
+		Servers: map[string]Server{
+			"local":   {URL: "http://local"},
+			"seedbox": {URL: "http://seedbox"},
+		},
+		DefaultServer: "seedbox",
+	}
+
+	name, srv, err := Resolve(cfg, "")
+	require.NoError(t, err)
+	assert.Equal(t, "seedbox", name)
+	assert.Equal(t, "http://seedbox", srv.URL)
+}
+
+func TestResolveNamed(t *testing.T) {
+	cfg := Config{
+		Servers: map[string]Server{
+			"local":   {URL: "http://local"},
+			"seedbox": {URL: "http://seedbox"},
+		},
+		DefaultServer: "seedbox",
+	}
+
+	name, srv, err := Resolve(cfg, "local")
+	require.NoError(t, err)
+	assert.Equal(t, "local", name)
+	assert.Equal(t, "http://local", srv.URL)
+}
+
+func TestResolveUnknown(t *testing.T) {
+	cfg := Config{
+		Servers:       map[string]Server{"local": {URL: "http://local"}},
+		DefaultServer: "local",
+	}
+
+	_, _, err := Resolve(cfg, "nope")
+	require.ErrorIs(t, err, ErrUnknownServer)
+	assert.Contains(t, err.Error(), "nope")
+}
+
+func TestResolveNoDefault(t *testing.T) {
+	cfg := Config{
+		Servers: map[string]Server{"local": {URL: "http://local"}},
+	}
+
+	_, _, err := Resolve(cfg, "")
+	require.ErrorIs(t, err, ErrNoDefaultServer)
+}
+
+func TestNamesSortedAscending(t *testing.T) {
+	cfg := Config{
+		Servers: map[string]Server{
+			"zulu":  {URL: "http://z"},
+			"alpha": {URL: "http://a"},
+			"mike":  {URL: "http://m"},
+		},
+	}
+
+	assert.Equal(t, []string{"alpha", "mike", "zulu"}, cfg.Names())
+}
+
+func TestNamesEmpty(t *testing.T) {
+	assert.Empty(t, Config{}.Names())
 }
