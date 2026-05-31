@@ -2,8 +2,6 @@ ARG snatcher api 0 method
 ARG snatcher server default 0 alias
 ARG snatcher server settings get 0 key
 ARG snatcher server settings reset 0 key
-ARG snatcher server settings set 0 key
-ARG snatcher server settings set 1 value
 ARG snatcher torrent info 0 id|hash
 ARG snatcher torrent move 0 id|hash
 ARG snatcher torrent move 1 location
@@ -89,10 +87,49 @@ FLAG snatcher server settings reset --config type=string
 FLAG snatcher server settings reset --jq type=string
 FLAG snatcher server settings reset --json type=bool
 FLAG snatcher server settings reset --server type=string
+FLAG snatcher server settings set --alt-speed-down type=int64
+FLAG snatcher server settings set --alt-speed-enabled type=bool
+FLAG snatcher server settings set --alt-speed-time-begin type=int
+FLAG snatcher server settings set --alt-speed-time-day type=int
+FLAG snatcher server settings set --alt-speed-time-enabled type=bool
+FLAG snatcher server settings set --alt-speed-time-end type=int
+FLAG snatcher server settings set --alt-speed-up type=int64
+FLAG snatcher server settings set --blocklist-enabled type=bool
+FLAG snatcher server settings set --blocklist-url type=string
+FLAG snatcher server settings set --cache-size-mib type=int
 FLAG snatcher server settings set --config type=string
+FLAG snatcher server settings set --dht-enabled type=bool
+FLAG snatcher server settings set --download-dir type=string
+FLAG snatcher server settings set --download-queue-enabled type=bool
+FLAG snatcher server settings set --download-queue-size type=int
+FLAG snatcher server settings set --encryption type=string
+FLAG snatcher server settings set --idle-seeding-limit type=int
+FLAG snatcher server settings set --idle-seeding-limit-enabled type=bool
+FLAG snatcher server settings set --incomplete-dir type=string
+FLAG snatcher server settings set --incomplete-dir-enabled type=bool
 FLAG snatcher server settings set --jq type=string
 FLAG snatcher server settings set --json type=bool
+FLAG snatcher server settings set --lpd-enabled type=bool
+FLAG snatcher server settings set --peer-limit-global type=int
+FLAG snatcher server settings set --peer-limit-per-torrent type=int
+FLAG snatcher server settings set --peer-port type=int
+FLAG snatcher server settings set --peer-port-random-on-start type=bool
+FLAG snatcher server settings set --pex-enabled type=bool
+FLAG snatcher server settings set --port-forwarding-enabled type=bool
+FLAG snatcher server settings set --queue-stalled-enabled type=bool
+FLAG snatcher server settings set --queue-stalled-minutes type=int
+FLAG snatcher server settings set --rename-partial-files type=bool
+FLAG snatcher server settings set --seed-queue-enabled type=bool
+FLAG snatcher server settings set --seed-queue-size type=int
+FLAG snatcher server settings set --seed-ratio-limit type=float64
+FLAG snatcher server settings set --seed-ratio-limited type=bool
 FLAG snatcher server settings set --server type=string
+FLAG snatcher server settings set --speed-limit-down type=int64
+FLAG snatcher server settings set --speed-limit-down-enabled type=bool
+FLAG snatcher server settings set --speed-limit-up type=int64
+FLAG snatcher server settings set --speed-limit-up-enabled type=bool
+FLAG snatcher server settings set --start-added-torrents type=bool
+FLAG snatcher server settings set --utp-enabled type=bool
 FLAG snatcher server show --config type=string
 FLAG snatcher server show --json type=bool
 FLAG snatcher server stats --config type=string

@@ -227,14 +227,158 @@ emits a single
 object. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
 .TP
-.B snatcher server settings set \fIkey value\fR \fR[\fIkey value\fR]...
-Set one or more settings, given as key/value pairs. All pairs are validated
-before any write, so an invalid pair aborts the whole command with no partial
-change; afterwards the server's actual values are read back and reported.
-Read-only settings (e.g.\&
-.BR blocklist\-size )
-are rejected. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.B snatcher server settings set \fR[\fIoptions\fR]
+Set one or more settings, each given as a typed flag whose name is the setting
+key (e.g.\&
+.BR \-\-peer\-port " " 51413 " " \-\-dht\-enabled = false ).
+Only the flags you pass are written, so unspecified settings are left
+unchanged; at least one setting flag is required (a bare invocation is an error,
+not a no-op). Bool settings are enabled with a bare
+.B \-\-key
+and disabled with
+.BR \-\-key = false .
+Enum flags are validated before any network call, so an invalid value aborts
+with no partial change. After writing, the values you set are echoed back \(em
+this is what was written, not a re-read, so server-side normalization (e.g.\&
+clamping an out-of-range port) is not reflected. The read-only
+.B blocklist\-size
+has no flag. Besides the common
+.BR \-\-config ", " \-\-json ", and " \-\-jq
+options, one flag exists per settable setting. Download:
+.RS
+.TP
+.BR \-\-download\-dir " " \fIpath\fR
+Default directory for completed downloads.
+.TP
+.BR \-\-start\-added\-torrents [= true | false ]
+Start torrents automatically when added.
+.TP
+.BR \-\-rename\-partial\-files [= true | false ]
+Append
+.B .part
+to incomplete files.
+.TP
+.BR \-\-incomplete\-dir\-enabled [= true | false ]
+Keep incomplete downloads in a separate directory.
+.TP
+.BR \-\-incomplete\-dir " " \fIpath\fR
+Directory for incomplete downloads (when enabled).
+.TP
+.BR \-\-seed\-ratio\-limited [= true | false ]
+Stop seeding at the global seed-ratio limit.
+.TP
+.BR \-\-seed\-ratio\-limit " " \fIratio\fR
+Global seed ratio to stop seeding at (when limited).
+.TP
+.BR \-\-idle\-seeding\-limit\-enabled [= true | false ]
+Stop seeding torrents that have been idle too long.
+.TP
+.BR \-\-idle\-seeding\-limit " " \fIminutes\fR
+Idle time in minutes before stopping seeding (when enabled).
+.TP
+.BR \-\-cache\-size\-mib " " \fIn\fR
+Disk cache size in MiB.
+.RE
+.IP
+Network:
+.RS
+.TP
+.BR \-\-peer\-port " " \fIn\fR
+Port to listen for incoming peer connections.
+.TP
+.BR \-\-peer\-port\-random\-on\-start [= true | false ]
+Pick a random peer port on each start.
+.TP
+.BR \-\-port\-forwarding\-enabled [= true | false ]
+Request UPnP/NAT-PMP port forwarding.
+.TP
+.BR \-\-encryption " " \fIallowed | preferred | required\fR
+Peer encryption mode.
+.TP
+.BR \-\-peer\-limit\-global " " \fIn\fR
+Maximum peer connections across all torrents.
+.TP
+.BR \-\-peer\-limit\-per\-torrent " " \fIn\fR
+Maximum peer connections per torrent.
+.TP
+.BR \-\-pex\-enabled [= true | false ]
+Enable Peer Exchange (PEX).
+.TP
+.BR \-\-dht\-enabled [= true | false ]
+Enable the Distributed Hash Table (DHT).
+.TP
+.BR \-\-lpd\-enabled [= true | false ]
+Enable Local Peer Discovery (LPD).
+.TP
+.BR \-\-utp\-enabled [= true | false ]
+Enable the uTP transport protocol.
+.TP
+.BR \-\-blocklist\-enabled [= true | false ]
+Block peers listed in the blocklist.
+.TP
+.BR \-\-blocklist\-url " " \fIurl\fR
+URL to fetch the peer blocklist from.
+.RE
+.IP
+Bandwidth (the speed limits are in KB/s; the schedule times are minutes after
+midnight):
+.RS
+.TP
+.BR \-\-speed\-limit\-down\-enabled [= true | false ]
+Enable the global download speed limit.
+.TP
+.BR \-\-speed\-limit\-down " " \fIKBps\fR
+Global download speed limit in KB/s (when enabled).
+.TP
+.BR \-\-speed\-limit\-up\-enabled [= true | false ]
+Enable the global upload speed limit.
+.TP
+.BR \-\-speed\-limit\-up " " \fIKBps\fR
+Global upload speed limit in KB/s (when enabled).
+.TP
+.BR \-\-alt\-speed\-enabled [= true | false ]
+Use the alternative (throttled) speed limits now.
+.TP
+.BR \-\-alt\-speed\-down " " \fIKBps\fR
+Alternative download speed limit in KB/s.
+.TP
+.BR \-\-alt\-speed\-up " " \fIKBps\fR
+Alternative upload speed limit in KB/s.
+.TP
+.BR \-\-alt\-speed\-time\-enabled [= true | false ]
+Switch to alternative speeds on a daily schedule.
+.TP
+.BR \-\-alt\-speed\-time\-begin " " \fIminutes\fR
+Alternative-speed schedule start (minutes after midnight).
+.TP
+.BR \-\-alt\-speed\-time\-end " " \fIminutes\fR
+Alternative-speed schedule end (minutes after midnight).
+.TP
+.BR \-\-alt\-speed\-time\-day " " \fIn\fR
+Days the alternative-speed schedule runs (bitfield, Sun=1).
+.RE
+.IP
+Queue:
+.RS
+.TP
+.BR \-\-download\-queue\-enabled [= true | false ]
+Limit how many torrents download at once.
+.TP
+.BR \-\-download\-queue\-size " " \fIn\fR
+Maximum torrents downloading at once (when enabled).
+.TP
+.BR \-\-seed\-queue\-enabled [= true | false ]
+Limit how many torrents seed at once.
+.TP
+.BR \-\-seed\-queue\-size " " \fIn\fR
+Maximum torrents seeding at once (when enabled).
+.TP
+.BR \-\-queue\-stalled\-enabled [= true | false ]
+Ignore stalled torrents when counting the queue.
+.TP
+.BR \-\-queue\-stalled\-minutes " " \fIn\fR
+Idle minutes before a transfer counts as stalled.
+.RE
 .TP
 .B snatcher server settings reset \fIkey\fR
 Restore a single setting to its Transmission default. Accepts
@@ -763,7 +907,7 @@ $ snatcher server settings \-\-category bandwidth
 $ snatcher server settings get peer\-port
 
 # set the download speed limit to 500 KB/s and enable it
-$ snatcher server settings set speed\-limit\-down 500 speed\-limit\-down\-enabled true
+$ snatcher server settings set \-\-speed\-limit\-down 500 \-\-speed\-limit\-down\-enabled
 
 # restore a setting to its default
 $ snatcher server settings reset peer\-port

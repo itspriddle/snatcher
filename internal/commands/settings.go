@@ -349,19 +349,26 @@ func (d settingDef) parseSettingValue(raw string) (any, error) {
 
 		return f, nil
 	case typeEnum:
-		lowered := strings.ToLower(strings.TrimSpace(raw))
-		for _, allowed := range d.allowed {
-			if lowered == allowed {
-				return allowed, nil
-			}
-		}
-
-		return nil, fmt.Errorf("invalid value for %s: must be one of: %s", d.key, strings.Join(d.allowed, ", "))
+		return d.validateEnum(raw)
 	case typeString:
 		return raw, nil
 	default:
 		return nil, fmt.Errorf("invalid value for %s: unsupported type", d.key)
 	}
+}
+
+// validateEnum matches a raw enum value case-insensitively (and after trimming)
+// against the setting's allowed list, returning the canonical lowercase value. A
+// value outside the list returns a clear error naming the allowed values.
+func (d settingDef) validateEnum(raw string) (string, error) {
+	lowered := strings.ToLower(strings.TrimSpace(raw))
+	for _, allowed := range d.allowed {
+		if lowered == allowed {
+			return allowed, nil
+		}
+	}
+
+	return "", fmt.Errorf("invalid value for %s: must be one of: %s", d.key, strings.Join(d.allowed, ", "))
 }
 
 // formatSettingValue renders a typed value to its plaintext string: bools as
@@ -550,14 +557,15 @@ func newSettingsGetCmd() *cobra.Command {
 	return cmd
 }
 
-// newSettingsSetCmd builds "settings set <key> <value> [<key> <value>...]",
-// which writes one or more settings in a single call. Pairs are validated
-// all-or-nothing before any network write: unknown keys, the read-only
-// blocklist-size, and type/enum parse failures are collected and reported
-// together, so an invalid pair aborts the whole command with no partial write.
-// On success it writes via backend.SetSession, re-fetches via GetSession, and
-// reports the server's actual post-set values (key: value per line on
-// plaintext; the {key, category, value} array on --json/--jq).
+// newSettingsSetCmd builds "settings set", which writes one or more settings via
+// one typed flag per settable setting (flag name == setting key), mirroring
+// "torrent set". Only the flags explicitly given are written (detected via
+// cmd.Flags().Changed), so unspecified settings are never sent; a bare invocation
+// with no setting flag is an error, not a no-op. Enum flags are validated
+// case-insensitively before any network write, so an invalid value aborts with no
+// partial change. On success it writes via backend.SetSession and, rather than
+// re-fetching, echoes the written values (key: value per line on plaintext in
+// registry order; the {key, category, value} array on --json/--jq).
 func newSettingsSetCmd() *cobra.Command {
 	var (
 		configPath string
@@ -567,23 +575,32 @@ func newSettingsSetCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "set <key> <value> [<key> <value>...]",
+		Use:   "set [options]",
 		Short: "Set one or more settings",
-		Long: "Set one or more settings, given as key/value pairs.\n\n" +
-			"All pairs are validated before any write, so an invalid pair aborts " +
-			"the whole command with no partial change. After writing, the " +
-			"server's actual values are read back and reported.\n\n" +
+		Long: "Set one or more settings, each given as a typed flag (e.g. " +
+			"--peer-port 51413 --dht-enabled=false). The flag name is the setting " +
+			"key.\n\n" +
+			"Only the flags you pass are written, so unspecified settings are left " +
+			"unchanged. At least one setting flag is required; a bare invocation is " +
+			"an error, not a no-op. Bool settings are enabled with a bare --key and " +
+			"disabled with --key=false.\n\n" +
+			"After writing, the values you set are echoed back (this is what was " +
+			"written, not a re-read, so server-side normalization is not reflected).\n\n" +
 			"Units: speed-limit-down, speed-limit-up, alt-speed-down, and " +
-			"alt-speed-up are in KB/s (e.g. 'set speed-limit-down 100' is " +
-			"100 KB/s). alt-speed-time-begin and alt-speed-time-end are minutes " +
-			"after midnight (e.g. 540 is 09:00).",
-		Args:          cobra.MinimumNArgs(2),
+			"alt-speed-up are in KB/s (e.g. --speed-limit-down 100 is 100 KB/s). " +
+			"alt-speed-time-begin and alt-speed-time-end are minutes after midnight " +
+			"(e.g. 540 is 09:00).",
+		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			defs, changes, err := parseSettingAssignments(args)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			defs, changes, err := collectSettingChanges(cmd)
 			if err != nil {
 				return err
+			}
+
+			if len(changes) == 0 {
+				return fmt.Errorf("nothing to set: provide at least one setting flag")
 			}
 
 			backend, serverURL, err := dial(configPath, server)
@@ -595,22 +612,19 @@ func newSettingsSetCmd() *cobra.Command {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
 
-			session, err := backend.GetSession(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
-			}
+			rows := writtenSettingRows(defs, changes)
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), settingRows(defs, session), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), rows, jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), settingRows(defs, session))
+				return output.JSON(cmd.OutOrStdout(), rows)
 			}
 
 			out := cmd.OutOrStdout()
 			for _, def := range defs {
-				_, _ = fmt.Fprintf(out, "%s: %s\n", def.key, settingCell(def, session))
+				_, _ = fmt.Fprintf(out, "%s: %s\n", def.key, writtenSettingCell(def, changes[def.key]))
 			}
 
 			return nil
@@ -621,67 +635,118 @@ func newSettingsSetCmd() *cobra.Command {
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	registerSettingFlags(cmd)
 
 	return cmd
 }
 
-// parseSettingAssignments turns the positional key/value arguments into the
-// ordered definitions to report and the neutral-key change map to write. It
-// validates all-or-nothing: an odd argument count, unknown keys, the read-only
-// blocklist-size, and per-value parse failures are all collected and returned
-// together as a single error so nothing is sent on any failure. The returned
-// defs preserve argument order; a key repeated on the command line takes its
-// last value (and is reported once).
-func parseSettingAssignments(args []string) ([]settingDef, map[string]any, error) {
-	if len(args)%2 != 0 {
-		return nil, nil, fmt.Errorf("set requires an even number of arguments (key value pairs); got %d", len(args))
-	}
-
-	var (
-		problems []string
-		order    []string
-		defs     = make(map[string]settingDef)
-		changes  = make(map[string]any)
-	)
-
-	for i := 0; i < len(args); i += 2 {
-		key, raw := args[i], args[i+1]
-
-		def, ok := lookupSetting(key)
-		if !ok {
-			problems = append(problems, fmt.Sprintf("unknown setting %q", key))
-			continue
-		}
-
+// registerSettingFlags adds one flag per settable registry entry to the set
+// command. The flag name is the setting key and its type follows the setting's
+// settingType; the help text comes from the setting's desc. The read-only
+// blocklist-size gets no flag (it has no desc and cannot be written).
+func registerSettingFlags(cmd *cobra.Command) {
+	for _, def := range settingRegistry {
 		if def.readOnly {
-			problems = append(problems, fmt.Sprintf("setting %q is read-only", key))
 			continue
 		}
 
-		value, err := def.parseSettingValue(raw)
+		switch def.typ {
+		case typeBool:
+			cmd.Flags().Bool(def.key, false, def.desc)
+		case typeInt:
+			cmd.Flags().Int(def.key, 0, def.desc)
+		case typeInt64:
+			cmd.Flags().Int64(def.key, 0, def.desc)
+		case typeFloat:
+			cmd.Flags().Float64(def.key, 0, def.desc)
+		case typeString, typeEnum:
+			cmd.Flags().String(def.key, "", def.desc)
+		}
+	}
+}
+
+// collectSettingChanges builds the ordered definitions to report and the neutral
+// kebab-case change map from the setting flags that were explicitly set (detected
+// via cmd.Flags().Changed). Enum flags are validated case-insensitively, and an
+// invalid value returns a clear error (and no map entry) before any write, so
+// nothing is sent on a bad value. Unset flags are omitted entirely. Order follows
+// the registry, so output is stable regardless of flag order on the command line.
+func collectSettingChanges(cmd *cobra.Command) ([]settingDef, map[string]any, error) {
+	var defs []settingDef
+	changes := make(map[string]any)
+
+	for _, def := range settingRegistry {
+		if def.readOnly || !cmd.Flags().Changed(def.key) {
+			continue
+		}
+
+		value, err := settingFlagValue(cmd, def)
 		if err != nil {
-			problems = append(problems, err.Error())
-			continue
+			return nil, nil, err
 		}
 
-		if _, seen := defs[key]; !seen {
-			order = append(order, key)
+		defs = append(defs, def)
+		changes[def.key] = value
+	}
+
+	return defs, changes, nil
+}
+
+// settingFlagValue reads the typed value of a changed setting flag, returning it
+// as the neutral typed value written to the change map. Enum values are validated
+// case-insensitively and normalized to their canonical lowercase form; all other
+// types are read directly from the typed cobra flag.
+func settingFlagValue(cmd *cobra.Command, def settingDef) (any, error) {
+	switch def.typ {
+	case typeBool:
+		return cmd.Flags().GetBool(def.key)
+	case typeInt:
+		return cmd.Flags().GetInt(def.key)
+	case typeInt64:
+		return cmd.Flags().GetInt64(def.key)
+	case typeFloat:
+		return cmd.Flags().GetFloat64(def.key)
+	case typeEnum:
+		raw, err := cmd.Flags().GetString(def.key)
+		if err != nil {
+			return nil, err
 		}
-		defs[key] = def
-		changes[key] = value
+
+		return def.validateEnum(raw)
+	case typeString:
+		return cmd.Flags().GetString(def.key)
+	default:
+		return nil, fmt.Errorf("invalid value for %s: unsupported type", def.key)
+	}
+}
+
+// writtenSettingRows builds the {key, category, value} JSON rows from the values
+// just written (not a re-read), in the given definition order. The values are the
+// native typed values from the change map, matching the --json/--jq contract.
+func writtenSettingRows(defs []settingDef, changes map[string]any) []settingRow {
+	rows := make([]settingRow, len(defs))
+	for i, def := range defs {
+		rows[i] = settingRow{
+			Key:      def.key,
+			Category: string(def.category),
+			Value:    changes[def.key],
+		}
 	}
 
-	if len(problems) > 0 {
-		return nil, nil, fmt.Errorf("invalid settings: %s\nvalid settings are %s",
-			strings.Join(problems, "; "), strings.Join(allSettingKeys(), ", "))
+	return rows
+}
+
+// writtenSettingCell renders a just-written value as plaintext, sanitizing
+// terminal control sequences for server-derived string settings so a crafted
+// value cannot inject ANSI escapes into the echoed output. The JSON/jq paths
+// never call it.
+func writtenSettingCell(def settingDef, value any) string {
+	v := formatSettingValue(value)
+	if serverDerivedSettings[def.key] {
+		v = output.SanitizeTerminal(v)
 	}
 
-	ordered := make([]settingDef, len(order))
-	for i, key := range order {
-		ordered[i] = defs[key]
-	}
-
-	return ordered, changes, nil
+	return v
 }
 
 // newSettingsResetCmd builds "settings reset <key>", which restores a single
