@@ -64,7 +64,7 @@ Use "snatcher [command] --help" for more information about a command.
 
 ### Aliases
 
-- `snatcher torrent up` / `snatcher upload`
+- [ ] `snatcher torrent up` / `snatcher upload`
 - [x] `snatcher torrent mv`
 - [x] `snatcher torrent rm`
 - [x] `snatcher torrent ls`
@@ -147,6 +147,8 @@ Always visible.
 - `P` - show details > peers tab
 - `L` - show details > labels tab
 - `esc` - select no torrent (details stays if visible, but empty)
+
+Todo: need something to search in the table, like / in vim, but taken above...
 
 #### Torrents Window > Torrent Filter Pane (Left)
 
