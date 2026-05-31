@@ -47,6 +47,11 @@ type mutationResult struct {
 	// mutation commands.
 	Move *bool `json:"move,omitempty"`
 
+	// Fields is set on the set command to report the neutral kebab-case fields
+	// (and their values) that were written. It is omitted for the other mutation
+	// commands.
+	Fields map[string]any `json:"fields,omitempty"`
+
 	// Unmatched lists the requested selector tokens that matched no torrent. It is
 	// omitted when every requested token matched (or for an --all selection).
 	Unmatched []string `json:"unmatched,omitempty"`
@@ -186,6 +191,8 @@ func mutationVerb(action string) string {
 		return "Queued verification of"
 	case "reannounce":
 		return "Reannounced"
+	case "set":
+		return "Updated"
 	case "queue-top":
 		return "Moved to top"
 	case "queue-up":

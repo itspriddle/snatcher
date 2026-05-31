@@ -1200,6 +1200,166 @@ func TestBespokeProtocolTorrentSetLocationMapsNonSuccessResult(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid argument")
 }
 
+func TestProtocolTorrentSet(t *testing.T) {
+	t.Run("jsonrpc sends snake_case keys verbatim with ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := jsonrpcProtocol{}.TorrentSet(context.Background(), tr, []any{int64(2), "cafebabe"}, map[string]any{
+			"bandwidth_priority": 1,
+			"seed_ratio_mode":    1,
+			"peer_limit":         50,
+			"labels":             []string{"a", "b"},
+		})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		// JSON-RPC 2.0 envelope: snake_case method, snake_case keys sent verbatim.
+		assert.Equal(t, "torrent_set", gotBody["method"])
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{float64(2), "cafebabe"}, params["ids"])
+		assert.Equal(t, float64(1), params["bandwidth_priority"])
+		assert.Equal(t, float64(1), params["seed_ratio_mode"])
+		assert.Equal(t, float64(50), params["peer_limit"])
+		assert.Equal(t, []any{"a", "b"}, params["labels"])
+	})
+
+	t.Run("bespoke remaps keys to camelCase/kebab with ids", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := bespokeProtocol{}.TorrentSet(context.Background(), tr, []any{int64(2), "cafebabe"}, map[string]any{
+			"bandwidth_priority": 1,
+			"seed_ratio_mode":    1,
+			"seed_idle_limit":    30,
+			"tracker_list":       "http://tracker",
+			"peer_limit":         50,
+			"labels":             []string{"a", "b"},
+			"group":              "media",
+		})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		// Bespoke envelope: kebab-case method; the documented exceptions become
+		// camelCase, while plain keys (peer-limit, labels, group) use the
+		// mechanical "_"->"-" transform.
+		assert.Equal(t, "torrent-set", gotBody["method"])
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{float64(2), "cafebabe"}, args["ids"])
+		assert.Equal(t, float64(1), args["bandwidthPriority"])
+		assert.Equal(t, float64(1), args["seedRatioMode"])
+		assert.Equal(t, float64(30), args["seedIdleLimit"])
+		assert.Equal(t, "http://tracker", args["trackerList"])
+		assert.Equal(t, float64(50), args["peer-limit"])
+		assert.Equal(t, []any{"a", "b"}, args["labels"])
+		assert.Equal(t, "media", args["group"])
+		assert.NotContains(t, args, "bandwidth_priority")
+		assert.NotContains(t, args, "seed_ratio_mode")
+	})
+}
+
+func TestProtocolTorrentSetOmitsIDsWhenAll(t *testing.T) {
+	t.Run("jsonrpc omits ids but keeps settings", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": null, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		// A nil ids slice (RPCIDs() for an All selector) omits ids but still sends
+		// the settings.
+		err := jsonrpcProtocol{}.TorrentSet(context.Background(), tr, nil, map[string]any{"honors_session_limits": false})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent_set", gotBody["method"])
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, params, "ids")
+		assert.Equal(t, false, params["honors_session_limits"])
+	})
+
+	t.Run("bespoke omits ids but keeps settings", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		err := bespokeProtocol{}.TorrentSet(context.Background(), tr, nil, map[string]any{"honors_session_limits": false})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent-set", gotBody["method"])
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, args, "ids")
+		assert.Equal(t, false, args["honorsSessionLimits"])
+	})
+}
+
+func TestJSONRPCProtocolTorrentSetMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": -32602, "message": "invalid argument"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := jsonrpcProtocol{}.TorrentSet(context.Background(), tr, []any{int64(1)}, map[string]any{"peer_limit": 1})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
+func TestBespokeProtocolTorrentSetMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "invalid argument", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	err := bespokeProtocol{}.TorrentSet(context.Background(), tr, []any{int64(1)}, map[string]any{"peer_limit": 1})
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "invalid argument")
+}
+
 func TestProtocolActionOmitsIDsWhenAll(t *testing.T) {
 	t.Run("jsonrpc omits ids", func(t *testing.T) {
 		var rawBody []byte
