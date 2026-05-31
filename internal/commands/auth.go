@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -36,6 +37,8 @@ func NewAuthCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		newAuthSetCmd(),
+		newAuthListCmd(),
+		newAuthDefaultCmd(),
 		newAuthShowCmd(),
 		newAuthTestCmd(),
 		newAuthRemoveCmd(),
@@ -146,6 +149,192 @@ func newAuthSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&serverURL, "url", "", "Transmission RPC URL (e.g. http://host:9091/transmission/rpc)")
 	cmd.Flags().StringVar(&username, "username", "", "username for HTTP Basic Auth")
 	cmd.Flags().BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin instead of a prompt")
+
+	return cmd
+}
+
+// authListResult is the JSON shape emitted for one server by "auth list". It is
+// a stable scripting contract: additive changes only. The password is never
+// included; only whether a keyring secret exists.
+type authListResult struct {
+	Name         string `json:"name"`
+	ServerURL    string `json:"server_url"`
+	Username     string `json:"username"`
+	SecretStored bool   `json:"secret_stored"`
+	IsDefault    bool   `json:"is_default"`
+}
+
+// newAuthListCmd builds "auth list", which enumerates every configured server
+// with its alias, URL, username, whether a keyring secret is stored, and whether
+// it is the default. Plaintext is an aligned table on a TTY and tab-separated,
+// header-less rows when piped or NO_COLOR is set (the same contract as
+// "torrent list"); --json and --jq emit a stable structured shape. Servers are
+// listed sorted by alias.
+func newAuthListCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+	)
+
+	cmd := &cobra.Command{
+		Use:           "list",
+		Short:         "List configured servers",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, _, err := loadConfig(configPath)
+			if err != nil {
+				return err
+			}
+
+			results, err := authListResults(cfg)
+			if err != nil {
+				return err
+			}
+
+			if jqExpr != "" {
+				return output.JQ(cmd.OutOrStdout(), results, jqExpr)
+			}
+
+			if asJSON {
+				return output.JSON(cmd.OutOrStdout(), results)
+			}
+
+			writeAuthListPlaintext(cmd, results)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
+	return cmd
+}
+
+// authListResults builds the per-server result rows for "auth list", sorted by
+// alias, querying the keyring for whether each server's secret is stored.
+func authListResults(cfg config.Config) ([]authListResult, error) {
+	names := cfg.Names()
+	results := make([]authListResult, 0, len(names))
+
+	for _, name := range names {
+		srv := cfg.Servers[name]
+
+		secretStored := false
+		if srv.URL != "" {
+			if _, err := secrets.Get(srv.URL); err == nil {
+				secretStored = true
+			} else if !errors.Is(err, secrets.ErrNotFound) {
+				return nil, err
+			}
+		}
+
+		results = append(results, authListResult{
+			Name:         name,
+			ServerURL:    srv.URL,
+			Username:     srv.Username,
+			SecretStored: secretStored,
+			IsDefault:    name == cfg.DefaultServer,
+		})
+	}
+
+	return results, nil
+}
+
+// writeAuthListPlaintext renders the server list in the appropriate plaintext
+// mode: an aligned, headered table on a TTY, or plain tab-separated, header-less
+// rows when piped or when NO_COLOR is set (the same contract as "torrent list").
+// Server-derived strings (alias, URL, username) are sanitized of terminal
+// control sequences here; the JSON/jq paths are never sanitized.
+func writeAuthListPlaintext(cmd *cobra.Command, results []authListResult) {
+	out := cmd.OutOrStdout()
+
+	rows := make([][]string, len(results))
+	for i, r := range results {
+		rows[i] = []string{
+			output.SanitizeTerminal(r.Name),
+			output.SanitizeTerminal(r.ServerURL),
+			output.SanitizeTerminal(r.Username),
+			yesNo(r.SecretStored),
+			yesNo(r.IsDefault),
+		}
+	}
+
+	if isTTY(out) {
+		writeAuthListTable(out, rows)
+		return
+	}
+
+	for _, row := range rows {
+		_, _ = fmt.Fprintln(out, strings.Join(row, "\t"))
+	}
+}
+
+// writeAuthListTable writes a whitespace-aligned table with a header row. An
+// empty server list writes a friendly "No servers configured." line.
+func writeAuthListTable(w io.Writer, rows [][]string) {
+	if len(rows) == 0 {
+		_, _ = fmt.Fprintln(w, "No servers configured.")
+		return
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
+	_, _ = fmt.Fprintln(tw, strings.Join([]string{"NAME", "URL", "USERNAME", "SECRET", "DEFAULT"}, "\t"))
+	for _, row := range rows {
+		_, _ = fmt.Fprintln(tw, strings.Join(row, "\t"))
+	}
+
+	_ = tw.Flush()
+}
+
+// newAuthDefaultCmd builds "auth default <alias>", which sets the configured
+// default server to an existing alias and persists it. An unknown alias errors
+// clearly, listing the valid names.
+func newAuthDefaultCmd() *cobra.Command {
+	var configPath string
+
+	cmd := &cobra.Command{
+		Use:           "default <alias>",
+		Short:         "Set the default server",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := args[0]
+
+			cfg, _, err := loadConfig(configPath)
+			if err != nil {
+				return err
+			}
+
+			if _, ok := cfg.Servers[alias]; !ok {
+				names := strings.Join(cfg.Names(), ", ")
+				return fmt.Errorf("unknown server %q: configured servers are %s", alias, names)
+			}
+
+			cfg.DefaultServer = alias
+
+			// Clear the transitional shim fields so Save persists Servers verbatim
+			// rather than re-deriving a server from them.
+			cfg.ServerURL = ""
+			cfg.Username = ""
+
+			if err := config.Save(cfg, configPath); err != nil {
+				return err
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Default server set to %q\n", alias)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 
 	return cmd
 }

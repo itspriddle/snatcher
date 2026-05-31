@@ -44,7 +44,7 @@ Show help for
 or any subcommand and exit.
 .SS Common options
 These options are accepted by every command that talks to the server
-.RB ( auth\ show ", " auth\ test )
+.RB ( auth\ list ", " auth\ show ", " auth\ test )
 and by all the
 .B server
 and
@@ -123,6 +123,28 @@ Username for HTTP Basic Auth.
 .B \-\-password\-stdin
 Read the password from standard input instead of prompting.
 .RE
+.TP
+.B snatcher auth list \fR[\fIoptions\fR]
+List every configured server, sorted by alias, showing its name, URL, username,
+whether a keyring secret is stored, and whether it is the default. Plaintext is
+an aligned table on a terminal and tab-separated, header-less rows when piped or
+when
+.B NO_COLOR
+is set (the same contract as
+.BR list ).
+Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher auth default \fIalias\fR \fR[\fIoptions\fR]
+Set the default server to the existing alias
+.IR alias .
+The default is used by every command that connects to a server when
+.B \-\-server
+and
+.B SNATCHER_SERVER
+are not given. An unknown alias is rejected, listing the configured names.
+Accepts
+.BR \-\-config .
 .TP
 .B snatcher auth show \fR[\fIoptions\fR]
 Show the current server URL, username, resolved config path, and whether a

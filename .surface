@@ -1,4 +1,5 @@
 ARG snatcher api 0 method
+ARG snatcher auth default 0 alias
 ARG snatcher server settings get 0 key
 ARG snatcher server settings reset 0 key
 ARG snatcher server settings set 0 key
@@ -9,6 +10,8 @@ ARG snatcher torrent move 1 location
 CMD snatcher
 CMD snatcher api
 CMD snatcher auth
+CMD snatcher auth default
+CMD snatcher auth list
 CMD snatcher auth remove
 CMD snatcher auth set
 CMD snatcher auth show
@@ -47,6 +50,10 @@ FLAG snatcher api --jq type=string
 FLAG snatcher api --raw type=bool
 FLAG snatcher api --raw-field type=stringArray
 FLAG snatcher api --server type=string
+FLAG snatcher auth default --config type=string
+FLAG snatcher auth list --config type=string
+FLAG snatcher auth list --jq type=string
+FLAG snatcher auth list --json type=bool
 FLAG snatcher auth remove --config type=string
 FLAG snatcher auth set --config type=string
 FLAG snatcher auth set --name type=string

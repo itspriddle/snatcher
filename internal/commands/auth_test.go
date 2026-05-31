@@ -347,6 +347,120 @@ func TestAuthSetEmptyPasswordDropsExistingSecret(t *testing.T) {
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
 }
 
+func TestAuthListPlaintext(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const localURL = "http://local:9091/transmission/rpc"
+	const seedboxURL = "http://seedbox:9091/transmission/rpc"
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"seedbox": {URL: seedboxURL, Username: "bob"},
+			"local":   {URL: localURL, Username: "alice"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+	require.NoError(t, secrets.Set(localURL, "pw"))
+
+	out, _, err := runAuth(t, "", "list", "--config", cfgPath)
+	require.NoError(t, err)
+
+	// Not a TTY in tests: tab-separated, header-less rows sorted by alias.
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 2)
+
+	assert.Equal(t, "local\t"+localURL+"\talice\tyes\tyes", lines[0])
+	assert.Equal(t, "seedbox\t"+seedboxURL+"\tbob\tno\tno", lines[1])
+}
+
+func TestAuthListJSON(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const localURL = "http://local:9091/transmission/rpc"
+	const seedboxURL = "http://seedbox:9091/transmission/rpc"
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"seedbox": {URL: seedboxURL, Username: "bob"},
+			"local":   {URL: localURL, Username: "alice"},
+		},
+		DefaultServer: "seedbox",
+	}, cfgPath))
+	require.NoError(t, secrets.Set(seedboxURL, "pw"))
+
+	out, _, err := runAuth(t, "", "list", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var results []authListResult
+	require.NoError(t, json.Unmarshal([]byte(out), &results))
+	require.Len(t, results, 2)
+
+	// Sorted by alias.
+	assert.Equal(t, "local", results[0].Name)
+	assert.Equal(t, localURL, results[0].ServerURL)
+	assert.Equal(t, "alice", results[0].Username)
+	assert.False(t, results[0].SecretStored)
+	assert.False(t, results[0].IsDefault)
+
+	assert.Equal(t, "seedbox", results[1].Name)
+	assert.True(t, results[1].SecretStored)
+	assert.True(t, results[1].IsDefault)
+}
+
+func TestAuthListEmpty(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	out, _, err := runAuth(t, "", "list", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	// An empty inventory serializes as "[]", never "null".
+	assert.Equal(t, "[]\n", out)
+}
+
+func TestAuthDefaultSwitches(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: "http://local:9091/rpc", Username: "alice"},
+			"seedbox": {URL: "http://seedbox:9091/rpc", Username: "bob"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	out, _, err := runAuth(t, "", "default", "seedbox", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, out, "seedbox")
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, "seedbox", cfg.DefaultServer)
+}
+
+func TestAuthDefaultUnknownAlias(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"local": {URL: "http://local:9091/rpc"}},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	_, _, err := runAuth(t, "", "default", "nope", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown server "nope"`)
+	assert.Contains(t, err.Error(), "local")
+
+	// The existing default is left unchanged.
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, "local", cfg.DefaultServer)
+}
+
 func TestAuthShowPlaintext(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
@@ -532,7 +646,7 @@ func TestAuthSubcommands(t *testing.T) {
 		assert.NotNilf(t, c.Flags().Lookup("config"), "%s missing --config", c.Name())
 	}
 
-	for _, want := range []string{"set", "show", "test", "remove"} {
+	for _, want := range []string{"set", "list", "default", "show", "test", "remove"} {
 		assert.Truef(t, names[want], "missing subcommand %q", want)
 	}
 }
