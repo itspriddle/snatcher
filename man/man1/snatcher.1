@@ -25,7 +25,7 @@ Commands speak to a single configured Transmission server over its RPC
 interface. The non-secret connection settings (server URL and username) are
 stored in a JSON config file; the password is stored only in the operating
 system keyring, never on disk. Run
-.B snatcher auth set
+.B snatcher server add
 once to configure a server before using the other commands.
 .PP
 Every command that produces output renders in one of three modes with a fixed
@@ -48,13 +48,19 @@ Show help for
 .B snatcher
 or any subcommand and exit.
 .SS Common options
-These options are accepted by every command that talks to the server
-.RB ( auth\ list ", " auth\ show ", " auth\ test )
-and by all the
+These options are accepted by the
 .B server
 and
 .B torrent
-subcommands.
+subcommands. They do not all apply everywhere: the named-server registry
+subcommands
+.RB ( server\ add ", " server\ list ", " server\ default ", " server\ show ", " server\ ping ", " server\ remove )
+read or write local config and pick a server by positional alias, so they take
+.B \-\-config
+(and
+.BR \-\-json / \-\-jq
+where they emit data) but never
+.BR \-\-server .
 The
 .B api
 command also accepts
@@ -79,9 +85,8 @@ instead of the default. When omitted, snatcher uses the
 .B SNATCHER_SERVER
 environment variable if set, otherwise the configured default server. This
 option is accepted only by commands that connect to a server; it never appears
-on the
-.B auth
-subcommands,
+on the named-server registry subcommands
+.RB ( server\ add ", " server\ list ", " server\ default ", " server\ show ", " server\ ping ", " server\ remove ),
 .BR version ,
 or
 .BR completion .
@@ -95,13 +100,16 @@ Filter JSON output through the jq expression
 Implies JSON and takes precedence over
 .BR \-\-json .
 .SH COMMANDS
-.SS "auth"
-Manage server authentication. Configure and verify the connection to your
-Transmission servers. The
-.B auth
-command manages an inventory of named servers.
+.SS "server"
+Manage configured servers and the server itself. The
+.B server
+group maintains an inventory of named servers \(em the registry:
+.BR add ", " list ", " default ", " show ", " ping ", " remove
+\(em and operates on the selected server's session settings, statistics, and
+BitTorrent listening port
+.RB ( settings ", " stats ", " port ).
 .TP
-.B snatcher auth set \fR[\fIoptions\fR]
+.B snatcher server add \fR[\fIoptions\fR]
 Add or update a named server. Its URL and username are stored in the config
 file under the server's alias and the password in the OS keyring. The password
 is read from a hidden, non-echoing prompt (with confirmation) or, for
@@ -129,7 +137,7 @@ Username for HTTP Basic Auth.
 Read the password from standard input instead of prompting.
 .RE
 .TP
-.B snatcher auth list \fR[\fIoptions\fR]
+.B snatcher server list \fR[\fIoptions\fR]
 List every configured server, sorted by alias, showing its name, URL, username,
 whether a keyring secret is stored, and whether it is the default. Plaintext is
 an aligned table on a terminal and tab-separated, header-less rows when piped or
@@ -140,7 +148,7 @@ is set (the same contract as
 Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
 .TP
-.B snatcher auth default \fIalias\fR \fR[\fIoptions\fR]
+.B snatcher server default \fIalias\fR \fR[\fIoptions\fR]
 Set the default server to the existing alias
 .IR alias .
 The default is used by every command that connects to a server when
@@ -151,7 +159,7 @@ are not given. An unknown alias is rejected, listing the configured names.
 Accepts
 .BR \-\-config .
 .TP
-.B snatcher auth show \fR[\fIalias\fR] \fR[\fIoptions\fR]
+.B snatcher server show \fR[\fIalias\fR] \fR[\fIoptions\fR]
 Show a server's name, URL, username, resolved config path, whether a keyring
 secret exists, and whether it is the default. Shows the named server
 .IR alias ,
@@ -159,15 +167,15 @@ or the configured default when the alias is omitted. The secret value itself is
 never revealed. Accepts
 .BR \-\-config " and " \-\-json .
 .TP
-.B snatcher auth test \fR[\fIalias\fR] \fR[\fIoptions\fR]
+.B snatcher server ping \fR[\fIalias\fR] \fR[\fIoptions\fR]
 Dial a server and perform a real round-trip, reporting the connection status,
-server version, negotiated protocol, and RPC semver. Tests the named server
+server version, negotiated protocol, and RPC semver. Pings the named server
 .IR alias ,
 or the configured default when the alias is omitted. Exits non-zero on failure.
 Accepts
 .BR \-\-config " and " \-\-json .
 .TP
-.B snatcher auth remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
+.B snatcher server remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
 Remove a configured server: delete its keyring secret, drop its entry from the
 config file, and persist. Removes the named server
 .IR alias ,
@@ -175,12 +183,6 @@ or the configured default when the alias is omitted. When the removed server was
 the default, the default is repointed to the sole remaining server if exactly
 one remains, otherwise it is cleared. An unknown alias is rejected. Accepts
 .BR \-\-config .
-.SS "server"
-Manage the server itself: session settings, statistics, and the BitTorrent
-listening port. All server-scoped operations live under the
-.B server
-command group:
-.BR settings ", " stats ", and " port .
 .TP
 .B snatcher server stats \fR[\fIoptions\fR]
 Show session statistics: torrent counts, current download and upload speeds,
@@ -705,14 +707,14 @@ keyed by the server URL.
 .SS "Configure and verify a server"
 .EX
 # point snatcher at your Transmission RPC endpoint (prompts for a password)
-$ snatcher auth set \-\-url http://localhost:9091/transmission/rpc \-\-username admin
+$ snatcher server add \-\-url http://localhost:9091/transmission/rpc \-\-username admin
 
 # read the password from stdin instead of a prompt (scripting)
-$ printf '%s' "$TRANSMISSION_PASSWORD" | snatcher auth set \(rs
+$ printf '%s' "$TRANSMISSION_PASSWORD" | snatcher server add \(rs
     \-\-url http://localhost:9091/transmission/rpc \-\-username admin \-\-password\-stdin
 
 # confirm the connection works
-$ snatcher auth test
+$ snatcher server ping
 .EE
 .SS "List and filter torrents"
 .EX

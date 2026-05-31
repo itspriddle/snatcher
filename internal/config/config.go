@@ -296,7 +296,7 @@ func validate(cfg Config) error {
 // the port when present (e.g. "localhost:9091"), so servers that share a
 // hostname but differ by port do not collide. It falls back to the lowercased
 // raw string when the URL cannot be parsed, so a server is never dropped during
-// migration. It is exported so the "auth set --name" default matches the
+// migration. It is exported so the "server add --name" default matches the
 // migration rule.
 func HostAlias(raw string) string {
 	u, err := url.Parse(raw)

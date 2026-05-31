@@ -23,34 +23,10 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// NewAuthCmd builds the "auth" parent command and its set/show/test/remove
-// subcommands. Each subcommand carries its own --config flag (so version,
-// completion, and help never see it).
-func NewAuthCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:           "auth",
-		Short:         "Manage server authentication",
-		Long:          "Configure and verify the connection to your Transmission server.",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-
-	cmd.AddCommand(
-		newAuthSetCmd(),
-		newAuthListCmd(),
-		newAuthDefaultCmd(),
-		newAuthShowCmd(),
-		newAuthTestCmd(),
-		newAuthRemoveCmd(),
-	)
-
-	return cmd
-}
-
-// newAuthSetCmd builds "auth set", which stores the server URL and username in
-// config and the password in the OS keyring. The password is read from a hidden
-// TTY prompt or, for scripting, from stdin via --password-stdin.
-func newAuthSetCmd() *cobra.Command {
+// newServerAddCmd builds "server add", which stores the server URL and username
+// in config and the password in the OS keyring. The password is read from a
+// hidden TTY prompt or, for scripting, from stdin via --password-stdin.
+func newServerAddCmd() *cobra.Command {
 	var (
 		configPath    string
 		name          string
@@ -60,7 +36,7 @@ func newAuthSetCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "set",
+		Use:           "add",
 		Short:         "Add or update a named server's URL, username, and password",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
@@ -153,10 +129,10 @@ func newAuthSetCmd() *cobra.Command {
 	return cmd
 }
 
-// authListResult is the JSON shape emitted for one server by "auth list". It is
-// a stable scripting contract: additive changes only. The password is never
+// serverListResult is the JSON shape emitted for one server by "server list". It
+// is a stable scripting contract: additive changes only. The password is never
 // included; only whether a keyring secret exists.
-type authListResult struct {
+type serverListResult struct {
 	Name         string `json:"name"`
 	ServerURL    string `json:"server_url"`
 	Username     string `json:"username"`
@@ -164,13 +140,13 @@ type authListResult struct {
 	IsDefault    bool   `json:"is_default"`
 }
 
-// newAuthListCmd builds "auth list", which enumerates every configured server
-// with its alias, URL, username, whether a keyring secret is stored, and whether
-// it is the default. Plaintext is an aligned table on a TTY and tab-separated,
-// header-less rows when piped or NO_COLOR is set (the same contract as
-// "torrent list"); --json and --jq emit a stable structured shape. Servers are
-// listed sorted by alias.
-func newAuthListCmd() *cobra.Command {
+// newServerListCmd builds "server list", which enumerates every configured
+// server with its alias, URL, username, whether a keyring secret is stored, and
+// whether it is the default. Plaintext is an aligned table on a TTY and
+// tab-separated, header-less rows when piped or NO_COLOR is set (the same
+// contract as "torrent list"); --json and --jq emit a stable structured shape.
+// Servers are listed sorted by alias.
+func newServerListCmd() *cobra.Command {
 	var (
 		configPath string
 		asJSON     bool
@@ -179,6 +155,7 @@ func newAuthListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "list",
+		Aliases:       []string{"ls"},
 		Short:         "List configured servers",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
@@ -189,7 +166,7 @@ func newAuthListCmd() *cobra.Command {
 				return err
 			}
 
-			results, err := authListResults(cfg)
+			results, err := serverListResults(cfg)
 			if err != nil {
 				return err
 			}
@@ -202,7 +179,7 @@ func newAuthListCmd() *cobra.Command {
 				return output.JSON(cmd.OutOrStdout(), results)
 			}
 
-			writeAuthListPlaintext(cmd, results)
+			writeServerListPlaintext(cmd, results)
 
 			return nil
 		},
@@ -215,11 +192,11 @@ func newAuthListCmd() *cobra.Command {
 	return cmd
 }
 
-// authListResults builds the per-server result rows for "auth list", sorted by
-// alias, querying the keyring for whether each server's secret is stored.
-func authListResults(cfg config.Config) ([]authListResult, error) {
+// serverListResults builds the per-server result rows for "server list", sorted
+// by alias, querying the keyring for whether each server's secret is stored.
+func serverListResults(cfg config.Config) ([]serverListResult, error) {
 	names := cfg.Names()
-	results := make([]authListResult, 0, len(names))
+	results := make([]serverListResult, 0, len(names))
 
 	for _, name := range names {
 		srv := cfg.Servers[name]
@@ -233,7 +210,7 @@ func authListResults(cfg config.Config) ([]authListResult, error) {
 			}
 		}
 
-		results = append(results, authListResult{
+		results = append(results, serverListResult{
 			Name:         name,
 			ServerURL:    srv.URL,
 			Username:     srv.Username,
@@ -245,12 +222,12 @@ func authListResults(cfg config.Config) ([]authListResult, error) {
 	return results, nil
 }
 
-// writeAuthListPlaintext renders the server list in the appropriate plaintext
+// writeServerListPlaintext renders the server list in the appropriate plaintext
 // mode: an aligned, headered table on a TTY, or plain tab-separated, header-less
 // rows when piped or when NO_COLOR is set (the same contract as "torrent list").
 // Server-derived strings (alias, URL, username) are sanitized of terminal
 // control sequences here; the JSON/jq paths are never sanitized.
-func writeAuthListPlaintext(cmd *cobra.Command, results []authListResult) {
+func writeServerListPlaintext(cmd *cobra.Command, results []serverListResult) {
 	out := cmd.OutOrStdout()
 
 	rows := make([][]string, len(results))
@@ -265,7 +242,7 @@ func writeAuthListPlaintext(cmd *cobra.Command, results []authListResult) {
 	}
 
 	if isTTY(out) {
-		writeAuthListTable(out, rows)
+		writeServerListTable(out, rows)
 		return
 	}
 
@@ -274,9 +251,9 @@ func writeAuthListPlaintext(cmd *cobra.Command, results []authListResult) {
 	}
 }
 
-// writeAuthListTable writes a whitespace-aligned table with a header row. An
+// writeServerListTable writes a whitespace-aligned table with a header row. An
 // empty server list writes a friendly "No servers configured." line.
-func writeAuthListTable(w io.Writer, rows [][]string) {
+func writeServerListTable(w io.Writer, rows [][]string) {
 	if len(rows) == 0 {
 		_, _ = fmt.Fprintln(w, "No servers configured.")
 		return
@@ -292,10 +269,10 @@ func writeAuthListTable(w io.Writer, rows [][]string) {
 	_ = tw.Flush()
 }
 
-// newAuthDefaultCmd builds "auth default <alias>", which sets the configured
+// newServerDefaultCmd builds "server default <alias>", which sets the configured
 // default server to an existing alias and persists it. An unknown alias errors
 // clearly, listing the valid names.
-func newAuthDefaultCmd() *cobra.Command {
+func newServerDefaultCmd() *cobra.Command {
 	var configPath string
 
 	cmd := &cobra.Command{
@@ -339,9 +316,9 @@ func newAuthDefaultCmd() *cobra.Command {
 	return cmd
 }
 
-// authShowResult is the JSON shape emitted by "auth show". The password is never
-// included; only whether a keyring secret exists.
-type authShowResult struct {
+// serverShowResult is the JSON shape emitted by "server show". The password is
+// never included; only whether a keyring secret exists.
+type serverShowResult struct {
 	Name         string `json:"name"`
 	ServerURL    string `json:"server_url"`
 	Username     string `json:"username"`
@@ -351,11 +328,11 @@ type authShowResult struct {
 	Configured   bool   `json:"configured"`
 }
 
-// newAuthShowCmd builds "auth show [alias]", which prints a server's URL,
+// newServerShowCmd builds "server show [alias]", which prints a server's URL,
 // username, resolved config path, whether a keyring secret exists, and whether
 // it is the default. It shows the named server, or the configured default when
 // the alias is omitted. It never reveals the secret value.
-func newAuthShowCmd() *cobra.Command {
+func newServerShowCmd() *cobra.Command {
 	var (
 		configPath string
 		asJSON     bool
@@ -363,7 +340,7 @@ func newAuthShowCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "show [alias]",
-		Short:         "Show a server's authentication settings",
+		Short:         "Show a server's connection settings",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -381,10 +358,10 @@ func newAuthShowCmd() *cobra.Command {
 			}
 
 			// With no servers configured, emit an empty, unconfigured result rather
-			// than a resolve error so first-run "auth show" stays informative.
+			// than a resolve error so first-run "server show" stays informative.
 			if !configured || len(cfg.Servers) == 0 {
-				result := authShowResult{ConfigPath: resolvedPath, Configured: configured}
-				return writeAuthShow(cmd, result, asJSON)
+				result := serverShowResult{ConfigPath: resolvedPath, Configured: configured}
+				return writeServerShow(cmd, result, asJSON)
 			}
 
 			name, srv, err := config.Resolve(cfg, alias)
@@ -401,7 +378,7 @@ func newAuthShowCmd() *cobra.Command {
 				}
 			}
 
-			result := authShowResult{
+			result := serverShowResult{
 				Name:         name,
 				ServerURL:    srv.URL,
 				Username:     srv.Username,
@@ -411,7 +388,7 @@ func newAuthShowCmd() *cobra.Command {
 				Configured:   configured,
 			}
 
-			return writeAuthShow(cmd, result, asJSON)
+			return writeServerShow(cmd, result, asJSON)
 		},
 	}
 
@@ -421,8 +398,8 @@ func newAuthShowCmd() *cobra.Command {
 	return cmd
 }
 
-// writeAuthShow renders an authShowResult as JSON or plaintext.
-func writeAuthShow(cmd *cobra.Command, result authShowResult, asJSON bool) error {
+// writeServerShow renders a serverShowResult as JSON or plaintext.
+func writeServerShow(cmd *cobra.Command, result serverShowResult, asJSON bool) error {
 	if asJSON {
 		return output.JSON(cmd.OutOrStdout(), result)
 	}
@@ -438,8 +415,8 @@ func writeAuthShow(cmd *cobra.Command, result authShowResult, asJSON bool) error
 	return nil
 }
 
-// authTestResult is the JSON shape emitted by "auth test" on success.
-type authTestResult struct {
+// serverPingResult is the JSON shape emitted by "server ping" on success.
+type serverPingResult struct {
 	Connected        bool   `json:"connected"`
 	ServerURL        string `json:"server_url"`
 	Version          string `json:"version"`
@@ -447,18 +424,19 @@ type authTestResult struct {
 	RPCVersionSemver string `json:"rpc_version_semver"`
 }
 
-// newAuthTestCmd builds "auth test [alias]", which dials a server and performs a
-// real ServerInfo round-trip, printing the connection status, server version,
-// negotiated protocol, and rpc semver. It tests the named server, or the
-// configured default when the alias is omitted. It exits non-zero on failure.
-func newAuthTestCmd() *cobra.Command {
+// newServerPingCmd builds "server ping [alias]", which dials a server and
+// performs a real ServerInfo round-trip, printing the connection status, server
+// version, negotiated protocol, and rpc semver. It pings the named server, or
+// the configured default when the alias is omitted. It exits non-zero on
+// failure.
+func newServerPingCmd() *cobra.Command {
 	var (
 		configPath string
 		asJSON     bool
 	)
 
 	cmd := &cobra.Command{
-		Use:           "test [alias]",
+		Use:           "ping [alias]",
 		Short:         "Test the connection to a server",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
@@ -474,7 +452,7 @@ func newAuthTestCmd() *cobra.Command {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
 
-			result := authTestResult{
+			result := serverPingResult{
 				Connected:        true,
 				ServerURL:        serverURL,
 				Version:          info.Version,
@@ -502,16 +480,17 @@ func newAuthTestCmd() *cobra.Command {
 	return cmd
 }
 
-// newAuthRemoveCmd builds "auth remove [alias]", which removes a named server (or
-// the configured default when the alias is omitted): it deletes the server's
+// newServerRemoveCmd builds "server remove [alias]", which removes a named server
+// (or the configured default when the alias is omitted): it deletes the server's
 // entry from config, deletes its keyring secret, and persists. When the removed
 // server was the default, the default is repointed to the sole remaining server
 // if exactly one remains, otherwise it is cleared.
-func newAuthRemoveCmd() *cobra.Command {
+func newServerRemoveCmd() *cobra.Command {
 	var configPath string
 
 	cmd := &cobra.Command{
 		Use:           "remove [alias]",
+		Aliases:       []string{"rm"},
 		Short:         "Remove a configured server",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
@@ -543,7 +522,7 @@ func newAuthRemoveCmd() *cobra.Command {
 
 			// When the removed server was the default, repoint it to the sole
 			// remaining server if exactly one is left; otherwise clear it (the user
-			// picks a new default with 'auth default').
+			// picks a new default with 'server default').
 			if cfg.DefaultServer == name {
 				cfg.DefaultServer = ""
 				if remaining := cfg.Names(); len(remaining) == 1 {
@@ -572,8 +551,8 @@ func newAuthRemoveCmd() *cobra.Command {
 }
 
 // firstArg returns the first positional argument, or the empty string when none
-// was given. Auth subcommands that take an optional [alias] use it so an omitted
-// alias resolves to the configured default.
+// was given. Server subcommands that take an optional [alias] use it so an
+// omitted alias resolves to the configured default.
 func firstArg(args []string) string {
 	if len(args) > 0 {
 		return args[0]
@@ -596,7 +575,7 @@ func dial(configPath, server string) (torrent.Backend, string, error) {
 	}
 
 	if !configured || len(cfg.Servers) == 0 {
-		return nil, "", errors.New("not configured: run 'snatcher auth set' first")
+		return nil, "", errors.New("not configured: run 'snatcher server add' first")
 	}
 
 	if server == "" {
@@ -620,14 +599,14 @@ func dial(configPath, server string) (torrent.Backend, string, error) {
 
 // resolveServerError turns a config.Resolve sentinel into a clear, actionable
 // error message: an unknown alias names the offending value and points at
-// 'auth list'; a missing default explains how to pick a server or set one.
+// 'server list'; a missing default explains how to pick a server or set one.
 func resolveServerError(cfg config.Config, server string, err error) error {
 	switch {
 	case errors.Is(err, config.ErrUnknownServer):
-		return fmt.Errorf("unknown server %q: run 'snatcher auth list' to see configured servers", server)
+		return fmt.Errorf("unknown server %q: run 'snatcher server list' to see configured servers", server)
 	case errors.Is(err, config.ErrNoDefaultServer):
 		names := strings.Join(cfg.Names(), ", ")
-		return fmt.Errorf("no default server set: pass --server <alias> or set one with 'snatcher auth default <alias>' (configured: %s)", names)
+		return fmt.Errorf("no default server set: pass --server <alias> or set one with 'snatcher server default <alias>' (configured: %s)", names)
 	default:
 		return err
 	}
