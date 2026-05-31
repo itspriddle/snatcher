@@ -44,8 +44,10 @@ Show help for
 or any subcommand and exit.
 .SS Common options
 These options are accepted by every command that talks to the server
-.RB ( auth\ show ", " auth\ test ", " stats ", " settings )
+.RB ( auth\ show ", " auth\ test )
 and by all the
+.B server
+and
 .B torrent
 subcommands.
 The
@@ -117,17 +119,19 @@ non-zero on failure. Accepts
 Delete the keyring secret and clear the credentials from the config file.
 Accepts
 .BR \-\-config .
-.SS "stats"
-.B snatcher stats
-.RI [ options ]
-.br
+.SS "server"
+Manage the server itself: session settings, statistics, and the BitTorrent
+listening port. All server-scoped operations live under the
+.B server
+command group:
+.BR settings ", " stats ", and " port .
+.TP
+.B snatcher server stats \fR[\fIoptions\fR]
 Show session statistics: torrent counts, current download and upload speeds,
 and cumulative and current-session transfer totals. Accepts the common options
 only.
-.SS "settings"
-.B snatcher settings
-.RI [ options ]
-.br
+.TP
+.B snatcher server settings \fR[\fIoptions\fR]
 Manage server (session) settings. With no subcommand, list every session
 setting as a
 .BR CATEGORY " " KEY " " VALUE
@@ -155,17 +159,17 @@ Show only settings whose key contains
 (case-insensitive).
 .RE
 .TP
-.B snatcher settings get \fIkey\fR
+.B snatcher server settings get \fIkey\fR
 Print a single setting's current value. Plaintext emits the bare value so it
 composes in scripts (e.g.\&
-.BR "port=$(snatcher settings get peer-port)" );
+.BR "port=$(snatcher server settings get peer-port)" );
 .B \-\-json
 emits a single
 .RB { key ", " category ", " value }
 object. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
 .TP
-.B snatcher settings set \fIkey value\fR \fR[\fIkey value\fR]...
+.B snatcher server settings set \fIkey value\fR \fR[\fIkey value\fR]...
 Set one or more settings, given as key/value pairs. All pairs are validated
 before any write, so an invalid pair aborts the whole command with no partial
 change; afterwards the server's actual values are read back and reported.
@@ -174,17 +178,15 @@ Read-only settings (e.g.\&
 are rejected. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
 .TP
-.B snatcher settings reset \fIkey\fR
+.B snatcher server settings reset \fIkey\fR
 Restore a single setting to its Transmission default. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
-.SS "port"
-.B snatcher port
-.RI [ options ]
-.br
+.TP
+.B snatcher server port \fR[\fIoptions\fR]
 View, change, and test the BitTorrent peer/listening port \(em a discoverable
 wrapper over the peer-port session settings. With no subcommand it prints help.
 .TP
-.B snatcher port get \fR[\fIoptions\fR]
+.B snatcher server port get \fR[\fIoptions\fR]
 Show the current peer port alongside the random-on-start and port-forwarding
 flags read from the live session. Plaintext is an aligned
 .RI Label : " value"
@@ -195,10 +197,10 @@ emits a stable
 object. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
 .TP
-.B snatcher port set \fR[\fIport\fR] [\fIoptions\fR]
+.B snatcher server port set \fR[\fIport\fR] [\fIoptions\fR]
 Set the peer port and/or related flags, then re-read the session and report the
 resulting state in the same shape as
-.BR "port get" .
+.BR "server port get" .
 A
 .I port
 must be an integer in
@@ -226,7 +228,7 @@ With neither a
 nor any flag, it returns a "nothing to set" error. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
 .TP
-.B snatcher port test \fR[\fIoptions\fR]
+.B snatcher server port test \fR[\fIoptions\fR]
 Test whether the currently configured peer port is reachable from outside (it
 takes no
 .I port
@@ -690,21 +692,21 @@ $ snatcher torrent upload < sources.txt
 .EE
 .SS "Session statistics"
 .EX
-$ snatcher stats
+$ snatcher server stats
 .EE
 .SS "Inspect and change settings"
 .EX
 # list the bandwidth settings
-$ snatcher settings \-\-category bandwidth
+$ snatcher server settings \-\-category bandwidth
 
 # read one value (bare value, script-friendly)
-$ snatcher settings get peer\-port
+$ snatcher server settings get peer\-port
 
 # set the download speed limit to 500 KB/s and enable it
-$ snatcher settings set speed\-limit\-down 500 speed\-limit\-down\-enabled true
+$ snatcher server settings set speed\-limit\-down 500 speed\-limit\-down\-enabled true
 
 # restore a setting to its default
-$ snatcher settings reset peer\-port
+$ snatcher server settings reset peer\-port
 .EE
 .SS "Raw RPC calls"
 .EX

@@ -70,9 +70,9 @@ snatcher torrent list
 | Command | Description |
 | --- | --- |
 | `auth set\|show\|test\|remove` | Manage and verify server credentials |
-| `stats` | Session statistics: counts, speeds, transfer totals |
-| `settings [get\|set\|reset]` | View and change server (session) settings |
-| `port get\|set\|test` | View, change, or test the peer/listening port |
+| `server stats` | Session statistics: counts, speeds, transfer totals |
+| `server settings [get\|set\|reset]` | View and change server (session) settings |
+| `server port get\|set\|test` | View, change, or test the peer/listening port |
 | `torrent list` (`ls`) | List torrents, with filter/search/sort/columns |
 | `torrent info <id\|hash>` | Show every field for one torrent |
 | `torrent start\|stop\|verify\|reannounce` | Act on torrents by id, hash, or `--all` |
@@ -136,10 +136,10 @@ snatcher torrent upload ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \
     --label linux --start
 
 # Read one setting (bare value, script-friendly)
-snatcher settings get peer-port
+snatcher server settings get peer-port
 
 # Set the download speed limit to 500 KB/s and enable it
-snatcher settings set speed-limit-down 500 speed-limit-down-enabled true
+snatcher server settings set speed-limit-down 500 speed-limit-down-enabled true
 
 # Raw RPC: read the whole session, pick one field with jq
 snatcher api session-get --jq '.arguments.version'

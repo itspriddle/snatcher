@@ -1,8 +1,8 @@
 ARG snatcher api 0 method
-ARG snatcher settings get 0 key
-ARG snatcher settings reset 0 key
-ARG snatcher settings set 0 key
-ARG snatcher settings set 1 value
+ARG snatcher server settings get 0 key
+ARG snatcher server settings reset 0 key
+ARG snatcher server settings set 0 key
+ARG snatcher server settings set 1 value
 ARG snatcher torrent info 0 id|hash
 ARG snatcher torrent move 0 id|hash
 ARG snatcher torrent move 1 location
@@ -13,15 +13,16 @@ CMD snatcher auth remove
 CMD snatcher auth set
 CMD snatcher auth show
 CMD snatcher auth test
-CMD snatcher port
-CMD snatcher port get
-CMD snatcher port set
-CMD snatcher port test
-CMD snatcher settings
-CMD snatcher settings get
-CMD snatcher settings reset
-CMD snatcher settings set
-CMD snatcher stats
+CMD snatcher server
+CMD snatcher server port
+CMD snatcher server port get
+CMD snatcher server port set
+CMD snatcher server port test
+CMD snatcher server settings
+CMD snatcher server settings get
+CMD snatcher server settings reset
+CMD snatcher server settings set
+CMD snatcher server stats
 CMD snatcher torrent
 CMD snatcher torrent info
 CMD snatcher torrent list
@@ -54,34 +55,34 @@ FLAG snatcher auth show --config type=string
 FLAG snatcher auth show --json type=bool
 FLAG snatcher auth test --config type=string
 FLAG snatcher auth test --json type=bool
-FLAG snatcher port get --config type=string
-FLAG snatcher port get --jq type=string
-FLAG snatcher port get --json type=bool
-FLAG snatcher port set --config type=string
-FLAG snatcher port set --forwarding type=bool
-FLAG snatcher port set --jq type=string
-FLAG snatcher port set --json type=bool
-FLAG snatcher port set --random type=bool
-FLAG snatcher port test --config type=string
-FLAG snatcher port test --jq type=string
-FLAG snatcher port test --json type=bool
-FLAG snatcher settings --category type=string
-FLAG snatcher settings --config type=string
-FLAG snatcher settings --jq type=string
-FLAG snatcher settings --json type=bool
-FLAG snatcher settings --search type=string
-FLAG snatcher settings get --config type=string
-FLAG snatcher settings get --jq type=string
-FLAG snatcher settings get --json type=bool
-FLAG snatcher settings reset --config type=string
-FLAG snatcher settings reset --jq type=string
-FLAG snatcher settings reset --json type=bool
-FLAG snatcher settings set --config type=string
-FLAG snatcher settings set --jq type=string
-FLAG snatcher settings set --json type=bool
-FLAG snatcher stats --config type=string
-FLAG snatcher stats --jq type=string
-FLAG snatcher stats --json type=bool
+FLAG snatcher server port get --config type=string
+FLAG snatcher server port get --jq type=string
+FLAG snatcher server port get --json type=bool
+FLAG snatcher server port set --config type=string
+FLAG snatcher server port set --forwarding type=bool
+FLAG snatcher server port set --jq type=string
+FLAG snatcher server port set --json type=bool
+FLAG snatcher server port set --random type=bool
+FLAG snatcher server port test --config type=string
+FLAG snatcher server port test --jq type=string
+FLAG snatcher server port test --json type=bool
+FLAG snatcher server settings --category type=string
+FLAG snatcher server settings --config type=string
+FLAG snatcher server settings --jq type=string
+FLAG snatcher server settings --json type=bool
+FLAG snatcher server settings --search type=string
+FLAG snatcher server settings get --config type=string
+FLAG snatcher server settings get --jq type=string
+FLAG snatcher server settings get --json type=bool
+FLAG snatcher server settings reset --config type=string
+FLAG snatcher server settings reset --jq type=string
+FLAG snatcher server settings reset --json type=bool
+FLAG snatcher server settings set --config type=string
+FLAG snatcher server settings set --jq type=string
+FLAG snatcher server settings set --json type=bool
+FLAG snatcher server stats --config type=string
+FLAG snatcher server stats --jq type=string
+FLAG snatcher server stats --json type=bool
 FLAG snatcher torrent info --config type=string
 FLAG snatcher torrent info --fields type=string
 FLAG snatcher torrent info --jq type=string

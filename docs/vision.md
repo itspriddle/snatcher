@@ -33,9 +33,8 @@ Available Commands:
   auth        Manage server authentication
   completion  Generate the autocompletion script for the specified shell
   help        Help about any command
-  settings    Manage server settings
+  server      Manage server settings, stats, and port
   speed       View or toggle alt-speed limits
-  stats       Show session statistics
   torrent     Manage torrents
   version     Print version information
 
@@ -52,12 +51,12 @@ Use "snatcher [command] --help" for more information about a command.
 
 ## Unscoped Commands
 
-- [ ] `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
+- [x] `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
 - [x] `snatcher torrent reannounce ...` - reannounce torrent to trackers
 - [x] `snatcher torrent move ...` - `torrent_set_location`
 - [x] `snatcher torrent queue top|up|down|bottom ...` - change queue position
 - [ ] `snatcher server blocklist ...` - 
-- [x] `snatcher port get|set|test` - show or change listening port
+- [x] `snatcher server port get|set|test` - show or change listening port
 - [ ] `snatcher free-space ...` - show free space on disk (merge in with stats?)
 - [x] `snatcher torrent info <hash|id> ...` - show torrent info
 - [ ] `snatcher search ...` - search for torrents with Prowlarr
