@@ -55,9 +55,8 @@ Use "snatcher [command] --help" for more information about a command.
 - [x] `snatcher torrent reannounce ...` - reannounce torrent to trackers
 - [x] `snatcher torrent move ...` - `torrent_set_location`
 - [x] `snatcher torrent queue top|up|down|bottom ...` - change queue position
-- [ ] `snatcher server blocklist ...` - 
 - [x] `snatcher server port get|set|test` - show or change listening port
-- [ ] `snatcher free-space ...` - show free space on disk (merge in with stats?)
+- [ ] `snatcher server free-space ...` - show free space on disk (merge in with stats?)
 - [x] `snatcher torrent info <hash|id> ...` - show torrent info
 - [ ] `snatcher search ...` - search for torrents with Prowlarr
 
@@ -74,7 +73,7 @@ Use "snatcher [command] --help" for more information about a command.
 
 ## TUI
 
-- Window based layout (like a vim window)
+- Window/pane based layout (like a vim window)
     - Torrents (Default)
     - Tracker Search (Prowlarr)
     - Settings
@@ -96,19 +95,19 @@ Use "snatcher [command] --help" for more information about a command.
 #### Torrents Window Globals
 
 +------------------------------------------------------------------------------+
-|                |                                                             |
-|                |                                                             |
-|                |                                                             |
+| All            | Ubuntu 1 ....                                               |
+| Active         | Ubuntu 2 ....                                               |
+| Inactive       |                                                             |
 |                |                                                             |
 |                |                                                             |
 |                |                                                             |
 |                |                                                             |
 |                |                                                             |
 +------------------------------------------------------------------------------+
-|                                                                              |
-|                                                                              |
-|                                                                              |
-|                                                                              |
+| Tab 1 | Tab 2 | Tab 3 |                                                      |
+| ____________________________________________________________________________ |
+| Info                                                                         |
+| Info                                                                         |
 |                                                                              |
 +------------------------------------------------------------------------------+
 
