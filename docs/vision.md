@@ -52,7 +52,7 @@ Use "snatcher [command] --help" for more information about a command.
 
 ## Unscoped Commands
 
-- [ ] `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
+- [x] `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
 - [x] `snatcher torrent reannounce ...` - reannounce torrent to trackers
 - [x] `snatcher torrent move ...` - `torrent_set_location`
 - [x] `snatcher torrent queue top|up|down|bottom ...` - change queue position
