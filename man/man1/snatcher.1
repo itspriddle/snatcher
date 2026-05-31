@@ -92,9 +92,9 @@ Implies JSON and takes precedence over
 .SH COMMANDS
 .SS "auth"
 Manage server authentication. Configure and verify the connection to your
-Transmission server. The
+Transmission servers. The
 .B auth
-command has four subcommands.
+command manages an inventory of named servers.
 .TP
 .B snatcher auth set \fR[\fIoptions\fR]
 Add or update a named server. Its URL and username are stored in the config
@@ -146,20 +146,29 @@ are not given. An unknown alias is rejected, listing the configured names.
 Accepts
 .BR \-\-config .
 .TP
-.B snatcher auth show \fR[\fIoptions\fR]
-Show the current server URL, username, resolved config path, and whether a
-keyring secret exists. The secret value itself is never revealed. Accepts
+.B snatcher auth show \fR[\fIalias\fR] \fR[\fIoptions\fR]
+Show a server's name, URL, username, resolved config path, whether a keyring
+secret exists, and whether it is the default. Shows the named server
+.IR alias ,
+or the configured default when the alias is omitted. The secret value itself is
+never revealed. Accepts
 .BR \-\-config " and " \-\-json .
 .TP
-.B snatcher auth test \fR[\fIoptions\fR]
-Dial the configured server and perform a real round-trip, reporting the
-connection status, server version, negotiated protocol, and RPC semver. Exits
-non-zero on failure. Accepts
-.BR \-\-config " and " \-\-json .
-.TP
-.B snatcher auth remove \fR[\fIoptions\fR]
-Delete the keyring secret and clear the credentials from the config file.
+.B snatcher auth test \fR[\fIalias\fR] \fR[\fIoptions\fR]
+Dial a server and perform a real round-trip, reporting the connection status,
+server version, negotiated protocol, and RPC semver. Tests the named server
+.IR alias ,
+or the configured default when the alias is omitted. Exits non-zero on failure.
 Accepts
+.BR \-\-config " and " \-\-json .
+.TP
+.B snatcher auth remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
+Remove a configured server: delete its keyring secret, drop its entry from the
+config file, and persist. Removes the named server
+.IR alias ,
+or the configured default when the alias is omitted. When the removed server was
+the default, the default is repointed to the sole remaining server if exactly
+one remains, otherwise it is cleared. An unknown alias is rejected. Accepts
 .BR \-\-config .
 .SS "server"
 Manage the server itself: session settings, statistics, and the BitTorrent

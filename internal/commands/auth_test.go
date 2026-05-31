@@ -488,11 +488,53 @@ func TestAuthShowJSON(t *testing.T) {
 
 	var result authShowResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Equal(t, "host:9091", result.Name)
 	assert.Equal(t, "http://host:9091/rpc", result.ServerURL)
 	assert.Equal(t, "bob", result.Username)
 	assert.Equal(t, cfgPath, result.ConfigPath)
 	assert.False(t, result.SecretStored)
+	assert.True(t, result.IsDefault)
 	assert.True(t, result.Configured)
+}
+
+func TestAuthShowNamedServer(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: "http://local:9091/rpc", Username: "alice"},
+			"seedbox": {URL: "http://seedbox:9091/rpc", Username: "bob"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	out, _, err := runAuth(t, "", "show", "seedbox", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var result authShowResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Equal(t, "seedbox", result.Name)
+	assert.Equal(t, "http://seedbox:9091/rpc", result.ServerURL)
+	assert.Equal(t, "bob", result.Username)
+	// Naming a non-default server reports is_default false.
+	assert.False(t, result.IsDefault)
+	assert.True(t, result.Configured)
+}
+
+func TestAuthShowUnknownAlias(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"local": {URL: "http://local:9091/rpc"}},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	_, _, err := runAuth(t, "", "show", "nope", "--config", cfgPath, "--json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown server "nope"`)
+	assert.Contains(t, err.Error(), "auth list")
 }
 
 func TestAuthShowNotConfigured(t *testing.T) {
@@ -536,6 +578,57 @@ func TestAuthTestJSONRPC(t *testing.T) {
 	assert.Equal(t, "4.1.0 (ae226418eb)", result.Version)
 	assert.Equal(t, "6.0.0", result.RPCVersionSemver)
 	assert.Equal(t, "jsonrpc-2.0", result.Protocol)
+}
+
+func TestAuthTestNamedServer(t *testing.T) {
+	keyring.MockInit()
+
+	// Two servers; the alias picks which one is dialed. The default (local) is a
+	// dead address, so a successful round-trip proves --positional alias reached
+	// the named seedbox.
+	seedbox := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"session_get": `{
+				"jsonrpc": "2.0",
+				"result": {"version": "4.1.0 (ae226418eb)", "rpc_version_semver": "6.0.0"},
+				"id": 1
+			}`,
+		},
+	}.handler())
+	defer seedbox.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: "http://127.0.0.1:1/rpc"},
+			"seedbox": {URL: seedbox.URL},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	out, _, err := runAuth(t, "", "test", "seedbox", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var result authTestResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.True(t, result.Connected)
+	assert.Equal(t, seedbox.URL, result.ServerURL)
+	assert.Equal(t, "4.1.0 (ae226418eb)", result.Version)
+}
+
+func TestAuthTestUnknownAlias(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"local": {URL: "http://local:9091/rpc"}},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	_, _, err := runAuth(t, "", "test", "nope", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown server "nope"`)
+	assert.Contains(t, err.Error(), "auth list")
 }
 
 func TestAuthTestBespokePlaintext(t *testing.T) {
@@ -608,23 +701,129 @@ func TestAuthTestHTMLResponseHint(t *testing.T) {
 	assert.Contains(t, err.Error(), "/transmission/rpc")
 }
 
-func TestAuthRemoveClearsConfigAndKeyring(t *testing.T) {
+func TestAuthRemoveDefaultClearsConfigAndKeyring(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: "http://host:9091/rpc", Username: "bob"}, cfgPath))
 	require.NoError(t, secrets.Set("http://host:9091/rpc", "pw"))
 
+	// Omitting the alias removes the configured default.
 	out, _, err := runAuth(t, "", "remove", "--config", cfgPath)
 	require.NoError(t, err)
-	assert.Contains(t, out, "Removed stored credentials")
+	assert.Contains(t, out, "Removed server")
+	assert.Contains(t, out, "http://host:9091/rpc")
 
 	cfg, loadErr := config.Load(cfgPath)
 	require.NoError(t, loadErr)
-	assert.Empty(t, cfg.ServerURL)
-	assert.Empty(t, cfg.Username)
+	assert.Empty(t, cfg.Servers)
+	assert.Empty(t, cfg.DefaultServer)
 
 	_, getErr := secrets.Get("http://host:9091/rpc")
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
+}
+
+func TestAuthRemoveNamedServer(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const localURL = "http://local:9091/rpc"
+	const seedboxURL = "http://seedbox:9091/rpc"
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: localURL, Username: "alice"},
+			"seedbox": {URL: seedboxURL, Username: "bob"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+	require.NoError(t, secrets.Set(localURL, "localpw"))
+	require.NoError(t, secrets.Set(seedboxURL, "seedboxpw"))
+
+	// Removing a named non-default server leaves the default and other servers
+	// untouched.
+	out, _, err := runAuth(t, "", "remove", "seedbox", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, out, "seedbox")
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	_, ok := cfg.Servers["seedbox"]
+	assert.False(t, ok)
+	assert.Equal(t, localURL, cfg.Servers["local"].URL)
+	assert.Equal(t, "local", cfg.DefaultServer)
+
+	// The removed server's secret is gone; the other server's secret remains.
+	_, gone := secrets.Get(seedboxURL)
+	require.ErrorIs(t, gone, secrets.ErrNotFound)
+	localPW, getErr := secrets.Get(localURL)
+	require.NoError(t, getErr)
+	assert.Equal(t, "localpw", localPW)
+}
+
+func TestAuthRemoveDefaultRepointsToSoleRemaining(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: "http://local:9091/rpc"},
+			"seedbox": {URL: "http://seedbox:9091/rpc"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	// Removing the default with exactly one server remaining repoints the default
+	// to that survivor.
+	_, _, err := runAuth(t, "", "remove", "local", "--config", cfgPath)
+	require.NoError(t, err)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, "seedbox", cfg.DefaultServer)
+}
+
+func TestAuthRemoveDefaultClearsWhenMultipleRemain(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local": {URL: "http://local:9091/rpc"},
+			"a":     {URL: "http://a:9091/rpc"},
+			"b":     {URL: "http://b:9091/rpc"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	// Removing the default with more than one server remaining clears the default
+	// (the user must pick a new one).
+	_, _, err := runAuth(t, "", "remove", "local", "--config", cfgPath)
+	require.NoError(t, err)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Empty(t, cfg.DefaultServer)
+}
+
+func TestAuthRemoveUnknownAlias(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"local": {URL: "http://local:9091/rpc"}},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	_, _, err := runAuth(t, "", "remove", "nope", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown server "nope"`)
+	assert.Contains(t, err.Error(), "auth list")
+
+	// The configured server is left untouched.
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	_, ok := cfg.Servers["local"]
+	assert.True(t, ok)
 }
 
 func TestAuthRemoveWhenNothingStored(t *testing.T) {
@@ -632,7 +831,8 @@ func TestAuthRemoveWhenNothingStored(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
 	_, _, err := runAuth(t, "", "remove", "--config", cfgPath)
-	require.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no servers configured")
 }
 
 // compile-time guard that NewAuthCmd wires the documented subcommands.

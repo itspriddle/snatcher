@@ -342,16 +342,19 @@ func newAuthDefaultCmd() *cobra.Command {
 // authShowResult is the JSON shape emitted by "auth show". The password is never
 // included; only whether a keyring secret exists.
 type authShowResult struct {
+	Name         string `json:"name"`
 	ServerURL    string `json:"server_url"`
 	Username     string `json:"username"`
 	ConfigPath   string `json:"config_path"`
 	SecretStored bool   `json:"secret_stored"`
+	IsDefault    bool   `json:"is_default"`
 	Configured   bool   `json:"configured"`
 }
 
-// newAuthShowCmd builds "auth show", which prints the configured server URL,
-// username, resolved config path, and whether a keyring secret exists. It never
-// reveals the secret value.
+// newAuthShowCmd builds "auth show [alias]", which prints a server's URL,
+// username, resolved config path, whether a keyring secret exists, and whether
+// it is the default. It shows the named server, or the configured default when
+// the alias is omitted. It never reveals the secret value.
 func newAuthShowCmd() *cobra.Command {
 	var (
 		configPath string
@@ -359,12 +362,14 @@ func newAuthShowCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "show",
-		Short:         "Show the current authentication settings",
-		Args:          cobra.NoArgs,
+		Use:           "show [alias]",
+		Short:         "Show a server's authentication settings",
+		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := firstArg(args)
+
 			resolvedPath, err := resolveConfigPath(configPath)
 			if err != nil {
 				return err
@@ -375,9 +380,21 @@ func newAuthShowCmd() *cobra.Command {
 				return err
 			}
 
+			// With no servers configured, emit an empty, unconfigured result rather
+			// than a resolve error so first-run "auth show" stays informative.
+			if !configured || len(cfg.Servers) == 0 {
+				result := authShowResult{ConfigPath: resolvedPath, Configured: configured}
+				return writeAuthShow(cmd, result, asJSON)
+			}
+
+			name, srv, err := config.Resolve(cfg, alias)
+			if err != nil {
+				return resolveServerError(cfg, alias, err)
+			}
+
 			secretStored := false
-			if cfg.ServerURL != "" {
-				if _, err := secrets.Get(cfg.ServerURL); err == nil {
+			if srv.URL != "" {
+				if _, err := secrets.Get(srv.URL); err == nil {
 					secretStored = true
 				} else if !errors.Is(err, secrets.ErrNotFound) {
 					return err
@@ -385,24 +402,16 @@ func newAuthShowCmd() *cobra.Command {
 			}
 
 			result := authShowResult{
-				ServerURL:    cfg.ServerURL,
-				Username:     cfg.Username,
+				Name:         name,
+				ServerURL:    srv.URL,
+				Username:     srv.Username,
 				ConfigPath:   resolvedPath,
 				SecretStored: secretStored,
+				IsDefault:    name == cfg.DefaultServer,
 				Configured:   configured,
 			}
 
-			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), result)
-			}
-
-			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Server URL:    %s\n", orNotSet(result.ServerURL))
-			_, _ = fmt.Fprintf(out, "Username:      %s\n", orNotSet(result.Username))
-			_, _ = fmt.Fprintf(out, "Config path:   %s\n", result.ConfigPath)
-			_, _ = fmt.Fprintf(out, "Secret stored: %s\n", yesNo(result.SecretStored))
-
-			return nil
+			return writeAuthShow(cmd, result, asJSON)
 		},
 	}
 
@@ -410,6 +419,23 @@ func newAuthShowCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 
 	return cmd
+}
+
+// writeAuthShow renders an authShowResult as JSON or plaintext.
+func writeAuthShow(cmd *cobra.Command, result authShowResult, asJSON bool) error {
+	if asJSON {
+		return output.JSON(cmd.OutOrStdout(), result)
+	}
+
+	out := cmd.OutOrStdout()
+	_, _ = fmt.Fprintf(out, "Name:          %s\n", orNotSet(output.SanitizeTerminal(result.Name)))
+	_, _ = fmt.Fprintf(out, "Server URL:    %s\n", orNotSet(output.SanitizeTerminal(result.ServerURL)))
+	_, _ = fmt.Fprintf(out, "Username:      %s\n", orNotSet(output.SanitizeTerminal(result.Username)))
+	_, _ = fmt.Fprintf(out, "Config path:   %s\n", result.ConfigPath)
+	_, _ = fmt.Fprintf(out, "Secret stored: %s\n", yesNo(result.SecretStored))
+	_, _ = fmt.Fprintf(out, "Default:       %s\n", yesNo(result.IsDefault))
+
+	return nil
 }
 
 // authTestResult is the JSON shape emitted by "auth test" on success.
@@ -421,9 +447,10 @@ type authTestResult struct {
 	RPCVersionSemver string `json:"rpc_version_semver"`
 }
 
-// newAuthTestCmd builds "auth test", which dials the backend and performs a real
-// ServerInfo round-trip, printing the connection status, server version,
-// negotiated protocol, and rpc semver. It exits non-zero on failure.
+// newAuthTestCmd builds "auth test [alias]", which dials a server and performs a
+// real ServerInfo round-trip, printing the connection status, server version,
+// negotiated protocol, and rpc semver. It tests the named server, or the
+// configured default when the alias is omitted. It exits non-zero on failure.
 func newAuthTestCmd() *cobra.Command {
 	var (
 		configPath string
@@ -431,13 +458,13 @@ func newAuthTestCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "test",
-		Short:         "Test the connection to the configured server",
-		Args:          cobra.NoArgs,
+		Use:           "test [alias]",
+		Short:         "Test the connection to a server",
+		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			backend, serverURL, err := dial(configPath, "")
+		RunE: func(cmd *cobra.Command, args []string) error {
+			backend, serverURL, err := dial(configPath, firstArg(args))
 			if err != nil {
 				return err
 			}
@@ -475,34 +502,65 @@ func newAuthTestCmd() *cobra.Command {
 	return cmd
 }
 
-// newAuthRemoveCmd builds "auth remove", which deletes the keyring secret and
-// clears the credentials from config.
+// newAuthRemoveCmd builds "auth remove [alias]", which removes a named server (or
+// the configured default when the alias is omitted): it deletes the server's
+// entry from config, deletes its keyring secret, and persists. When the removed
+// server was the default, the default is repointed to the sole remaining server
+// if exactly one remains, otherwise it is cleared.
 func newAuthRemoveCmd() *cobra.Command {
 	var configPath string
 
 	cmd := &cobra.Command{
-		Use:           "remove",
-		Short:         "Remove stored credentials",
-		Args:          cobra.NoArgs,
+		Use:           "remove [alias]",
+		Short:         "Remove a configured server",
+		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _, err := loadConfig(configPath)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := firstArg(args)
+
+			cfg, configured, err := loadConfig(configPath)
 			if err != nil {
 				return err
 			}
 
-			if cfg.ServerURL != "" {
-				if err := secrets.Delete(cfg.ServerURL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+			if !configured || len(cfg.Servers) == 0 {
+				return errors.New("no servers configured")
+			}
+
+			name, srv, err := config.Resolve(cfg, alias)
+			if err != nil {
+				return resolveServerError(cfg, alias, err)
+			}
+
+			if srv.URL != "" {
+				if err := secrets.Delete(srv.URL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
 					return err
 				}
 			}
 
-			if err := config.Save(config.Config{}, configPath); err != nil {
+			delete(cfg.Servers, name)
+
+			// When the removed server was the default, repoint it to the sole
+			// remaining server if exactly one is left; otherwise clear it (the user
+			// picks a new default with 'auth default').
+			if cfg.DefaultServer == name {
+				cfg.DefaultServer = ""
+				if remaining := cfg.Names(); len(remaining) == 1 {
+					cfg.DefaultServer = remaining[0]
+				}
+			}
+
+			// Clear the transitional shim fields so Save persists Servers verbatim
+			// rather than re-deriving a server from them.
+			cfg.ServerURL = ""
+			cfg.Username = ""
+
+			if err := config.Save(cfg, configPath); err != nil {
 				return err
 			}
 
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Removed stored credentials")
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed server %q (%s)\n", name, srv.URL)
 
 			return nil
 		},
@@ -511,6 +569,17 @@ func newAuthRemoveCmd() *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 
 	return cmd
+}
+
+// firstArg returns the first positional argument, or the empty string when none
+// was given. Auth subcommands that take an optional [alias] use it so an omitted
+// alias resolves to the configured default.
+func firstArg(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+
+	return ""
 }
 
 // dial loads config (honoring configPath), resolves which named server to use,
