@@ -72,6 +72,9 @@ const (
 	methodTorrentSetLocationJSONRPC = "torrent_set_location"
 	methodTorrentSetLocationBespoke = "torrent-set-location"
 
+	methodTorrentSetJSONRPC = "torrent_set"
+	methodTorrentSetBespoke = "torrent-set"
+
 	methodQueueMoveTopJSONRPC = "queue_move_top"
 	methodQueueMoveTopBespoke = "queue-move-top"
 
@@ -579,6 +582,16 @@ type Protocol interface {
 	// repoints to a path where the files already exist and searches there. The
 	// method carries no response payload, so the call only confirms success.
 	TorrentSetLocation(ctx context.Context, t transport, ids []any, location string, move bool) error
+
+	// TorrentSet calls the server's torrent-set/torrent_set method to write
+	// per-torrent fields. A nil or empty ids slice targets all torrents;
+	// otherwise the mixed id/hash array selects torrents. settings is a
+	// snake_case-keyed map of canonical field keys to typed values; each
+	// implementation translates the keys to its wire scheme (verbatim snake_case
+	// for JSON-RPC 2.0, snake→kebab with documented camelCase exceptions for the
+	// bespoke scheme). Only the keys present in settings are written. The method
+	// carries no response payload, so the call only confirms success.
+	TorrentSet(ctx context.Context, t transport, ids []any, settings map[string]any) error
 
 	// Call issues an arbitrary RPC method with raw arguments and returns the
 	// canonical RawResponse. method is the canonical kebab-case name (each
@@ -1154,6 +1167,49 @@ func (jsonrpcProtocol) TorrentSetLocation(ctx context.Context, t transport, ids 
 
 	var resp jsonrpcResponse
 	if err := decodeResponse(methodTorrentSetLocationJSONRPC, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	return nil
+}
+
+// TorrentSet sends torrent_set with the per-torrent settings (translated from
+// canonical snake_case to the JSON-RPC wire spelling) and an optional ids array
+// (omitted when nil/empty = all torrents). Only the keys present in settings are
+// written. Like the payload-free actions, the method returns no result
+// arguments, so only the error object is inspected.
+func (jsonrpcProtocol) TorrentSet(ctx context.Context, t transport, ids []any, settings map[string]any) error {
+	params := make(map[string]any, len(settings)+1)
+	for key, value := range settings {
+		params[jsonrpcTorrentSetKey(key)] = value
+	}
+	if len(ids) > 0 {
+		params["ids"] = ids
+	}
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodTorrentSetJSONRPC,
+		Params:  params,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodTorrentSetJSONRPC, respBody, &resp); err != nil {
 		return err
 	}
 
@@ -1903,6 +1959,49 @@ func (bespokeProtocol) TorrentSetLocation(ctx context.Context, t transport, ids 
 	return nil
 }
 
+// TorrentSet sends torrent-set with the per-torrent settings (translated from
+// canonical snake_case to the bespoke wire spelling, with the documented
+// camelCase exceptions) and an optional ids array (omitted when nil/empty = all
+// torrents). Only the keys present in settings are written. Like the
+// payload-free actions, the method returns no arguments, so only the result
+// string is inspected.
+func (bespokeProtocol) TorrentSet(ctx context.Context, t transport, ids []any, settings map[string]any) error {
+	arguments := make(map[string]any, len(settings)+1)
+	for key, value := range settings {
+		arguments[bespokeTorrentSetKey(key)] = value
+	}
+	if len(ids) > 0 {
+		arguments["ids"] = ids
+	}
+
+	req := bespokeRequest{
+		Method:    methodTorrentSetBespoke,
+		Arguments: arguments,
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodTorrentSetBespoke, respBody, &resp); err != nil {
+		return err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	return nil
+}
+
 // action performs a payload-free bespoke mutation (start/start-now/stop): it
 // sends method with an optional ids array (omitted when nil/empty = all
 // torrents) and confirms success via the result field. These methods return no
@@ -2073,6 +2172,45 @@ func jsonrpcSettingKey(key string) string {
 // "_"->"-" transform.
 func bespokeSettingKey(key string) string {
 	if wireKey, ok := bespokeSettingExceptions[key]; ok {
+		return wireKey
+	}
+
+	return strings.ReplaceAll(key, "_", "-")
+}
+
+// bespokeTorrentSetExceptions maps the canonical snake_case torrent-set keys
+// whose bespoke wire spelling is not a plain "_"->"-" transform. Transmission's
+// legacy 4.0.x torrent-set arguments are camelCase for these fields; all other
+// keys (e.g. peer_limit -> peer-limit, labels, group, location) fall back to the
+// mechanical transform.
+var bespokeTorrentSetExceptions = map[string]string{
+	"bandwidth_priority":    "bandwidthPriority",
+	"download_limit":        "downloadLimit",
+	"download_limited":      "downloadLimited",
+	"upload_limit":          "uploadLimit",
+	"upload_limited":        "uploadLimited",
+	"honors_session_limits": "honorsSessionLimits",
+	"queue_position":        "queuePosition",
+	"seed_ratio_limit":      "seedRatioLimit",
+	"seed_ratio_mode":       "seedRatioMode",
+	"seed_idle_limit":       "seedIdleLimit",
+	"seed_idle_mode":        "seedIdleMode",
+	"sequential_download":   "sequentialDownload",
+	"tracker_list":          "trackerList",
+}
+
+// jsonrpcTorrentSetKey maps a canonical snake_case torrent-set key to the
+// JSON-RPC 2.0 wire spelling. The in-scope fields are all sent verbatim, so the
+// key passes through unchanged.
+func jsonrpcTorrentSetKey(key string) string {
+	return key
+}
+
+// bespokeTorrentSetKey maps a canonical snake_case torrent-set key to the
+// bespoke wire spelling: a known camelCase exception when listed, otherwise the
+// mechanical "_"->"-" transform.
+func bespokeTorrentSetKey(key string) string {
+	if wireKey, ok := bespokeTorrentSetExceptions[key]; ok {
 		return wireKey
 	}
 

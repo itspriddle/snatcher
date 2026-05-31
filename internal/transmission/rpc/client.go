@@ -214,6 +214,20 @@ func (c *Client) TorrentSetLocation(ctx context.Context, ids []any, location str
 	return proto.TorrentSetLocation(ctx, c.transport, ids, location, move)
 }
 
+// TorrentSet detects the protocol (once) and writes per-torrent fields on the
+// selected torrents. settings is a snake_case-keyed map of canonical field keys
+// to typed values; the negotiated protocol translates the keys to its wire
+// scheme. Only the keys present in settings are written. A nil or empty ids
+// slice targets all torrents; otherwise the mixed id/hash array selects them.
+func (c *Client) TorrentSet(ctx context.Context, ids []any, settings map[string]any) error {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return err
+	}
+
+	return proto.TorrentSet(ctx, c.transport, ids, settings)
+}
+
 // Call detects the protocol (once) and issues an arbitrary RPC method with raw
 // arguments, returning the canonical RawResponse. method is the canonical
 // kebab-case name (the protocol translates it for its wire scheme); args is the
