@@ -420,6 +420,103 @@ func TestAuthListEmpty(t *testing.T) {
 	assert.Equal(t, "[]\n", out)
 }
 
+func TestWriteAuthListTableEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	writeAuthListTable(&buf, nil)
+
+	assert.Equal(t, "No servers configured.", strings.TrimSpace(buf.String()))
+}
+
+func TestWriteAuthListTableHeader(t *testing.T) {
+	rows := [][]string{
+		{"local", "http://local:9091/rpc", "alice", "yes", "yes"},
+	}
+
+	var buf bytes.Buffer
+	writeAuthListTable(&buf, rows)
+
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 2, "header row plus one row per server")
+
+	// The header row carries the documented columns in order.
+	header := lines[0]
+	assert.True(t, strings.HasPrefix(header, "NAME"))
+	for _, col := range []string{"NAME", "URL", "USERNAME", "SECRET", "DEFAULT"} {
+		assert.Contains(t, header, col)
+	}
+
+	assert.Contains(t, out, "local")
+	assert.Contains(t, out, "http://local:9091/rpc")
+	assert.Contains(t, out, "alice")
+}
+
+func TestWriteAuthListPlaintextSanitizesControlChars(t *testing.T) {
+	results := []authListResult{
+		{
+			Name:         "\x1b[2Jevil",
+			ServerURL:    "http://h\x1bost:9091/rpc",
+			Username:     "ali\x07ce",
+			SecretStored: true,
+			IsDefault:    true,
+		},
+	}
+
+	// A bytes.Buffer is not a TTY, so this exercises the piped tab-separated path.
+	cmd := NewAuthCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	writeAuthListPlaintext(cmd, results)
+
+	out := buf.String()
+	assert.NotContains(t, out, "\x1b", "raw ESC must not reach the plaintext output")
+	assert.NotContains(t, out, "\x07", "raw BEL must not reach the plaintext output")
+	assert.Contains(t, out, "[2Jevil", "visible text survives sanitization")
+	assert.Contains(t, out, "http://host:9091/rpc")
+	assert.Contains(t, out, "alice")
+}
+
+func TestAuthListJSONPreservesControlChars(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/rpc"
+
+	// A server alias carrying a control sequence: the plaintext path strips it,
+	// but the structured --json/--jq output is a consumer-owned contract and
+	// preserves it verbatim.
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"\x1b[2Jevil": {URL: url, Username: "alice"}},
+		DefaultServer: "\x1b[2Jevil",
+	}, cfgPath))
+
+	jsonOut, _, err := runAuth(t, "", "list", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var results []authListResult
+	require.NoError(t, json.Unmarshal([]byte(jsonOut), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, "\x1b[2Jevil", results[0].Name, "JSON output preserves the raw name verbatim")
+
+	// --json JSON-encodes the string, so the raw ESC byte is escaped rather than
+	// emitted literally (and never stripped).
+	assert.NotContains(t, jsonOut, "\x1b", "the raw ESC byte is JSON-escaped, not emitted literally")
+	assert.Contains(t, jsonOut, "\\u001b", "the control char is preserved as a JSON escape, not dropped")
+
+	jqOut, _, err := runAuth(t, "", "list", "--config", cfgPath, "--jq", ".[].name")
+	require.NoError(t, err)
+	var jqName string
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(jqOut)), &jqName))
+	assert.Equal(t, "\x1b[2Jevil", jqName, "jq output preserves the raw name verbatim")
+
+	// The plaintext (piped) path strips the escape from the same alias.
+	plainOut, _, err := runAuth(t, "", "list", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.NotContains(t, plainOut, "\x1b", "plaintext path strips the control sequence")
+	assert.Contains(t, plainOut, "[2Jevil", "visible text survives on the plaintext path")
+}
+
 func TestAuthDefaultSwitches(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
