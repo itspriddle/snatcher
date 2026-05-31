@@ -77,6 +77,21 @@ scheme (≤ 4.0.6). Each is a `Protocol` implementation owning its envelope, met
 names (snake_case vs kebab-case), and field decoding, converting to shared
 canonical structs. RPC specs live in `docs/transmission/`.
 
+**Minimum server version.** The same one-shot detection enforces a
+**Transmission 4.0+** floor (`rpc-version` ≥ 17). A JSON-RPC server is necessarily
+≥ 4.1.0 and clears it for free; a bespoke server is checked against the integer
+`rpc-version` in the probe's own `session-get` body (no extra round-trip). A
+server that positively reports an `rpc-version` below 17 is refused with
+`rpc.ErrUnsupported`, mapped to `torrent.ErrUnsupported`. A server that reports no
+`rpc-version` at all (pre-1.50, or not Transmission) is left to fail naturally
+rather than mislabeled — every real 2.x/3.x server does report it, so the
+realistic "too old" case is still caught.
+The check is stateless — re-run every process, nothing cached to disk — so a
+server up/downgrade is picked up immediately. The integer `rpc-version` (present
+since Transmission 1.50) is the gate signal; `rpc-version-semver` only exists from
+4.0.0 and the CSRF version header only from 4.1.0, so neither can gate the 4.0
+boundary alone.
+
 **Output contract.** Every command renders in one of three modes, fixed
 precedence: **`--jq` → `--json` → plaintext** (`internal/output`). The neutral
 types' `json` tags are a stable scripting surface — treat them as an API.

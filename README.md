@@ -16,9 +16,10 @@ keyring.
 
 - **Vendor-neutral core.** Commands depend on a neutral `Backend` interface, so
   additional clients (e.g. qBittorrent) can slot in without rewriting commands.
-- **Transmission protocol auto-detection.** Speaks both the legacy bespoke RPC
-  dialect (Transmission ≤ 4.0.6) and JSON-RPC 2.0 (≥ 4.1.0), chosen
-  automatically from a CSRF handshake.
+- **Transmission protocol auto-detection.** Requires **Transmission 4.0+** and
+  speaks both the legacy bespoke RPC dialect (Transmission 4.0) and JSON-RPC 2.0
+  (≥ 4.1.0), chosen automatically from a CSRF handshake. Older servers are
+  refused with a clear unsupported-version error.
 - **Three output modes, fixed precedence:** `--jq` → `--json` → plaintext. JSON
   field names are a stable scripting contract.
 - **Safe by default.** Non-secret config is JSON under XDG; the password is

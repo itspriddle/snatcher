@@ -217,6 +217,30 @@ func TestBackendMapsAuthError(t *testing.T) {
 	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
 }
 
+func TestBackendMapsUnsupportedVersion(t *testing.T) {
+	// No version header -> bespoke path runs the 4.0+ floor against the probe's
+	// session-get body. A server reporting rpc-version 16 (Transmission 3.00) is
+	// refused and mapped to the neutral torrent.ErrUnsupported.
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"session-get": `{
+				"arguments": {"version": "3.00 (bb6b5a062e)", "rpc-version": 16},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.ServerInfo(context.Background())
+	require.ErrorIs(t, err, torrent.ErrUnsupported)
+	require.ErrorIs(t, err, rpc.ErrUnsupported)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
 func TestBackendMapsTransportError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
