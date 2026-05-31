@@ -32,9 +32,7 @@ func NewRootCmd() *cobra.Command {
 
 	cmd.AddCommand(commands.NewAPICmd())
 	cmd.AddCommand(commands.NewAuthCmd())
-	cmd.AddCommand(commands.NewPortCmd())
-	cmd.AddCommand(commands.NewSettingsCmd())
-	cmd.AddCommand(commands.NewStatsCmd())
+	cmd.AddCommand(commands.NewServerCmd())
 	cmd.AddCommand(commands.NewTorrentCmd())
 
 	return cmd
