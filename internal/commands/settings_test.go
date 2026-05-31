@@ -66,6 +66,21 @@ func TestSettingRegistryEveryDefHasAccessor(t *testing.T) {
 	}
 }
 
+// TestSettingRegistryEveryDefHasDesc guards against a settable registry entry
+// without help text: every non-read-only setting must carry a non-empty desc so
+// the per-setting flag and the man page have meaningful help. The read-only
+// blocklist-size gets no flag and so needs no desc.
+func TestSettingRegistryEveryDefHasDesc(t *testing.T) {
+	t.Parallel()
+
+	for _, def := range settingRegistry {
+		if def.readOnly {
+			continue
+		}
+		assert.NotEmpty(t, def.desc, "%s must have a non-empty desc", def.key)
+	}
+}
+
 // TestSettingRegistryDefaultsMatchType asserts each settable default's Go type
 // matches the setting's declared type, and that the read-only setting has a nil
 // default (no settable default).

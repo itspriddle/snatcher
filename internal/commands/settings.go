@@ -93,6 +93,12 @@ type settingDef struct {
 	// matched case-insensitively. It is nil for non-enum settings.
 	allowed []string
 
+	// desc is a concise, one-line human description used as the help text for the
+	// per-setting flag (server settings set --<key>) and the man page. Every
+	// settable setting must have a non-empty desc; the read-only blocklist-size,
+	// which gets no flag, leaves it empty.
+	desc string
+
 	// accessor returns the setting's current typed value from a session snapshot.
 	accessor func(torrent.SessionSettings) any
 }
@@ -105,91 +111,130 @@ type settingDef struct {
 var settingRegistry = []settingDef{
 	// Download.
 	{key: "download-dir", category: categoryDownload, typ: typeString, def: "~/Downloads",
+		desc:     "Default directory for completed downloads",
 		accessor: func(s torrent.SessionSettings) any { return s.DownloadDir }},
 	{key: "start-added-torrents", category: categoryDownload, typ: typeBool, def: true,
+		desc:     "Start torrents automatically when added",
 		accessor: func(s torrent.SessionSettings) any { return s.StartAddedTorrents }},
 	{key: "rename-partial-files", category: categoryDownload, typ: typeBool, def: true,
+		desc:     "Append .part to incomplete files",
 		accessor: func(s torrent.SessionSettings) any { return s.RenamePartialFiles }},
 	{key: "incomplete-dir-enabled", category: categoryDownload, typ: typeBool, def: false,
+		desc:     "Keep incomplete downloads in a separate directory",
 		accessor: func(s torrent.SessionSettings) any { return s.IncompleteDirEnabled }},
 	{key: "incomplete-dir", category: categoryDownload, typ: typeString, def: "",
+		desc:     "Directory for incomplete downloads (when enabled)",
 		accessor: func(s torrent.SessionSettings) any { return s.IncompleteDir }},
 	{key: "seed-ratio-limited", category: categoryDownload, typ: typeBool, def: false,
+		desc:     "Stop seeding at the global seed-ratio limit",
 		accessor: func(s torrent.SessionSettings) any { return s.SeedRatioLimited }},
 	{key: "seed-ratio-limit", category: categoryDownload, typ: typeFloat, def: 2.0,
+		desc:     "Global seed ratio to stop seeding at (when limited)",
 		accessor: func(s torrent.SessionSettings) any { return s.SeedRatioLimit }},
 	{key: "idle-seeding-limit-enabled", category: categoryDownload, typ: typeBool, def: false,
+		desc:     "Stop seeding torrents that have been idle too long",
 		accessor: func(s torrent.SessionSettings) any { return s.IdleSeedingLimitEnabled }},
 	{key: "idle-seeding-limit", category: categoryDownload, typ: typeInt, def: 30,
+		desc:     "Idle time in minutes before stopping seeding (when enabled)",
 		accessor: func(s torrent.SessionSettings) any { return s.IdleSeedingLimit }},
 	{key: "cache-size-mib", category: categoryDownload, typ: typeInt, def: 4,
+		desc:     "Disk cache size in MiB",
 		accessor: func(s torrent.SessionSettings) any { return s.CacheSizeMiB }},
 
 	// Network.
 	{key: "peer-port", category: categoryNetwork, typ: typeInt, def: 51413,
+		desc:     "Port to listen for incoming peer connections",
 		accessor: func(s torrent.SessionSettings) any { return s.PeerPort }},
 	{key: "peer-port-random-on-start", category: categoryNetwork, typ: typeBool, def: false,
+		desc:     "Pick a random peer port on each start",
 		accessor: func(s torrent.SessionSettings) any { return s.PeerPortRandomOnStart }},
 	{key: "port-forwarding-enabled", category: categoryNetwork, typ: typeBool, def: true,
+		desc:     "Request UPnP/NAT-PMP port forwarding",
 		accessor: func(s torrent.SessionSettings) any { return s.PortForwardingEnabled }},
 	{key: "encryption", category: categoryNetwork, typ: typeEnum, def: "preferred",
 		allowed:  []string{"allowed", "preferred", "required"},
+		desc:     "Peer encryption mode (allowed, preferred, required)",
 		accessor: func(s torrent.SessionSettings) any { return s.Encryption }},
 	{key: "peer-limit-global", category: categoryNetwork, typ: typeInt, def: 200,
+		desc:     "Maximum peer connections across all torrents",
 		accessor: func(s torrent.SessionSettings) any { return s.PeerLimitGlobal }},
 	{key: "peer-limit-per-torrent", category: categoryNetwork, typ: typeInt, def: 50,
+		desc:     "Maximum peer connections per torrent",
 		accessor: func(s torrent.SessionSettings) any { return s.PeerLimitPerTorrent }},
 	{key: "pex-enabled", category: categoryNetwork, typ: typeBool, def: true,
+		desc:     "Enable Peer Exchange (PEX)",
 		accessor: func(s torrent.SessionSettings) any { return s.PexEnabled }},
 	{key: "dht-enabled", category: categoryNetwork, typ: typeBool, def: true,
+		desc:     "Enable the Distributed Hash Table (DHT)",
 		accessor: func(s torrent.SessionSettings) any { return s.DHTEnabled }},
 	{key: "lpd-enabled", category: categoryNetwork, typ: typeBool, def: false,
+		desc:     "Enable Local Peer Discovery (LPD)",
 		accessor: func(s torrent.SessionSettings) any { return s.LPDEnabled }},
 	{key: "utp-enabled", category: categoryNetwork, typ: typeBool, def: true,
+		desc:     "Enable the uTP transport protocol",
 		accessor: func(s torrent.SessionSettings) any { return s.UTPEnabled }},
 	{key: "blocklist-enabled", category: categoryNetwork, typ: typeBool, def: false,
+		desc:     "Block peers listed in the blocklist",
 		accessor: func(s torrent.SessionSettings) any { return s.BlocklistEnabled }},
 	{key: "blocklist-url", category: categoryNetwork, typ: typeString, def: "http://www.example.com/blocklist",
+		desc:     "URL to fetch the peer blocklist from",
 		accessor: func(s torrent.SessionSettings) any { return s.BlocklistURL }},
 	{key: "blocklist-size", category: categoryNetwork, typ: typeInt, def: nil, readOnly: true,
 		accessor: func(s torrent.SessionSettings) any { return s.BlocklistSize }},
 
 	// Bandwidth.
 	{key: "speed-limit-down-enabled", category: categoryBandwidth, typ: typeBool, def: false,
+		desc:     "Enable the global download speed limit",
 		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitDownEnabled }},
 	{key: "speed-limit-down", category: categoryBandwidth, typ: typeInt64, def: int64(100),
+		desc:     "Global download speed limit in KB/s (when enabled)",
 		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitDown }},
 	{key: "speed-limit-up-enabled", category: categoryBandwidth, typ: typeBool, def: false,
+		desc:     "Enable the global upload speed limit",
 		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitUpEnabled }},
 	{key: "speed-limit-up", category: categoryBandwidth, typ: typeInt64, def: int64(100),
+		desc:     "Global upload speed limit in KB/s (when enabled)",
 		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitUp }},
 	{key: "alt-speed-enabled", category: categoryBandwidth, typ: typeBool, def: false,
+		desc:     "Use the alternative (throttled) speed limits now",
 		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedEnabled }},
 	{key: "alt-speed-down", category: categoryBandwidth, typ: typeInt64, def: int64(50),
+		desc:     "Alternative download speed limit in KB/s",
 		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedDown }},
 	{key: "alt-speed-up", category: categoryBandwidth, typ: typeInt64, def: int64(50),
+		desc:     "Alternative upload speed limit in KB/s",
 		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedUp }},
 	{key: "alt-speed-time-enabled", category: categoryBandwidth, typ: typeBool, def: false,
+		desc:     "Switch to alternative speeds on a daily schedule",
 		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeEnabled }},
 	{key: "alt-speed-time-begin", category: categoryBandwidth, typ: typeInt, def: 540,
+		desc:     "Alternative-speed schedule start (minutes after midnight)",
 		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeBegin }},
 	{key: "alt-speed-time-end", category: categoryBandwidth, typ: typeInt, def: 1020,
+		desc:     "Alternative-speed schedule end (minutes after midnight)",
 		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeEnd }},
 	{key: "alt-speed-time-day", category: categoryBandwidth, typ: typeInt, def: 127,
+		desc:     "Days the alternative-speed schedule runs (bitfield, Sun=1)",
 		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeDay }},
 
 	// Queue.
 	{key: "download-queue-enabled", category: categoryQueue, typ: typeBool, def: true,
+		desc:     "Limit how many torrents download at once",
 		accessor: func(s torrent.SessionSettings) any { return s.DownloadQueueEnabled }},
 	{key: "download-queue-size", category: categoryQueue, typ: typeInt, def: 5,
+		desc:     "Maximum torrents downloading at once (when enabled)",
 		accessor: func(s torrent.SessionSettings) any { return s.DownloadQueueSize }},
 	{key: "seed-queue-enabled", category: categoryQueue, typ: typeBool, def: false,
+		desc:     "Limit how many torrents seed at once",
 		accessor: func(s torrent.SessionSettings) any { return s.SeedQueueEnabled }},
 	{key: "seed-queue-size", category: categoryQueue, typ: typeInt, def: 10,
+		desc:     "Maximum torrents seeding at once (when enabled)",
 		accessor: func(s torrent.SessionSettings) any { return s.SeedQueueSize }},
 	{key: "queue-stalled-enabled", category: categoryQueue, typ: typeBool, def: true,
+		desc:     "Ignore stalled torrents when counting the queue",
 		accessor: func(s torrent.SessionSettings) any { return s.QueueStalledEnabled }},
 	{key: "queue-stalled-minutes", category: categoryQueue, typ: typeInt, def: 30,
+		desc:     "Idle minutes before a transfer counts as stalled",
 		accessor: func(s torrent.SessionSettings) any { return s.QueueStalledMinutes }},
 }
 
@@ -304,19 +349,26 @@ func (d settingDef) parseSettingValue(raw string) (any, error) {
 
 		return f, nil
 	case typeEnum:
-		lowered := strings.ToLower(strings.TrimSpace(raw))
-		for _, allowed := range d.allowed {
-			if lowered == allowed {
-				return allowed, nil
-			}
-		}
-
-		return nil, fmt.Errorf("invalid value for %s: must be one of: %s", d.key, strings.Join(d.allowed, ", "))
+		return d.validateEnum(raw)
 	case typeString:
 		return raw, nil
 	default:
 		return nil, fmt.Errorf("invalid value for %s: unsupported type", d.key)
 	}
+}
+
+// validateEnum matches a raw enum value case-insensitively (and after trimming)
+// against the setting's allowed list, returning the canonical lowercase value. A
+// value outside the list returns a clear error naming the allowed values.
+func (d settingDef) validateEnum(raw string) (string, error) {
+	lowered := strings.ToLower(strings.TrimSpace(raw))
+	for _, allowed := range d.allowed {
+		if lowered == allowed {
+			return allowed, nil
+		}
+	}
+
+	return "", fmt.Errorf("invalid value for %s: must be one of: %s", d.key, strings.Join(d.allowed, ", "))
 }
 
 // formatSettingValue renders a typed value to its plaintext string: bools as
@@ -505,14 +557,15 @@ func newSettingsGetCmd() *cobra.Command {
 	return cmd
 }
 
-// newSettingsSetCmd builds "settings set <key> <value> [<key> <value>...]",
-// which writes one or more settings in a single call. Pairs are validated
-// all-or-nothing before any network write: unknown keys, the read-only
-// blocklist-size, and type/enum parse failures are collected and reported
-// together, so an invalid pair aborts the whole command with no partial write.
-// On success it writes via backend.SetSession, re-fetches via GetSession, and
-// reports the server's actual post-set values (key: value per line on
-// plaintext; the {key, category, value} array on --json/--jq).
+// newSettingsSetCmd builds "settings set", which writes one or more settings via
+// one typed flag per settable setting (flag name == setting key), mirroring
+// "torrent set". Only the flags explicitly given are written (detected via
+// cmd.Flags().Changed), so unspecified settings are never sent; a bare invocation
+// with no setting flag is an error, not a no-op. Enum flags are validated
+// case-insensitively before any network write, so an invalid value aborts with no
+// partial change. On success it writes via backend.SetSession and, rather than
+// re-fetching, echoes the written values (key: value per line on plaintext in
+// registry order; the {key, category, value} array on --json/--jq).
 func newSettingsSetCmd() *cobra.Command {
 	var (
 		configPath string
@@ -522,23 +575,32 @@ func newSettingsSetCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "set <key> <value> [<key> <value>...]",
+		Use:   "set [options]",
 		Short: "Set one or more settings",
-		Long: "Set one or more settings, given as key/value pairs.\n\n" +
-			"All pairs are validated before any write, so an invalid pair aborts " +
-			"the whole command with no partial change. After writing, the " +
-			"server's actual values are read back and reported.\n\n" +
+		Long: "Set one or more settings, each given as a typed flag (e.g. " +
+			"--peer-port 51413 --dht-enabled=false). The flag name is the setting " +
+			"key.\n\n" +
+			"Only the flags you pass are written, so unspecified settings are left " +
+			"unchanged. At least one setting flag is required; a bare invocation is " +
+			"an error, not a no-op. Bool settings are enabled with a bare --key and " +
+			"disabled with --key=false.\n\n" +
+			"After writing, the values you set are echoed back (this is what was " +
+			"written, not a re-read, so server-side normalization is not reflected).\n\n" +
 			"Units: speed-limit-down, speed-limit-up, alt-speed-down, and " +
-			"alt-speed-up are in KB/s (e.g. 'set speed-limit-down 100' is " +
-			"100 KB/s). alt-speed-time-begin and alt-speed-time-end are minutes " +
-			"after midnight (e.g. 540 is 09:00).",
-		Args:          cobra.MinimumNArgs(2),
+			"alt-speed-up are in KB/s (e.g. --speed-limit-down 100 is 100 KB/s). " +
+			"alt-speed-time-begin and alt-speed-time-end are minutes after midnight " +
+			"(e.g. 540 is 09:00).",
+		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			defs, changes, err := parseSettingAssignments(args)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			defs, changes, err := collectSettingChanges(cmd)
 			if err != nil {
 				return err
+			}
+
+			if len(changes) == 0 {
+				return fmt.Errorf("nothing to set: provide at least one setting flag")
 			}
 
 			backend, serverURL, err := dial(configPath, server)
@@ -550,22 +612,19 @@ func newSettingsSetCmd() *cobra.Command {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
 
-			session, err := backend.GetSession(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
-			}
+			rows := writtenSettingRows(defs, changes)
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), settingRows(defs, session), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), rows, jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), settingRows(defs, session))
+				return output.JSON(cmd.OutOrStdout(), rows)
 			}
 
 			out := cmd.OutOrStdout()
 			for _, def := range defs {
-				_, _ = fmt.Fprintf(out, "%s: %s\n", def.key, settingCell(def, session))
+				_, _ = fmt.Fprintf(out, "%s: %s\n", def.key, writtenSettingCell(def, changes[def.key]))
 			}
 
 			return nil
@@ -576,67 +635,118 @@ func newSettingsSetCmd() *cobra.Command {
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	registerSettingFlags(cmd)
 
 	return cmd
 }
 
-// parseSettingAssignments turns the positional key/value arguments into the
-// ordered definitions to report and the neutral-key change map to write. It
-// validates all-or-nothing: an odd argument count, unknown keys, the read-only
-// blocklist-size, and per-value parse failures are all collected and returned
-// together as a single error so nothing is sent on any failure. The returned
-// defs preserve argument order; a key repeated on the command line takes its
-// last value (and is reported once).
-func parseSettingAssignments(args []string) ([]settingDef, map[string]any, error) {
-	if len(args)%2 != 0 {
-		return nil, nil, fmt.Errorf("set requires an even number of arguments (key value pairs); got %d", len(args))
-	}
-
-	var (
-		problems []string
-		order    []string
-		defs     = make(map[string]settingDef)
-		changes  = make(map[string]any)
-	)
-
-	for i := 0; i < len(args); i += 2 {
-		key, raw := args[i], args[i+1]
-
-		def, ok := lookupSetting(key)
-		if !ok {
-			problems = append(problems, fmt.Sprintf("unknown setting %q", key))
-			continue
-		}
-
+// registerSettingFlags adds one flag per settable registry entry to the set
+// command. The flag name is the setting key and its type follows the setting's
+// settingType; the help text comes from the setting's desc. The read-only
+// blocklist-size gets no flag (it has no desc and cannot be written).
+func registerSettingFlags(cmd *cobra.Command) {
+	for _, def := range settingRegistry {
 		if def.readOnly {
-			problems = append(problems, fmt.Sprintf("setting %q is read-only", key))
 			continue
 		}
 
-		value, err := def.parseSettingValue(raw)
+		switch def.typ {
+		case typeBool:
+			cmd.Flags().Bool(def.key, false, def.desc)
+		case typeInt:
+			cmd.Flags().Int(def.key, 0, def.desc)
+		case typeInt64:
+			cmd.Flags().Int64(def.key, 0, def.desc)
+		case typeFloat:
+			cmd.Flags().Float64(def.key, 0, def.desc)
+		case typeString, typeEnum:
+			cmd.Flags().String(def.key, "", def.desc)
+		}
+	}
+}
+
+// collectSettingChanges builds the ordered definitions to report and the neutral
+// kebab-case change map from the setting flags that were explicitly set (detected
+// via cmd.Flags().Changed). Enum flags are validated case-insensitively, and an
+// invalid value returns a clear error (and no map entry) before any write, so
+// nothing is sent on a bad value. Unset flags are omitted entirely. Order follows
+// the registry, so output is stable regardless of flag order on the command line.
+func collectSettingChanges(cmd *cobra.Command) ([]settingDef, map[string]any, error) {
+	var defs []settingDef
+	changes := make(map[string]any)
+
+	for _, def := range settingRegistry {
+		if def.readOnly || !cmd.Flags().Changed(def.key) {
+			continue
+		}
+
+		value, err := settingFlagValue(cmd, def)
 		if err != nil {
-			problems = append(problems, err.Error())
-			continue
+			return nil, nil, err
 		}
 
-		if _, seen := defs[key]; !seen {
-			order = append(order, key)
+		defs = append(defs, def)
+		changes[def.key] = value
+	}
+
+	return defs, changes, nil
+}
+
+// settingFlagValue reads the typed value of a changed setting flag, returning it
+// as the neutral typed value written to the change map. Enum values are validated
+// case-insensitively and normalized to their canonical lowercase form; all other
+// types are read directly from the typed cobra flag.
+func settingFlagValue(cmd *cobra.Command, def settingDef) (any, error) {
+	switch def.typ {
+	case typeBool:
+		return cmd.Flags().GetBool(def.key)
+	case typeInt:
+		return cmd.Flags().GetInt(def.key)
+	case typeInt64:
+		return cmd.Flags().GetInt64(def.key)
+	case typeFloat:
+		return cmd.Flags().GetFloat64(def.key)
+	case typeEnum:
+		raw, err := cmd.Flags().GetString(def.key)
+		if err != nil {
+			return nil, err
 		}
-		defs[key] = def
-		changes[key] = value
+
+		return def.validateEnum(raw)
+	case typeString:
+		return cmd.Flags().GetString(def.key)
+	default:
+		return nil, fmt.Errorf("invalid value for %s: unsupported type", def.key)
+	}
+}
+
+// writtenSettingRows builds the {key, category, value} JSON rows from the values
+// just written (not a re-read), in the given definition order. The values are the
+// native typed values from the change map, matching the --json/--jq contract.
+func writtenSettingRows(defs []settingDef, changes map[string]any) []settingRow {
+	rows := make([]settingRow, len(defs))
+	for i, def := range defs {
+		rows[i] = settingRow{
+			Key:      def.key,
+			Category: string(def.category),
+			Value:    changes[def.key],
+		}
 	}
 
-	if len(problems) > 0 {
-		return nil, nil, fmt.Errorf("invalid settings: %s\nvalid settings are %s",
-			strings.Join(problems, "; "), strings.Join(allSettingKeys(), ", "))
+	return rows
+}
+
+// writtenSettingCell renders a just-written value as plaintext, sanitizing
+// terminal control sequences for server-derived string settings so a crafted
+// value cannot inject ANSI escapes into the echoed output. The JSON/jq paths
+// never call it.
+func writtenSettingCell(def settingDef, value any) string {
+	v := formatSettingValue(value)
+	if serverDerivedSettings[def.key] {
+		v = output.SanitizeTerminal(v)
 	}
 
-	ordered := make([]settingDef, len(order))
-	for i, key := range order {
-		ordered[i] = defs[key]
-	}
-
-	return ordered, changes, nil
+	return v
 }
 
 // newSettingsResetCmd builds "settings reset <key>", which restores a single

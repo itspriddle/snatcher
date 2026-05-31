@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -514,47 +515,96 @@ func capturedSettingsServer(t *testing.T, captured *[]string) (string, func()) {
 	return cfgPath, srv.Close
 }
 
-func TestSettingsSetWritesAndReportsServerValues(t *testing.T) {
+// settingSetBody returns the captured session-set request body, or fails the
+// test if none was sent.
+func settingSetBody(t *testing.T, captured []string) string {
+	t.Helper()
+
+	for _, body := range captured {
+		if strings.Contains(body, "session-set") {
+			return body
+		}
+	}
+
+	require.FailNow(t, "no session-set request was captured")
+
+	return ""
+}
+
+func TestSettingsSetWritesAndEchoesValues(t *testing.T) {
 	var captured []string
 	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
 	defer closeSrv()
 
-	// peer-port and dht-enabled are written in a single call; the command
-	// re-fetches and reports the server's actual post-set values.
-	out, _, err := runSettings(t, "set", "peer-port", "12345", "dht-enabled", "false", "--config", cfgPath)
+	// peer-port and dht-enabled are written in a single call via typed flags; the
+	// command echoes back exactly what it wrote (no re-fetch), in registry order.
+	out, _, err := runSettings(t, "set", "--peer-port", "12345", "--dht-enabled=false", "--config", cfgPath)
 	require.NoError(t, err)
 
-	// Plaintext reports "key: value" per pair, in argument order, with the
-	// server-confirmed values from the re-fetch (peer-port=31129, dht=true here).
-	assert.Equal(t, "peer-port: 31129\ndht-enabled: true\n", out)
+	// peer-port (network) precedes dht-enabled (network) in registry order.
+	assert.Equal(t, "peer-port: 12345\ndht-enabled: false\n", out)
 
-	// A session-set carrying the parsed typed values was sent before any read.
-	var setBody string
-	for _, body := range captured {
-		if strings.Contains(body, "session-set") {
-			setBody = body
-			break
-		}
-	}
-	require.NotEmpty(t, setBody, "a session-set request was sent")
-	assert.Contains(t, setBody, "peer-port", "the kebab-case key reaches the wire")
-	assert.Contains(t, setBody, "12345", "the parsed int value is sent")
-	assert.Contains(t, setBody, "dht-enabled")
+	// A session-set carrying the typed values was sent.
+	setBody := settingSetBody(t, captured)
+	assert.Contains(t, setBody, `"peer-port":12345`, "the int value reaches the wire as a number")
+	assert.Contains(t, setBody, `"dht-enabled":false`, "the bool value reaches the wire as a bool")
 
-	// The write precedes the re-fetch. (The bespoke protocol's detection probe
-	// issues an initial session-get, so the re-fetch is the *last* session-get.)
-	setIdx, refetchIdx := -1, -1
+	// The command does not re-fetch: the only session-get is the protocol
+	// detection probe, sent before the write.
+	setIdx, getCount := -1, 0
 	for i, body := range captured {
 		if setIdx == -1 && strings.Contains(body, "session-set") {
 			setIdx = i
 		}
 		if strings.Contains(body, "session-get") {
-			refetchIdx = i
+			getCount++
 		}
 	}
 	require.GreaterOrEqual(t, setIdx, 0)
-	require.GreaterOrEqual(t, refetchIdx, 0)
-	assert.Less(t, setIdx, refetchIdx, "session-set is sent before the re-fetch session-get")
+	assert.LessOrEqual(t, getCount, 1, "no re-fetch: at most the one detection-probe session-get")
+}
+
+func TestSettingsSetWireTypesPerSettingType(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// One flag of each setting type, asserting the neutral wire mapping.
+	_, _, err := runSettings(t, "set",
+		"--dht-enabled=true",   // bool
+		"--peer-port", "12345", // int
+		"--speed-limit-down", "500", // int64
+		"--seed-ratio-limit", "2.5", // float
+		"--download-dir", "/tmp/dl", // string
+		"--encryption", "REQUIRED", // enum
+		"--config", cfgPath,
+	)
+	require.NoError(t, err)
+
+	setBody := settingSetBody(t, captured)
+	assert.Contains(t, setBody, `"dht-enabled":true`, "bool")
+	assert.Contains(t, setBody, `"peer-port":12345`, "int")
+	assert.Contains(t, setBody, `"speed-limit-down":500`, "int64")
+	// seed-ratio-limit maps to the bespoke wire's camelCase seedRatioLimit.
+	assert.Contains(t, setBody, `"seedRatioLimit":2.5`, "float")
+	assert.Contains(t, setBody, `/tmp/dl`, "string")
+	assert.Contains(t, setBody, `required`, "enum normalized to canonical lowercase")
+}
+
+func TestSettingsSetUnsetFlagsAreOmittedFromWire(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// Only --peer-port is passed; no other setting key may appear on the wire.
+	_, _, err := runSettings(t, "set", "--peer-port", "12345", "--config", cfgPath)
+	require.NoError(t, err)
+
+	setBody := settingSetBody(t, captured)
+	assert.Contains(t, setBody, `"peer-port":12345`)
+	assert.NotContains(t, setBody, "dht-enabled", "an unset flag's wire key is absent")
+	assert.NotContains(t, setBody, "download-dir", "an unset flag's wire key is absent")
+	assert.NotContains(t, setBody, "encryption", "an unset flag's wire key is absent")
 }
 
 func TestSettingsSetEnumValue(t *testing.T) {
@@ -563,18 +613,24 @@ func TestSettingsSetEnumValue(t *testing.T) {
 	defer closeSrv()
 
 	// An enum value is normalized to its canonical lowercase form on the way out.
-	_, _, err := runSettings(t, "set", "encryption", "REQUIRED", "--config", cfgPath)
+	_, _, err := runSettings(t, "set", "--encryption", "REQUIRED", "--config", cfgPath)
 	require.NoError(t, err)
 
-	var setBody string
-	for _, body := range captured {
-		if strings.Contains(body, "session-set") {
-			setBody = body
-			break
-		}
-	}
-	require.NotEmpty(t, setBody)
+	setBody := settingSetBody(t, captured)
 	assert.Contains(t, setBody, "required", "the canonical enum value reaches the wire")
+}
+
+func TestSettingsSetInvalidEnumAbortsWithoutWrite(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// An invalid enum value aborts before any network call, listing allowed values.
+	_, _, err := runSettings(t, "set", "--encryption", "bogus", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "encryption")
+	assert.Contains(t, err.Error(), "must be one of: allowed, preferred, required")
+	assert.Empty(t, captured, "an invalid enum aborts before any write")
 }
 
 func TestSettingsSetJSON(t *testing.T) {
@@ -582,7 +638,7 @@ func TestSettingsSetJSON(t *testing.T) {
 	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
 	defer closeSrv()
 
-	out, _, err := runSettings(t, "set", "peer-port", "12345", "dht-enabled", "false", "--config", cfgPath, "--json")
+	out, _, err := runSettings(t, "set", "--peer-port", "12345", "--dht-enabled=false", "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
 	var got []struct {
@@ -593,11 +649,12 @@ func TestSettingsSetJSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &got))
 	require.Len(t, got, 2, "only the two affected settings are reported")
 
+	// Echoed values are exactly what was written, in registry order.
 	assert.Equal(t, "peer-port", got[0].Key)
 	assert.Equal(t, "network", got[0].Category)
-	assert.JSONEq(t, "31129", string(got[0].Value), "value is the native re-fetched number")
+	assert.JSONEq(t, "12345", string(got[0].Value), "value is the native written number")
 	assert.Equal(t, "dht-enabled", got[1].Key)
-	assert.JSONEq(t, "true", string(got[1].Value))
+	assert.JSONEq(t, "false", string(got[1].Value))
 }
 
 func TestSettingsSetJQ(t *testing.T) {
@@ -605,10 +662,10 @@ func TestSettingsSetJQ(t *testing.T) {
 	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
 	defer closeSrv()
 
-	out, _, err := runSettings(t, "set", "peer-port", "12345",
+	out, _, err := runSettings(t, "set", "--peer-port", "12345",
 		"--config", cfgPath, "--jq", ".[0].value")
 	require.NoError(t, err)
-	assert.Equal(t, "31129", strings.TrimSpace(out))
+	assert.Equal(t, "12345", strings.TrimSpace(out))
 }
 
 func TestSettingsSetSanitizesServerDerivedString(t *testing.T) {
@@ -616,82 +673,63 @@ func TestSettingsSetSanitizesServerDerivedString(t *testing.T) {
 	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
 	defer closeSrv()
 
-	// The re-fetched download-dir (server-derived) is sanitized on the plaintext
-	// path, even though it was the setting we wrote.
-	out, _, err := runSettings(t, "set", "download-dir", "/tmp/dl", "--config", cfgPath)
+	// A server-derived string setting (download-dir) carrying an escape sequence is
+	// sanitized on the plaintext echo, even though the value originated from the
+	// command line.
+	out, _, err := runSettings(t, "set", "--download-dir", "/tmp\x1b[2Jdl", "--config", cfgPath)
 	require.NoError(t, err)
-	assert.NotContains(t, out, "\x1b", "raw ESC from the re-fetched download-dir must not reach plaintext")
-	assert.Equal(t, "download-dir: /data[2Jdownloads\n", out)
+	assert.NotContains(t, out, "\x1b", "raw ESC must not reach the plaintext echo")
+	assert.Equal(t, "download-dir: /tmp[2Jdl\n", out)
 }
 
-func TestSettingsSetRequiresEvenArgs(t *testing.T) {
+func TestSettingsSetJSONNotSanitized(t *testing.T) {
 	var captured []string
 	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
 	defer closeSrv()
 
-	// An odd argument count is rejected before any network call.
-	_, _, err := runSettings(t, "set", "peer-port", "12345", "dht-enabled", "--config", cfgPath)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "even number of arguments")
-	assert.Empty(t, captured, "no request is made when the arg count is odd")
+	// JSON is a structured contract: the server-derived download-dir is NOT
+	// sanitized, so the raw control byte survives in the JSON value.
+	out, _, err := runSettings(t, "set", "--download-dir", "/tmp\x1b[2Jdl", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "\\u001b", "JSON value carries the raw control byte unsanitized")
 }
 
-func TestSettingsSetRequiresAtLeastOnePair(t *testing.T) {
+func TestSettingsSetRejectsPositionalArgs(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
+	defer closeSrv()
+
+	// The positional key/value form is gone; positional args are rejected.
+	_, _, err := runSettings(t, "set", "peer-port", "12345", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Empty(t, captured, "no request is made when positional args are given")
+}
+
+func TestSettingsSetRequiresAtLeastOneFlag(t *testing.T) {
 	var captured []string
 	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
 	defer closeSrv()
 
 	_, _, err := runSettings(t, "set", "--config", cfgPath)
-	require.Error(t, err, "zero pairs is an error")
-	assert.Empty(t, captured, "no request is made with zero pairs")
+	require.Error(t, err, "no setting flag is an error")
+	assert.Contains(t, err.Error(), "at least one setting flag")
+	assert.Empty(t, captured, "no request is made with no setting flag")
 }
 
-func TestSettingsSetUnknownKeyAbortsWithoutWrite(t *testing.T) {
-	var captured []string
-	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
-	defer closeSrv()
+func TestSettingsSetNoBlocklistSizeFlag(t *testing.T) {
+	cmd := NewSettingsCmd()
 
-	_, _, err := runSettings(t, "set", "bogus-key", "1", "peer-port", "12345", "--config", cfgPath)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown setting "bogus-key"`)
-	assert.Contains(t, err.Error(), "valid settings are", "the error lists the valid keys")
-	assert.Empty(t, captured, "an invalid pair aborts before any write")
-}
+	var setCmd *cobra.Command
+	for _, c := range cmd.Commands() {
+		if c.Name() == "set" {
+			setCmd = c
+			break
+		}
+	}
+	require.NotNil(t, setCmd, "set subcommand exists")
 
-func TestSettingsSetReadOnlyKeyAbortsWithoutWrite(t *testing.T) {
-	var captured []string
-	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
-	defer closeSrv()
-
-	_, _, err := runSettings(t, "set", "blocklist-size", "10", "--config", cfgPath)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `setting "blocklist-size" is read-only`)
-	assert.Empty(t, captured, "a read-only key aborts before any write")
-}
-
-func TestSettingsSetCollectsAllProblems(t *testing.T) {
-	var captured []string
-	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
-	defer closeSrv()
-
-	// Every invalid pair is reported together (all-or-nothing), not just the
-	// first: an unknown key, a bad int, a read-only key, and a bad enum.
-	_, _, err := runSettings(t, "set",
-		"bogus-key", "1",
-		"peer-port", "notanumber",
-		"blocklist-size", "10",
-		"encryption", "bogus",
-		"--config", cfgPath,
-	)
-	require.Error(t, err)
-	msg := err.Error()
-	assert.Contains(t, msg, `unknown setting "bogus-key"`)
-	assert.Contains(t, msg, "peer-port", "the bad int is reported")
-	assert.Contains(t, msg, "must be an integer")
-	assert.Contains(t, msg, `setting "blocklist-size" is read-only`)
-	assert.Contains(t, msg, "encryption", "the bad enum is reported")
-	assert.Contains(t, msg, "must be one of")
-	assert.Empty(t, captured, "no write happens when any pair is invalid")
+	assert.Nil(t, setCmd.Flags().Lookup("blocklist-size"), "the read-only blocklist-size has no flag")
+	assert.NotNil(t, setCmd.Flags().Lookup("peer-port"), "settable settings have a flag")
 }
 
 func TestSettingsSetNotConfigured(t *testing.T) {
@@ -700,7 +738,7 @@ func TestSettingsSetNotConfigured(t *testing.T) {
 
 	// Validation passes, but there is no server configured, so dial fails before
 	// any network write.
-	_, _, err := runSettings(t, "set", "peer-port", "12345", "--config", cfgPath)
+	_, _, err := runSettings(t, "set", "--peer-port", "12345", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
 }
@@ -906,26 +944,15 @@ func TestWriteSettingsTableSanitizesControlChars(t *testing.T) {
 	assert.Contains(t, out, "[2Jmalicious", "visible text survives sanitization")
 }
 
-func TestSettingsSetDeduplicatesRepeatedKey(t *testing.T) {
+func TestSettingsSetOutputFollowsRegistryOrder(t *testing.T) {
 	var captured []string
 	cfgPath, closeSrv := capturedSettingsServer(t, &captured)
 	defer closeSrv()
 
-	// The same key passed twice is reported once; the last value reaches the wire.
-	out, _, err := runSettings(t, "set", "peer-port", "1", "peer-port", "2", "--config", cfgPath)
+	// Flags given out of registry order are still echoed in registry order:
+	// download-dir (download) precedes peer-port (network).
+	out, _, err := runSettings(t, "set", "--peer-port", "12345", "--download-dir", "/tmp/dl", "--config", cfgPath)
 	require.NoError(t, err)
 
-	// A single reported row (the stateless stub echoes the fixture's 31129).
-	assert.Equal(t, "peer-port: 31129\n", out)
-
-	var setBody string
-	for _, body := range captured {
-		if strings.Contains(body, "session-set") {
-			setBody = body
-			break
-		}
-	}
-	require.NotEmpty(t, setBody, "a session-set request was sent")
-	assert.Contains(t, setBody, `"peer-port":2`, "the last value (2) reaches the wire")
-	assert.NotContains(t, setBody, `"peer-port":1`, "the earlier value (1) is overwritten")
+	assert.Equal(t, "download-dir: /tmp/dl\npeer-port: 12345\n", out)
 }
