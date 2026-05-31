@@ -33,6 +33,7 @@ CMD snatcher torrent queue top
 CMD snatcher torrent queue up
 CMD snatcher torrent reannounce
 CMD snatcher torrent remove
+CMD snatcher torrent set
 CMD snatcher torrent start
 CMD snatcher torrent stop
 CMD snatcher torrent upload
@@ -119,6 +120,15 @@ FLAG snatcher torrent remove --delete-data type=bool
 FLAG snatcher torrent remove --jq type=string
 FLAG snatcher torrent remove --json type=bool
 FLAG snatcher torrent remove --yes type=bool
+FLAG snatcher torrent set --all type=bool
+FLAG snatcher torrent set --config type=string
+FLAG snatcher torrent set --honors-session-limits type=bool
+FLAG snatcher torrent set --jq type=string
+FLAG snatcher torrent set --json type=bool
+FLAG snatcher torrent set --peer-limit type=int
+FLAG snatcher torrent set --priority type=string
+FLAG snatcher torrent set --queue-position type=int
+FLAG snatcher torrent set --sequential-download type=bool
 FLAG snatcher torrent start --all type=bool
 FLAG snatcher torrent start --config type=string
 FLAG snatcher torrent start --jq type=string

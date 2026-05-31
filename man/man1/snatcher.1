@@ -419,6 +419,35 @@ Also delete the downloaded local files.
 Skip the confirmation prompt.
 .RE
 .TP
+.B snatcher torrent set \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Change mutable per-torrent fields on the selected torrents. Select torrents by
+numeric id, 40-character SHA1 hash, or
+.BR \-\-all .
+At least one selector and at least one field flag are required; a bare
+invocation is an error, not a no-op. Only the fields whose flags are explicitly
+given are written, so unspecified fields are left unchanged. Besides the common
+options:
+.RS
+.TP
+.B \-\-all
+Set the fields on every torrent.
+.TP
+.BR \-\-priority " " \fIlow | normal | high\fR
+Bandwidth priority for the torrent.
+.TP
+.BR \-\-queue\-position " " \fIn\fR
+Position in the download/seed queue (0-based).
+.TP
+.BR \-\-peer\-limit " " \fIn\fR
+Maximum number of peers for the torrent (1 or greater).
+.TP
+.BR \-\-honors\-session\-limits [= true | false ]
+Whether the torrent honors the global session speed limits.
+.TP
+.BR \-\-sequential\-download [= true | false ]
+Download pieces in sequential order (Transmission 4.1+).
+.RE
+.TP
 .B snatcher torrent upload \fR[\fIoptions\fR] [\fIfile | url | magnet\fR]...
 Add torrents to the server from local
 .I .torrent
