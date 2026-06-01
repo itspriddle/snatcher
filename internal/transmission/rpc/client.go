@@ -81,14 +81,17 @@ func (c *Client) SessionStats(ctx context.Context) (SessionStats, error) {
 
 // TorrentGet detects the protocol (once) and returns the server's torrents as
 // canonical Torrents. A nil or empty ids slice requests all torrents; otherwise
-// the server filters to the given numeric ids.
-func (c *Client) TorrentGet(ctx context.Context, ids []int64) ([]Torrent, error) {
+// the mixed id/hash array selects them (matching the other Client methods).
+// fields is a list of canonical snake_case field keys; an empty fields slice
+// requests the full canonical set. The negotiated protocol translates the
+// canonical fields to its wire scheme.
+func (c *Client) TorrentGet(ctx context.Context, ids []any, fields []string) ([]Torrent, error) {
 	proto, err := c.detect(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return proto.TorrentGet(ctx, c.transport, ids)
+	return proto.TorrentGet(ctx, c.transport, ids, fields)
 }
 
 // TorrentAdd detects the protocol (once) and adds a torrent from the parameters

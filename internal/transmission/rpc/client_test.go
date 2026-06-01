@@ -261,7 +261,7 @@ func TestClientTorrentGetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 
 	c := NewClient(srv.URL)
 
-	torrents, err := c.TorrentGet(context.Background(), nil)
+	torrents, err := c.TorrentGet(context.Background(), nil, nil)
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 	assert.Equal(t, int64(42), torrents[0].ID)

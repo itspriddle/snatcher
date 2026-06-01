@@ -505,8 +505,11 @@ type Protocol interface {
 
 	// TorrentGet calls the server's torrent-get/torrent_get method and returns
 	// the canonical Torrents. A nil or empty ids slice requests all torrents;
-	// otherwise the server filters to the given numeric ids.
-	TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error)
+	// otherwise the mixed id/hash array selects torrents. fields is a list of
+	// canonical snake_case field keys (see torrentGetCanonicalFields); each
+	// implementation translates them to its wire scheme, and an empty fields
+	// slice requests the full canonical set.
+	TorrentGet(ctx context.Context, t transport, ids []any, fields []string) ([]Torrent, error)
 
 	// TorrentAdd calls the server's torrent-add/torrent_add method, sending only
 	// the non-empty parameters in req, and returns the canonical AddResult. A
@@ -787,16 +790,75 @@ type jsonrpcAddResult struct {
 	Duplicate *jsonrpcAddedTorrent `json:"torrent_duplicate"`
 }
 
-// torrentGetFieldsJSONRPC lists the snake_case torrent_get fields snatcher
-// requests, keeping payloads small. The error code uses Transmission's bare
-// "error" field; the human-readable message is "error_string".
-var torrentGetFieldsJSONRPC = []string{
-	"id", "hash_string", "name", "status", "percent_done", "total_size",
+// torrentGetCanonicalFields lists every canonical torrent_get field snatcher can
+// request, in a stable order. The names are the protocol-neutral snake_case keys
+// callers pass in TorrentGet's fields argument; each protocol's
+// torrentGetFields*Map translates them to its own wire spelling. An empty fields
+// argument defaults to this full set.
+var torrentGetCanonicalFields = []string{
+	"id", "hash", "name", "status", "percent_done", "total_size",
 	"size_when_done", "left_until_done", "rate_download", "rate_upload",
 	"upload_ratio", "eta", "peers_connected", "peers_sending_to_us",
 	"peers_getting_from_us", "added_date", "done_date", "activity_date",
-	"download_dir", "error", "error_string", "labels", "queue_position",
+	"download_dir", "error", "labels", "queue_position",
 	"is_finished", "is_stalled",
+}
+
+// torrentGetFieldsJSONRPCMap maps each canonical torrent_get field to the
+// snake_case wire field(s) the JSON-RPC 2.0 scheme requests. The mapping is
+// mostly verbatim; the canonical "hash" becomes "hash_string", and the canonical
+// "error" expands to both the numeric "error" code and its "error_string"
+// message.
+var torrentGetFieldsJSONRPCMap = map[string][]string{
+	"id":                    {"id"},
+	"hash":                  {"hash_string"},
+	"name":                  {"name"},
+	"status":                {"status"},
+	"percent_done":          {"percent_done"},
+	"total_size":            {"total_size"},
+	"size_when_done":        {"size_when_done"},
+	"left_until_done":       {"left_until_done"},
+	"rate_download":         {"rate_download"},
+	"rate_upload":           {"rate_upload"},
+	"upload_ratio":          {"upload_ratio"},
+	"eta":                   {"eta"},
+	"peers_connected":       {"peers_connected"},
+	"peers_sending_to_us":   {"peers_sending_to_us"},
+	"peers_getting_from_us": {"peers_getting_from_us"},
+	"added_date":            {"added_date"},
+	"done_date":             {"done_date"},
+	"activity_date":         {"activity_date"},
+	"download_dir":          {"download_dir"},
+	"error":                 {"error", "error_string"},
+	"labels":                {"labels"},
+	"queue_position":        {"queue_position"},
+	"is_finished":           {"is_finished"},
+	"is_stalled":            {"is_stalled"},
+}
+
+// resolveTorrentGetFields translates a list of canonical torrent_get fields to
+// the wire field names for a protocol, using wireMap. An empty fields argument
+// requests the full canonical set. Unknown canonical fields are skipped. The
+// result preserves request order and is de-duplicated, so a field that expands to
+// several wire names (or is listed twice) is emitted once.
+func resolveTorrentGetFields(fields []string, wireMap map[string][]string) []string {
+	if len(fields) == 0 {
+		fields = torrentGetCanonicalFields
+	}
+
+	wire := make([]string, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, canonical := range fields {
+		for _, name := range wireMap[canonical] {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			wire = append(wire, name)
+		}
+	}
+
+	return wire
 }
 
 func (jsonrpcProtocol) Name() string { return ProtocolJSONRPC }
@@ -965,8 +1027,8 @@ func (p jsonrpcProtocol) SessionStats(ctx context.Context, t transport) (Session
 	}, nil
 }
 
-func (p jsonrpcProtocol) TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error) {
-	params := map[string]any{"fields": torrentGetFieldsJSONRPC}
+func (p jsonrpcProtocol) TorrentGet(ctx context.Context, t transport, ids []any, fields []string) ([]Torrent, error) {
+	params := map[string]any{"fields": resolveTorrentGetFields(fields, torrentGetFieldsJSONRPCMap)}
 	if len(ids) > 0 {
 		params["ids"] = ids
 	}
@@ -1539,16 +1601,35 @@ type bespokeAddArgumentsResult struct {
 	Duplicate *bespokeAddedTorrent `json:"torrent-duplicate"`
 }
 
-// torrentGetFieldsBespoke lists the camelCase torrent-get fields snatcher
-// requests, keeping payloads small. The error code uses Transmission's bare
-// "error" field; the human-readable message is "errorString".
-var torrentGetFieldsBespoke = []string{
-	"id", "hashString", "name", "status", "percentDone", "totalSize",
-	"sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload",
-	"uploadRatio", "eta", "peersConnected", "peersSendingToUs",
-	"peersGettingFromUs", "addedDate", "doneDate", "activityDate",
-	"downloadDir", "error", "errorString", "labels", "queuePosition",
-	"isFinished", "isStalled",
+// torrentGetFieldsBespokeMap maps each canonical torrent_get field to the
+// camelCase wire field(s) the bespoke scheme requests. The canonical "hash"
+// becomes "hashString", and the canonical "error" expands to both the numeric
+// "error" code and its "errorString" message.
+var torrentGetFieldsBespokeMap = map[string][]string{
+	"id":                    {"id"},
+	"hash":                  {"hashString"},
+	"name":                  {"name"},
+	"status":                {"status"},
+	"percent_done":          {"percentDone"},
+	"total_size":            {"totalSize"},
+	"size_when_done":        {"sizeWhenDone"},
+	"left_until_done":       {"leftUntilDone"},
+	"rate_download":         {"rateDownload"},
+	"rate_upload":           {"rateUpload"},
+	"upload_ratio":          {"uploadRatio"},
+	"eta":                   {"eta"},
+	"peers_connected":       {"peersConnected"},
+	"peers_sending_to_us":   {"peersSendingToUs"},
+	"peers_getting_from_us": {"peersGettingFromUs"},
+	"added_date":            {"addedDate"},
+	"done_date":             {"doneDate"},
+	"activity_date":         {"activityDate"},
+	"download_dir":          {"downloadDir"},
+	"error":                 {"error", "errorString"},
+	"labels":                {"labels"},
+	"queue_position":        {"queuePosition"},
+	"is_finished":           {"isFinished"},
+	"is_stalled":            {"isStalled"},
 }
 
 func (bespokeProtocol) Name() string { return ProtocolBespoke }
@@ -1751,8 +1832,8 @@ func (p bespokeProtocol) SessionStats(ctx context.Context, t transport) (Session
 	}, nil
 }
 
-func (p bespokeProtocol) TorrentGet(ctx context.Context, t transport, ids []int64) ([]Torrent, error) {
-	arguments := map[string]any{"fields": torrentGetFieldsBespoke}
+func (p bespokeProtocol) TorrentGet(ctx context.Context, t transport, ids []any, fields []string) ([]Torrent, error) {
+	arguments := map[string]any{"fields": resolveTorrentGetFields(fields, torrentGetFieldsBespokeMap)}
 	if len(ids) > 0 {
 		arguments["ids"] = ids
 	}

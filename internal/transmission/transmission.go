@@ -153,7 +153,14 @@ func (b *Backend) Stats(ctx context.Context) (torrent.Stats, error) {
 // sentinels. The returned slice is non-nil on success, empty when there are no
 // matching torrents.
 func (b *Backend) ListTorrents(ctx context.Context, ids []int64) ([]torrent.Torrent, error) {
-	raw, err := b.client.TorrentGet(ctx, ids)
+	rpcIDs := make([]any, len(ids))
+	for i, id := range ids {
+		rpcIDs[i] = id
+	}
+
+	// nil fields requests the full canonical set, keeping the neutral behavior
+	// identical until field projection is introduced at this seam.
+	raw, err := b.client.TorrentGet(ctx, rpcIDs, nil)
 	if err != nil {
 		return nil, mapError(err)
 	}
