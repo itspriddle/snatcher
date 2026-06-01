@@ -15,15 +15,15 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// notAPICaller is a minimal torrent.Backend that does not implement
+// notAPICaller is a minimal transmission.Backend that does not implement
 // transmission.APICaller, exercising the missing-capability branch of apiCaller.
-// The embedded interface satisfies torrent.Backend at compile time; the methods
+// The embedded interface satisfies transmission.Backend at compile time; the methods
 // are never called because the type assertion fails first.
 type notAPICaller struct {
-	torrent.Backend
+	transmission.Backend
 }
 
 // sessionGetResponse is a bespoke session-get payload used as the canned answer
@@ -162,7 +162,7 @@ func TestAPINotConfigured(t *testing.T) {
 }
 
 func TestAPIMissingCapabilityErrors(t *testing.T) {
-	// notAPICaller is a torrent.Backend but not a transmission.APICaller, so it
+	// notAPICaller is a transmission.Backend but not a transmission.APICaller, so it
 	// exercises the missing-capability branch of apiCaller.
 	_, err := apiCaller(&notAPICaller{})
 	require.Error(t, err)

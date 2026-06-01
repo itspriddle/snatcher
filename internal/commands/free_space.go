@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // NewFreeSpaceCmd builds the "free-space" command, which queries how much free
@@ -86,7 +86,7 @@ func NewFreeSpaceCmd() *cobra.Command {
 // block, using the output package's byte formatter for the sizes. The path is a
 // server-derived string, so it is passed through output.SanitizeTerminal; the
 // total line is omitted when the server did not report a total capacity.
-func writeFreeSpace(cmd *cobra.Command, fs torrent.FreeSpace) {
+func writeFreeSpace(cmd *cobra.Command, fs transmission.FreeSpace) {
 	out := cmd.OutOrStdout()
 
 	_, _ = fmt.Fprintf(out, "Path:  %s\n", output.SanitizeTerminal(fs.Path))

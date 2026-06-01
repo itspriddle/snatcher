@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // errUploadFailures is returned when one or more sources fail to add. It carries
@@ -22,7 +22,7 @@ var errUploadFailures = errors.New("one or more sources failed")
 
 // NewUploadCmd builds the "upload" command, which adds torrents to the
 // configured server from local .torrent files, HTTP(S) URLs, and magnet links.
-// Each positional argument is auto-classified with torrent.ClassifySource;
+// Each positional argument is auto-classified with transmission.ClassifySource;
 // torrents are added paused unless --start is given. Processing is
 // continue-on-error: a per-source failure is reported but does not abort the
 // remaining sources, and the command exits non-zero if any source failed.
@@ -156,7 +156,7 @@ type uploadOptions struct {
 	// deleteFile removes a local .torrent after a successful, non-duplicate add.
 	deleteFile bool
 
-	// labels are applied to every added torrent.
+	// labels are applied to every added transmission.
 	labels []string
 }
 
@@ -167,27 +167,27 @@ type uploadOptions struct {
 // records it in the returned result; a duplicate is a success, not an error.
 // With opts.deleteFile, a successful non-duplicate file add deletes the source
 // .torrent; a delete failure warns on stderr but does not fail the add.
-func uploadSource(cmd *cobra.Command, backend torrent.Backend, arg string, opts uploadOptions) uploadResult {
-	source := torrent.ClassifySource(arg)
+func uploadSource(cmd *cobra.Command, backend transmission.Backend, arg string, opts uploadOptions) uploadResult {
+	source := transmission.ClassifySource(arg)
 
 	res := uploadResult{Source: source.String(), Input: arg}
 
-	req := torrent.AddRequest{
+	req := transmission.AddRequest{
 		DownloadDir: opts.downloadDir,
 		Paused:      !opts.start,
 		Labels:      opts.labels,
 	}
 
 	switch source {
-	case torrent.SourceFile:
+	case transmission.SourceFile:
 		data, err := os.ReadFile(arg)
 		if err != nil {
 			return res.withError(cmd, fmt.Errorf("reading %s: %w", arg, err))
 		}
 		req.Metainfo = data
-	case torrent.SourceURL:
+	case transmission.SourceURL:
 		req.URL = arg
-	case torrent.SourceMagnet:
+	case transmission.SourceMagnet:
 		req.Magnet = arg
 	}
 
@@ -205,7 +205,7 @@ func uploadSource(cmd *cobra.Command, backend torrent.Backend, arg string, opts 
 	// file add. A delete failure warns but does not fail the add; deleted is set
 	// only when the removal succeeded. URL/magnet sources and duplicates are
 	// untouched.
-	if opts.deleteFile && source == torrent.SourceFile && !added.Duplicate {
+	if opts.deleteFile && source == transmission.SourceFile && !added.Duplicate {
 		if err := os.Remove(arg); err != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", output.SanitizeTerminal(fmt.Sprintf("deleting %s: %v", arg, err)))
 		} else {
@@ -229,7 +229,7 @@ type uploadResult struct {
 	// Input is the original positional argument, verbatim.
 	Input string `json:"input"`
 
-	// ID is the backend's numeric id for the added torrent. Omitted on failure.
+	// ID is the backend's numeric id for the added transmission. Omitted on failure.
 	ID int64 `json:"id,omitempty"`
 
 	// Name is the torrent's display name. Omitted on failure.

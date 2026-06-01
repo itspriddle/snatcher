@@ -855,31 +855,31 @@ func TestBackendReannounceTorrentsMapsAuthError(t *testing.T) {
 func TestBackendQueueMove(t *testing.T) {
 	tests := []struct {
 		name          string
-		call          func(*Backend, context.Context, Selector) error
+		call          func(*Client, context.Context, Selector) error
 		jsonrpcMethod string
 		bespokeMethod string
 	}{
 		{
 			name:          "top",
-			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveTop(ctx, sel) },
+			call:          func(b *Client, ctx context.Context, sel Selector) error { return b.QueueMoveTop(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_top"`,
 			bespokeMethod: `"method":"queue-move-top"`,
 		},
 		{
 			name:          "up",
-			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveUp(ctx, sel) },
+			call:          func(b *Client, ctx context.Context, sel Selector) error { return b.QueueMoveUp(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_up"`,
 			bespokeMethod: `"method":"queue-move-up"`,
 		},
 		{
 			name:          "down",
-			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveDown(ctx, sel) },
+			call:          func(b *Client, ctx context.Context, sel Selector) error { return b.QueueMoveDown(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_down"`,
 			bespokeMethod: `"method":"queue-move-down"`,
 		},
 		{
 			name:          "bottom",
-			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveBottom(ctx, sel) },
+			call:          func(b *Client, ctx context.Context, sel Selector) error { return b.QueueMoveBottom(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_bottom"`,
 			bespokeMethod: `"method":"queue-move-bottom"`,
 		},

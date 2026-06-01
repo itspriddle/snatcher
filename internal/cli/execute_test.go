@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 func TestPrintErrorSanitizesServerSuppliedString(t *testing.T) {
@@ -17,7 +17,7 @@ func TestPrintErrorSanitizesServerSuppliedString(t *testing.T) {
 	// the way an rpc.ErrRPC message surfaces through the adapter's neutral
 	// ErrUnreachable sentinel.
 	serverErr := errors.New("server error: requ\x1b[2Jired")
-	err := fmt.Errorf("%w: %w", torrent.ErrUnreachable, serverErr)
+	err := fmt.Errorf("%w: %w", transmission.ErrUnreachable, serverErr)
 
 	var buf bytes.Buffer
 	printError(&buf, err)
@@ -31,9 +31,9 @@ func TestPrintErrorSanitizesServerSuppliedString(t *testing.T) {
 func TestPrintErrorPreservesErrorsIs(t *testing.T) {
 	// Sanitization is applied only to the rendered string; the error value and
 	// its wrapping (errors.Is on the neutral sentinels) are unaffected.
-	err := fmt.Errorf("%w: server error: boom\x1b]", torrent.ErrUnreachable)
+	err := fmt.Errorf("%w: server error: boom\x1b]", transmission.ErrUnreachable)
 
-	require.ErrorIs(t, err, torrent.ErrUnreachable, "wrapping is untouched by the render-path sanitization")
+	require.ErrorIs(t, err, transmission.ErrUnreachable, "wrapping is untouched by the render-path sanitization")
 
 	var buf bytes.Buffer
 	printError(&buf, err)

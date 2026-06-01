@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -50,7 +49,7 @@ type apiEnvelope struct {
 // response. The arguments object is built from gh-style field flags (-f/-F) or a
 // raw JSON body (--input). The backend must implement the Transmission APICaller
 // capability (the generic call is deliberately kept off the vendor-neutral
-// torrent.Backend interface).
+// transmission.Backend interface).
 func NewAPICmd() *cobra.Command {
 	var (
 		configPath string
@@ -148,12 +147,12 @@ func NewAPICmd() *cobra.Command {
 	return cmd
 }
 
-// apiCaller type-asserts a torrent.Backend to the Transmission APICaller
+// apiCaller type-asserts a transmission.Backend to the Transmission APICaller
 // capability, returning a clear error when the backend lacks it. The generic
-// call is a Transmission feature kept off the vendor-neutral torrent.Backend
+// call is a Transmission feature kept off the vendor-neutral transmission.Backend
 // interface, so a non-Transmission backend produces a "not supported" error
 // rather than a panic.
-func apiCaller(backend torrent.Backend) (transmission.APICaller, error) {
+func apiCaller(backend transmission.Backend) (transmission.APICaller, error) {
 	caller, ok := backend.(transmission.APICaller)
 	if !ok {
 		return nil, errors.New("backend does not support raw API calls")

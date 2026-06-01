@@ -1,10 +1,10 @@
 // Package transmission is snatcher's Transmission domain layer: it owns the
 // domain model (the torrent/session types, the Selector, the list transforms,
-// the source classification, and the error sentinels) and the concrete Backend
-// that commands use to talk to a server. It wraps the typed Transmission RPC
-// client (internal/transmission/rpc), which decodes the wire schemes and owns
-// the canonical response types this package re-exports; this package adds the
-// pure-domain helpers and maps rpc errors to the sentinels.
+// the source classification, and the error sentinels), the Backend interface
+// commands depend on, and the concrete Client that implements it. It wraps the
+// typed Transmission RPC client (internal/transmission/rpc), which decodes the
+// wire schemes and owns the canonical response types this package re-exports;
+// this package adds the pure-domain helpers and maps rpc errors to the sentinels.
 package transmission
 
 import (
@@ -18,15 +18,15 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission/rpc"
 )
 
-// Backend wraps an rpc.Client, returning the canonical domain types directly
-// and mapping rpc errors to the sentinels. A zero Backend is not usable; build
-// one with New.
-type Backend struct {
+// Client wraps an rpc.Client, returning the canonical domain types directly and
+// mapping rpc errors to the sentinels. It is the concrete implementation of the
+// Backend interface. A zero Client is not usable; build one with New.
+type Client struct {
 	client *rpc.Client
 }
 
-// Compile-time assertion that *Backend satisfies APICaller.
-var _ APICaller = (*Backend)(nil)
+// Compile-time assertion that *Client satisfies APICaller.
+var _ APICaller = (*Client)(nil)
 
 // APICaller is the capability for issuing arbitrary RPC calls. The api command
 // type-asserts the backend to this capability.
@@ -65,9 +65,9 @@ type APIResponse struct {
 	OK bool
 }
 
-// Option configures a Backend built by New. It is a wrapper over the rpc
+// Option configures a Client built by New. It is a wrapper over the rpc
 // package's options, so callers (commands) never need to import the rpc package
-// to configure the backend. Each Option contributes the rpc.Option it wraps via
+// to configure the client. Each Option contributes the rpc.Option it wraps via
 // the unexported rpcOption accessor.
 type Option interface {
 	rpcOption() rpc.Option
@@ -95,22 +95,22 @@ func WithHTTPClient(client rpc.HTTPDoer) Option {
 	})
 }
 
-// New returns a Backend that talks to the Transmission server at rpcURL,
-// applying the supplied options. Callers configure the backend through
+// New returns a Client that talks to the Transmission server at rpcURL,
+// applying the supplied options. Callers configure the client through
 // transmission.Option (e.g. transmission.WithBasicAuth) and never need to touch
 // the rpc package directly.
-func New(rpcURL string, opts ...Option) *Backend {
+func New(rpcURL string, opts ...Option) *Client {
 	rpcOpts := make([]rpc.Option, len(opts))
 	for i, opt := range opts {
 		rpcOpts[i] = opt.rpcOption()
 	}
 
-	return &Backend{client: rpc.NewClient(rpcURL, rpcOpts...)}
+	return &Client{client: rpc.NewClient(rpcURL, rpcOpts...)}
 }
 
 // ServerInfo performs a SessionGet round-trip and returns the server's
 // ServerInfo. RPC failures are mapped to the sentinels.
-func (b *Backend) ServerInfo(ctx context.Context) (ServerInfo, error) {
+func (b *Client) ServerInfo(ctx context.Context) (ServerInfo, error) {
 	session, err := b.client.SessionGet(ctx)
 	if err != nil {
 		return ServerInfo{}, mapError(err)
@@ -121,7 +121,7 @@ func (b *Backend) ServerInfo(ctx context.Context) (ServerInfo, error) {
 
 // Stats performs a SessionStats round-trip and returns the server's Stats. RPC
 // failures are mapped to the sentinels.
-func (b *Backend) Stats(ctx context.Context) (Stats, error) {
+func (b *Client) Stats(ctx context.Context) (Stats, error) {
 	stats, err := b.client.SessionStats(ctx)
 	if err != nil {
 		return Stats{}, mapError(err)
@@ -137,7 +137,7 @@ func (b *Backend) Stats(ctx context.Context) (Stats, error) {
 // empty projection requests the full set. RPC failures are mapped to the
 // sentinels. The returned slice is non-nil on success, empty when there are no
 // matching torrents.
-func (b *Backend) ListTorrents(ctx context.Context, sel Selector, fields ...Field) ([]Torrent, error) {
+func (b *Client) ListTorrents(ctx context.Context, sel Selector, fields ...Field) ([]Torrent, error) {
 	torrents, err := b.client.TorrentGet(ctx, sel.RPCIDs(), FieldKeys(fields))
 	if err != nil {
 		return nil, mapError(err)
@@ -149,7 +149,7 @@ func (b *Backend) ListTorrents(ctx context.Context, sel Selector, fields ...Fiel
 // TorrentDetail performs a single detail TorrentGet round-trip for the torrent
 // with the given numeric id. An id that matches no torrent returns an error.
 // RPC failures are mapped to the sentinels.
-func (b *Backend) TorrentDetail(ctx context.Context, id int64) (TorrentDetail, error) {
+func (b *Client) TorrentDetail(ctx context.Context, id int64) (TorrentDetail, error) {
 	details, err := b.client.TorrentGetDetail(ctx, []any{id})
 	if err != nil {
 		return TorrentDetail{}, mapError(err)
@@ -166,56 +166,56 @@ func (b *Backend) TorrentDetail(ctx context.Context, id int64) (TorrentDetail, e
 // torrent_start_now when now is true (disregarding queue position) and
 // torrent_start otherwise. An All selector omits the ids argument so the server
 // targets every torrent. RPC failures are mapped to the sentinels.
-func (b *Backend) StartTorrents(ctx context.Context, sel Selector, now bool) error {
+func (b *Client) StartTorrents(ctx context.Context, sel Selector, now bool) error {
 	return mapError(b.client.TorrentStart(ctx, sel.RPCIDs(), now))
 }
 
 // StopTorrents pauses the torrents matched by sel. An All selector omits the ids
 // argument so the server targets every torrent. RPC failures are mapped to the
 // sentinels.
-func (b *Backend) StopTorrents(ctx context.Context, sel Selector) error {
+func (b *Client) StopTorrents(ctx context.Context, sel Selector) error {
 	return mapError(b.client.TorrentStop(ctx, sel.RPCIDs()))
 }
 
 // VerifyTorrents queues local-data verification for the torrents matched by sel.
 // An All selector omits the ids argument so the server targets every torrent.
 // RPC failures are mapped to the sentinels.
-func (b *Backend) VerifyTorrents(ctx context.Context, sel Selector) error {
+func (b *Client) VerifyTorrents(ctx context.Context, sel Selector) error {
 	return mapError(b.client.TorrentVerify(ctx, sel.RPCIDs()))
 }
 
 // ReannounceTorrents forces the torrents matched by sel to re-announce to their
 // trackers immediately. An All selector omits the ids argument so the server
 // targets every torrent. RPC failures are mapped to the sentinels.
-func (b *Backend) ReannounceTorrents(ctx context.Context, sel Selector) error {
+func (b *Client) ReannounceTorrents(ctx context.Context, sel Selector) error {
 	return mapError(b.client.TorrentReannounce(ctx, sel.RPCIDs()))
 }
 
 // QueueMoveTop moves the torrents matched by sel to the top of the queue. An All
 // selector omits the ids argument so the server targets every torrent. RPC
 // failures are mapped to the sentinels.
-func (b *Backend) QueueMoveTop(ctx context.Context, sel Selector) error {
+func (b *Client) QueueMoveTop(ctx context.Context, sel Selector) error {
 	return mapError(b.client.QueueMoveTop(ctx, sel.RPCIDs()))
 }
 
 // QueueMoveUp moves the torrents matched by sel up one position in the queue. An
 // All selector omits the ids argument so the server targets every torrent. RPC
 // failures are mapped to the sentinels.
-func (b *Backend) QueueMoveUp(ctx context.Context, sel Selector) error {
+func (b *Client) QueueMoveUp(ctx context.Context, sel Selector) error {
 	return mapError(b.client.QueueMoveUp(ctx, sel.RPCIDs()))
 }
 
 // QueueMoveDown moves the torrents matched by sel down one position in the queue.
 // An All selector omits the ids argument so the server targets every torrent. RPC
 // failures are mapped to the sentinels.
-func (b *Backend) QueueMoveDown(ctx context.Context, sel Selector) error {
+func (b *Client) QueueMoveDown(ctx context.Context, sel Selector) error {
 	return mapError(b.client.QueueMoveDown(ctx, sel.RPCIDs()))
 }
 
 // QueueMoveBottom moves the torrents matched by sel to the bottom of the queue.
 // An All selector omits the ids argument so the server targets every torrent. RPC
 // failures are mapped to the sentinels.
-func (b *Backend) QueueMoveBottom(ctx context.Context, sel Selector) error {
+func (b *Client) QueueMoveBottom(ctx context.Context, sel Selector) error {
 	return mapError(b.client.QueueMoveBottom(ctx, sel.RPCIDs()))
 }
 
@@ -223,7 +223,7 @@ func (b *Backend) QueueMoveBottom(ctx context.Context, sel Selector) error {
 // downloaded local files when deleteData is true. An All selector omits the ids
 // argument so the server targets every torrent. RPC failures are mapped to the
 // sentinels.
-func (b *Backend) RemoveTorrents(ctx context.Context, sel Selector, deleteData bool) error {
+func (b *Client) RemoveTorrents(ctx context.Context, sel Selector, deleteData bool) error {
 	return mapError(b.client.TorrentRemove(ctx, sel.RPCIDs(), deleteData))
 }
 
@@ -232,7 +232,7 @@ func (b *Backend) RemoveTorrents(ctx context.Context, sel Selector, deleteData b
 // without relocating (searching location for already-present files) when false.
 // An All selector omits the ids argument so the server targets every torrent.
 // RPC failures are mapped to the sentinels.
-func (b *Backend) MoveTorrents(ctx context.Context, sel Selector, location string, move bool) error {
+func (b *Client) MoveTorrents(ctx context.Context, sel Selector, location string, move bool) error {
 	return mapError(b.client.TorrentSetLocation(ctx, sel.RPCIDs(), location, move))
 }
 
@@ -244,7 +244,7 @@ func (b *Backend) MoveTorrents(ctx context.Context, sel Selector, location strin
 // the keys present in changes are written. An All selector omits the ids
 // argument so the server targets every torrent. RPC failures are mapped to the
 // sentinels.
-func (b *Backend) SetTorrents(ctx context.Context, sel Selector, changes map[string]any) error {
+func (b *Client) SetTorrents(ctx context.Context, sel Selector, changes map[string]any) error {
 	settings := make(map[string]any, len(changes))
 	for key, value := range changes {
 		settings[rpcSettingKey(key)] = value
@@ -262,7 +262,7 @@ func (b *Backend) SetTorrents(ctx context.Context, sel Selector, changes map[str
 // non-empty FileChanges fields are sent; an empty FileChanges issues no
 // torrent-set arguments (a no-op). An All selector omits the ids argument so the
 // server targets every torrent. RPC failures are mapped to the sentinels.
-func (b *Backend) SetFiles(ctx context.Context, sel Selector, changes FileChanges) error {
+func (b *Client) SetFiles(ctx context.Context, sel Selector, changes FileChanges) error {
 	settings := make(map[string]any, 5)
 	if len(changes.Wanted) > 0 {
 		settings["files_wanted"] = changes.Wanted
@@ -288,7 +288,7 @@ func (b *Backend) SetFiles(ctx context.Context, sel Selector, changes FileChange
 // the RPC filename field, and passes DownloadDir/Paused/Labels through. A
 // duplicate is reported via AddResult.Duplicate (not an error). RPC failures are
 // mapped to the sentinels.
-func (b *Backend) AddTorrent(ctx context.Context, req AddRequest) (AddResult, error) {
+func (b *Client) AddTorrent(ctx context.Context, req AddRequest) (AddResult, error) {
 	rpcReq := rpc.AddRequest{
 		DownloadDir: req.DownloadDir,
 		Paused:      req.Paused,
@@ -314,7 +314,7 @@ func (b *Backend) AddTorrent(ctx context.Context, req AddRequest) (AddResult, er
 
 // GetSession performs a SessionGet round-trip and returns the server's flattened
 // SessionSettings. RPC failures are mapped to the sentinels.
-func (b *Backend) GetSession(ctx context.Context) (SessionSettings, error) {
+func (b *Client) GetSession(ctx context.Context) (SessionSettings, error) {
 	session, err := b.client.SessionGet(ctx)
 	if err != nil {
 		return SessionSettings{}, mapError(err)
@@ -328,7 +328,7 @@ func (b *Backend) GetSession(ctx context.Context) (SessionSettings, error) {
 // key (a mechanical "-"->"_" replacement) before forwarding to
 // rpc.Client.SessionSet, which owns the per-wire-scheme translation. RPC
 // failures are mapped to the sentinels.
-func (b *Backend) SetSession(ctx context.Context, changes map[string]any) error {
+func (b *Client) SetSession(ctx context.Context, changes map[string]any) error {
 	settings := make(map[string]any, len(changes))
 	for key, value := range changes {
 		settings[rpcSettingKey(key)] = value
@@ -340,7 +340,7 @@ func (b *Backend) SetSession(ctx context.Context, changes map[string]any) error 
 // TestPort performs a PortTest round-trip and returns the PortTest. A
 // reachable-but-closed port is reported via PortTest.Open == false (not a Go
 // error); RPC failures are mapped to the sentinels.
-func (b *Backend) TestPort(ctx context.Context) (PortTest, error) {
+func (b *Client) TestPort(ctx context.Context) (PortTest, error) {
 	result, err := b.client.PortTest(ctx)
 	if err != nil {
 		return PortTest{}, mapError(err)
@@ -353,7 +353,7 @@ func (b *Backend) TestPort(ctx context.Context) (PortTest, error) {
 // TotalBytes is carried through as reported (0 when the server is too old to
 // return total capacity, in which case the json tag omits it). RPC failures are
 // mapped to the sentinels.
-func (b *Backend) FreeSpace(ctx context.Context, path string) (FreeSpace, error) {
+func (b *Client) FreeSpace(ctx context.Context, path string) (FreeSpace, error) {
 	result, err := b.client.FreeSpace(ctx, path)
 	if err != nil {
 		return FreeSpace{}, mapError(err)
@@ -365,7 +365,7 @@ func (b *Backend) FreeSpace(ctx context.Context, path string) (FreeSpace, error)
 // Close releases any resources held by the backend. The Transmission adapter is
 // stateless (it holds only an rpc.Client over the shared HTTP transport and
 // caches nothing on disk), so Close is a no-op that always returns nil.
-func (b *Backend) Close() error {
+func (b *Client) Close() error {
 	return nil
 }
 
@@ -374,7 +374,7 @@ func (b *Backend) Close() error {
 // sentinels via mapError; an RPC-level non-success is *not* mapped to a Go error
 // — it is reported via APIResponse.OK == false so the api command can print the
 // envelope and set its own exit code.
-func (b *Backend) CallAPI(ctx context.Context, method string, args json.RawMessage) (APIResponse, error) {
+func (b *Client) CallAPI(ctx context.Context, method string, args json.RawMessage) (APIResponse, error) {
 	resp, err := b.client.Call(ctx, method, args)
 	if err != nil {
 		return APIResponse{}, mapError(err)

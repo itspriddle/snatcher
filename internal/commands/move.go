@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // NewMoveCmd builds the "move" command, which changes the download location of a
@@ -43,7 +43,7 @@ func NewMoveCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sel, err := torrent.ParseSelector([]string{args[0]}, false)
+			sel, err := transmission.ParseSelector([]string{args[0]}, false)
 			if err != nil {
 				return err
 			}
@@ -66,7 +66,7 @@ func NewMoveCmd() *cobra.Command {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
 
-			torrents, err := backend.ListTorrents(cmd.Context(), torrent.Selector{All: true})
+			torrents, err := backend.ListTorrents(cmd.Context(), transmission.Selector{All: true})
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}

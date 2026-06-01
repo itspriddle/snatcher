@@ -1,25 +1,25 @@
-package torrent_test
+package transmission_test
 
 import (
 	"encoding/json"
 	"testing"
 
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestStatusString(t *testing.T) {
-	cases := map[torrent.Status]string{
-		torrent.StatusStopped:          "Stopped",
-		torrent.StatusQueuedToVerify:   "Queued to verify",
-		torrent.StatusVerifying:        "Verifying",
-		torrent.StatusQueuedToDownload: "Queued to download",
-		torrent.StatusDownloading:      "Downloading",
-		torrent.StatusQueuedToSeed:     "Queued to seed",
-		torrent.StatusSeeding:          "Seeding",
-		torrent.StatusError:            "Error",
-		torrent.Status(99):             "Unknown",
+	cases := map[transmission.Status]string{
+		transmission.StatusStopped:          "Stopped",
+		transmission.StatusQueuedToVerify:   "Queued to verify",
+		transmission.StatusVerifying:        "Verifying",
+		transmission.StatusQueuedToDownload: "Queued to download",
+		transmission.StatusDownloading:      "Downloading",
+		transmission.StatusQueuedToSeed:     "Queued to seed",
+		transmission.StatusSeeding:          "Seeding",
+		transmission.StatusError:            "Error",
+		transmission.Status(99):             "Unknown",
 	}
 
 	for status, want := range cases {
@@ -28,16 +28,16 @@ func TestStatusString(t *testing.T) {
 }
 
 func TestStatusSlug(t *testing.T) {
-	cases := map[torrent.Status]string{
-		torrent.StatusStopped:          "stopped",
-		torrent.StatusQueuedToVerify:   "queued-to-verify",
-		torrent.StatusVerifying:        "verifying",
-		torrent.StatusQueuedToDownload: "queued-to-download",
-		torrent.StatusDownloading:      "downloading",
-		torrent.StatusQueuedToSeed:     "queued-to-seed",
-		torrent.StatusSeeding:          "seeding",
-		torrent.StatusError:            "error",
-		torrent.Status(99):             "unknown",
+	cases := map[transmission.Status]string{
+		transmission.StatusStopped:          "stopped",
+		transmission.StatusQueuedToVerify:   "queued-to-verify",
+		transmission.StatusVerifying:        "verifying",
+		transmission.StatusQueuedToDownload: "queued-to-download",
+		transmission.StatusDownloading:      "downloading",
+		transmission.StatusQueuedToSeed:     "queued-to-seed",
+		transmission.StatusSeeding:          "seeding",
+		transmission.StatusError:            "error",
+		transmission.Status(99):             "unknown",
 	}
 
 	for status, want := range cases {
@@ -48,15 +48,15 @@ func TestStatusSlug(t *testing.T) {
 // TestStatusTextRoundTrip verifies that MarshalText followed by UnmarshalText
 // yields the original Status for every canonical state.
 func TestStatusTextRoundTrip(t *testing.T) {
-	states := []torrent.Status{
-		torrent.StatusStopped,
-		torrent.StatusQueuedToVerify,
-		torrent.StatusVerifying,
-		torrent.StatusQueuedToDownload,
-		torrent.StatusDownloading,
-		torrent.StatusQueuedToSeed,
-		torrent.StatusSeeding,
-		torrent.StatusError,
+	states := []transmission.Status{
+		transmission.StatusStopped,
+		transmission.StatusQueuedToVerify,
+		transmission.StatusVerifying,
+		transmission.StatusQueuedToDownload,
+		transmission.StatusDownloading,
+		transmission.StatusQueuedToSeed,
+		transmission.StatusSeeding,
+		transmission.StatusError,
 	}
 
 	for _, want := range states {
@@ -65,7 +65,7 @@ func TestStatusTextRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, want.Slug(), string(text))
 
-			var got torrent.Status
+			var got transmission.Status
 			require.NoError(t, got.UnmarshalText(text))
 			assert.Equal(t, want, got)
 		})
@@ -75,27 +75,27 @@ func TestStatusTextRoundTrip(t *testing.T) {
 // TestStatusMarshalTextNeverErrors confirms an out-of-range Status marshals as
 // "unknown" rather than failing, so JSON list output can't fail mid-render.
 func TestStatusMarshalTextNeverErrors(t *testing.T) {
-	text, err := torrent.Status(99).MarshalText()
+	text, err := transmission.Status(99).MarshalText()
 	require.NoError(t, err)
 	assert.Equal(t, "unknown", string(text))
 }
 
 func TestStatusUnmarshalText(t *testing.T) {
 	t.Run("case insensitive", func(t *testing.T) {
-		var got torrent.Status
+		var got transmission.Status
 		require.NoError(t, got.UnmarshalText([]byte("Downloading")))
-		assert.Equal(t, torrent.StatusDownloading, got)
+		assert.Equal(t, transmission.StatusDownloading, got)
 	})
 
 	t.Run("unknown slug errors", func(t *testing.T) {
-		var got torrent.Status
+		var got transmission.Status
 		err := got.UnmarshalText([]byte("bogus"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "bogus")
 	})
 
 	t.Run("integers are rejected", func(t *testing.T) {
-		var got torrent.Status
+		var got transmission.Status
 		require.Error(t, got.UnmarshalText([]byte("4")))
 	})
 }
@@ -106,37 +106,37 @@ func TestStatusFromTransmission(t *testing.T) {
 		status      int
 		errorCode   int
 		errorString string
-		want        torrent.Status
+		want        transmission.Status
 	}{
-		{name: "stopped", status: 0, want: torrent.StatusStopped},
-		{name: "queued to verify", status: 1, want: torrent.StatusQueuedToVerify},
-		{name: "verifying", status: 2, want: torrent.StatusVerifying},
-		{name: "queued to download", status: 3, want: torrent.StatusQueuedToDownload},
-		{name: "downloading", status: 4, want: torrent.StatusDownloading},
-		{name: "queued to seed", status: 5, want: torrent.StatusQueuedToSeed},
-		{name: "seeding", status: 6, want: torrent.StatusSeeding},
+		{name: "stopped", status: 0, want: transmission.StatusStopped},
+		{name: "queued to verify", status: 1, want: transmission.StatusQueuedToVerify},
+		{name: "verifying", status: 2, want: transmission.StatusVerifying},
+		{name: "queued to download", status: 3, want: transmission.StatusQueuedToDownload},
+		{name: "downloading", status: 4, want: transmission.StatusDownloading},
+		{name: "queued to seed", status: 5, want: transmission.StatusQueuedToSeed},
+		{name: "seeding", status: 6, want: transmission.StatusSeeding},
 		{
 			name:      "error code promotes to error",
 			status:    4, // would otherwise be downloading
 			errorCode: 3,
-			want:      torrent.StatusError,
+			want:      transmission.StatusError,
 		},
 		{
 			name:        "error string promotes to error",
 			status:      6, // would otherwise be seeding
 			errorString: "tracker gave HTTP response code 404",
-			want:        torrent.StatusError,
+			want:        transmission.StatusError,
 		},
 		{
 			name:   "unrecognized status falls back to stopped",
 			status: 42,
-			want:   torrent.StatusStopped,
+			want:   transmission.StatusStopped,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := torrent.StatusFromTransmission(tc.status, tc.errorCode, tc.errorString)
+			got := transmission.StatusFromTransmission(tc.status, tc.errorCode, tc.errorString)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -145,24 +145,24 @@ func TestStatusFromTransmission(t *testing.T) {
 // TestStatusConstantValues pins the iota ordering so a reorder that would shift
 // the slug mapping or the Transmission status mapping is caught.
 func TestStatusConstantValues(t *testing.T) {
-	assert.Equal(t, torrent.StatusStopped, torrent.Status(0))
-	assert.Equal(t, torrent.StatusQueuedToVerify, torrent.Status(1))
-	assert.Equal(t, torrent.StatusVerifying, torrent.Status(2))
-	assert.Equal(t, torrent.StatusQueuedToDownload, torrent.Status(3))
-	assert.Equal(t, torrent.StatusDownloading, torrent.Status(4))
-	assert.Equal(t, torrent.StatusQueuedToSeed, torrent.Status(5))
-	assert.Equal(t, torrent.StatusSeeding, torrent.Status(6))
-	assert.Equal(t, torrent.StatusError, torrent.Status(7))
+	assert.Equal(t, transmission.StatusStopped, transmission.Status(0))
+	assert.Equal(t, transmission.StatusQueuedToVerify, transmission.Status(1))
+	assert.Equal(t, transmission.StatusVerifying, transmission.Status(2))
+	assert.Equal(t, transmission.StatusQueuedToDownload, transmission.Status(3))
+	assert.Equal(t, transmission.StatusDownloading, transmission.Status(4))
+	assert.Equal(t, transmission.StatusQueuedToSeed, transmission.Status(5))
+	assert.Equal(t, transmission.StatusSeeding, transmission.Status(6))
+	assert.Equal(t, transmission.StatusError, transmission.Status(7))
 }
 
 // TestTorrentJSONContract locks the stable scripting surface: the json field
 // names and that Status serializes as its canonical lowercase slug.
 func TestTorrentJSONContract(t *testing.T) {
-	tor := torrent.Torrent{
+	tor := transmission.Torrent{
 		ID:                 7,
 		Hash:               "abc123",
 		Name:               "ubuntu.iso",
-		Status:             torrent.StatusDownloading,
+		Status:             transmission.StatusDownloading,
 		PercentDone:        0.5,
 		TotalSize:          2048,
 		SizeWhenDone:       2048,
@@ -216,11 +216,11 @@ func TestTorrentJSONContract(t *testing.T) {
 // Torrent flattens into the same object — so a single info --json blob carries
 // both the list fields and the detail fields under stable keys.
 func TestTorrentDetailJSONContract(t *testing.T) {
-	detail := torrent.TorrentDetail{
-		Torrent:    torrent.Torrent{ID: 7, Hash: "abc123", Name: "ubuntu.iso"},
-		Files:      []torrent.File{{Name: "ubuntu.iso", Length: 2048, BytesCompleted: 1024, Wanted: true, Priority: 1}},
-		Peers:      []torrent.Peer{{Address: "10.0.0.1", Port: 51413}},
-		Trackers:   []torrent.Tracker{{Announce: "http://t/announce", SeederCount: 42}},
+	detail := transmission.TorrentDetail{
+		Torrent:    transmission.Torrent{ID: 7, Hash: "abc123", Name: "ubuntu.iso"},
+		Files:      []transmission.File{{Name: "ubuntu.iso", Length: 2048, BytesCompleted: 1024, Wanted: true, Priority: 1}},
+		Peers:      []transmission.Peer{{Address: "10.0.0.1", Port: 51413}},
+		Trackers:   []transmission.Tracker{{Announce: "http://t/announce", SeederCount: 42}},
 		Pieces:     []bool{true, false},
 		MagnetLink: "magnet:?xt=urn:btih:abc123",
 	}
@@ -279,20 +279,20 @@ func TestTorrentDetailJSONContract(t *testing.T) {
 // to the full AllFields set, in order, so a bare ListTorrents call still fills
 // every Torrent field.
 func TestFieldKeysDefaultsToAll(t *testing.T) {
-	want := make([]string, len(torrent.AllFields))
-	for i, f := range torrent.AllFields {
+	want := make([]string, len(transmission.AllFields))
+	for i, f := range transmission.AllFields {
 		want[i] = string(f)
 	}
 
-	assert.Equal(t, want, torrent.FieldKeys(nil), "nil projection expands to AllFields")
-	assert.Equal(t, want, torrent.FieldKeys([]torrent.Field{}), "empty projection expands to AllFields")
+	assert.Equal(t, want, transmission.FieldKeys(nil), "nil projection expands to AllFields")
+	assert.Equal(t, want, transmission.FieldKeys([]transmission.Field{}), "empty projection expands to AllFields")
 }
 
 // TestFieldKeysProjectsSubset confirms a non-empty projection is translated to
 // its canonical keys in the given order, untouched.
 func TestFieldKeysProjectsSubset(t *testing.T) {
-	got := torrent.FieldKeys([]torrent.Field{
-		torrent.FieldName, torrent.FieldID, torrent.FieldStatus,
+	got := transmission.FieldKeys([]transmission.Field{
+		transmission.FieldName, transmission.FieldID, transmission.FieldStatus,
 	})
 	assert.Equal(t, []string{"name", "id", "status"}, got)
 }
@@ -301,14 +301,14 @@ func TestFieldKeysProjectsSubset(t *testing.T) {
 // struct's json tags: every projectable field maps to a real key and no key is
 // missed, so a full projection decodes the whole record.
 func TestAllFieldsCoversTorrentJSONContract(t *testing.T) {
-	raw, err := json.Marshal(torrent.Torrent{})
+	raw, err := json.Marshal(transmission.Torrent{})
 	require.NoError(t, err)
 
 	var obj map[string]any
 	require.NoError(t, json.Unmarshal(raw, &obj))
 
-	fieldKeys := make(map[string]struct{}, len(torrent.AllFields))
-	for _, f := range torrent.AllFields {
+	fieldKeys := make(map[string]struct{}, len(transmission.AllFields))
+	for _, f := range transmission.AllFields {
 		key := string(f)
 		assert.Contains(t, obj, key, "Field %q has no matching Torrent json tag", key)
 		fieldKeys[key] = struct{}{}
@@ -323,16 +323,16 @@ func TestAllFieldsCoversTorrentJSONContract(t *testing.T) {
 // subset of AllFields (every poll field is a real, projectable Field), so a poll
 // projection never requests an unknown key.
 func TestPollFieldsAreValidSubset(t *testing.T) {
-	all := make(map[torrent.Field]struct{}, len(torrent.AllFields))
-	for _, f := range torrent.AllFields {
+	all := make(map[transmission.Field]struct{}, len(transmission.AllFields))
+	for _, f := range transmission.AllFields {
 		all[f] = struct{}{}
 	}
 
-	require.NotEmpty(t, torrent.PollFields)
-	require.Less(t, len(torrent.PollFields), len(torrent.AllFields), "PollFields is a strict subset")
+	require.NotEmpty(t, transmission.PollFields)
+	require.Less(t, len(transmission.PollFields), len(transmission.AllFields), "PollFields is a strict subset")
 
-	seen := make(map[torrent.Field]struct{}, len(torrent.PollFields))
-	for _, f := range torrent.PollFields {
+	seen := make(map[transmission.Field]struct{}, len(transmission.PollFields))
+	for _, f := range transmission.PollFields {
 		assert.Contains(t, all, f, "poll field %q is not in AllFields", f)
 		_, dup := seen[f]
 		assert.False(t, dup, "poll field %q is duplicated", f)

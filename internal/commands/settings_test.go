@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // TestSettingRegistryCompleteness asserts the registry holds exactly the 40
@@ -323,7 +323,7 @@ func TestFormatSettingValue(t *testing.T) {
 func TestAccessorsReadSnapshot(t *testing.T) {
 	t.Parallel()
 
-	snap := torrent.SessionSettings{
+	snap := transmission.SessionSettings{
 		DownloadDir:    "/data",
 		PeerPort:       31129,
 		SpeedLimitDown: 512,

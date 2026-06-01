@@ -13,7 +13,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // bespokeListResponse is a torrent-get payload (camelCase fields) covering two
@@ -189,9 +189,9 @@ func TestListNotConfigured(t *testing.T) {
 }
 
 func TestWriteListTableAligned(t *testing.T) {
-	torrents := []torrent.Torrent{
-		{ID: 1, Name: "ubuntu", Status: torrent.StatusDownloading, PercentDone: 0.5, TotalSize: 2048, RateDownload: 1024, RateUpload: 512, UploadRatio: 0.5, ETA: 60},
-		{ID: 200, Name: "debian", Status: torrent.StatusSeeding, PercentDone: 1.0, TotalSize: 4096, RateUpload: 256, UploadRatio: 2.0, ETA: -1},
+	torrents := []transmission.Torrent{
+		{ID: 1, Name: "ubuntu", Status: transmission.StatusDownloading, PercentDone: 0.5, TotalSize: 2048, RateDownload: 1024, RateUpload: 512, UploadRatio: 0.5, ETA: 60},
+		{ID: 200, Name: "debian", Status: transmission.StatusSeeding, PercentDone: 1.0, TotalSize: 4096, RateUpload: 256, UploadRatio: 2.0, ETA: -1},
 	}
 
 	cols, err := parseFields("", defaultFieldKeys)
@@ -231,8 +231,8 @@ func TestWriteListTableEmpty(t *testing.T) {
 }
 
 func TestWriteListTableSanitizesControlChars(t *testing.T) {
-	torrents := []torrent.Torrent{
-		{ID: 1, Name: "\x1b[2Jmalicious", Status: torrent.StatusDownloading},
+	torrents := []transmission.Torrent{
+		{ID: 1, Name: "\x1b[2Jmalicious", Status: transmission.StatusDownloading},
 	}
 
 	cols, err := parseFields("", defaultFieldKeys)
@@ -248,14 +248,14 @@ func TestWriteListTableSanitizesControlChars(t *testing.T) {
 }
 
 func TestWriteListPipedSanitizesControlChars(t *testing.T) {
-	torrents := []torrent.Torrent{
+	torrents := []transmission.Torrent{
 		{
 			ID:          1,
 			Name:        "\x1b[2Jmalicious",
 			DownloadDir: "/d\x1bir",
 			Error:       "boom\x07",
 			Labels:      []string{"li\x1bnux"},
-			Status:      torrent.StatusDownloading,
+			Status:      transmission.StatusDownloading,
 		},
 	}
 
@@ -275,12 +275,12 @@ func TestWriteListPipedSanitizesControlChars(t *testing.T) {
 }
 
 func TestWriteListPipedLeavesOrdinaryTextIntact(t *testing.T) {
-	torrents := []torrent.Torrent{
+	torrents := []transmission.Torrent{
 		{
 			ID:     1,
 			Name:   "Debian ISO",
 			Labels: []string{"linux", "iso"},
-			Status: torrent.StatusSeeding,
+			Status: transmission.StatusSeeding,
 		},
 	}
 
@@ -358,8 +358,8 @@ func TestParseFieldsTrimsAndLowercases(t *testing.T) {
 }
 
 func TestWriteListTableTruncatesName(t *testing.T) {
-	torrents := []torrent.Torrent{
-		{ID: 1, Name: "this-is-a-very-long-torrent-name-that-will-not-fit", Status: torrent.StatusSeeding},
+	torrents := []transmission.Torrent{
+		{ID: 1, Name: "this-is-a-very-long-torrent-name-that-will-not-fit", Status: transmission.StatusSeeding},
 	}
 
 	cols, err := parseFields("", defaultFieldKeys)
@@ -442,7 +442,7 @@ func TestListFilterAppliesToJSON(t *testing.T) {
 	defer closeSrv()
 
 	// The status filter must apply to structured (--json) output, not only the
-	// plaintext branch: --filter seeding yields exactly the seeding torrent.
+	// plaintext branch: --filter seeding yields exactly the seeding transmission.
 	out, _, err := runList(t, "--config", cfgPath, "--filter", "seeding", "--json")
 	require.NoError(t, err)
 
@@ -497,20 +497,20 @@ func TestListInvalidSortErrors(t *testing.T) {
 // JSON contract (e.g. `--jq 'select(.status=="seeding")'` aligning with
 // `--filter seeding`).
 func TestListFilterVocabularyMatchesStatusSlug(t *testing.T) {
-	statuses := []torrent.Status{
-		torrent.StatusStopped,
-		torrent.StatusQueuedToVerify,
-		torrent.StatusVerifying,
-		torrent.StatusQueuedToDownload,
-		torrent.StatusDownloading,
-		torrent.StatusQueuedToSeed,
-		torrent.StatusSeeding,
-		torrent.StatusError,
+	statuses := []transmission.Status{
+		transmission.StatusStopped,
+		transmission.StatusQueuedToVerify,
+		transmission.StatusVerifying,
+		transmission.StatusQueuedToDownload,
+		transmission.StatusDownloading,
+		transmission.StatusQueuedToSeed,
+		transmission.StatusSeeding,
+		transmission.StatusError,
 	}
 
 	for _, s := range statuses {
 		slug := s.Slug()
-		_, err := torrent.ParseFilter(slug)
+		_, err := transmission.ParseFilter(slug)
 		assert.NoErrorf(t, err, "status slug %q must be an accepted --filter value", slug)
 	}
 }
