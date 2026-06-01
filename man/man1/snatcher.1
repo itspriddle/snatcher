@@ -105,9 +105,9 @@ Manage configured servers and the server itself. The
 .B server
 group maintains an inventory of named servers \(em the registry:
 .BR add ", " list ", " default ", " show ", " ping ", " remove
-\(em and operates on the selected server's session settings, statistics, and
-BitTorrent listening port
-.RB ( settings ", " stats ", " port ).
+\(em and operates on the selected server's session settings, statistics,
+BitTorrent listening port, and download-path free space
+.RB ( settings ", " stats ", " port ", " free-space ).
 .TP
 .B snatcher server add \fR[\fIoptions\fR]
 Add or update a named server. Its URL and username are stored in the config
@@ -448,6 +448,21 @@ is reported only by Transmission's JSON-RPC 2.0 scheme and omitted otherwise).
 Exits 0 when the port is open and non-zero when it is closed, while still
 writing the structured result to stdout; a connection or authentication failure
 is a distinct non-zero exit that renders no result. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher server free-space \fR[\fIpath\fR] [\fIoptions\fR]
+Show the free space on a download path. With no
+.I path
+it queries the server's default download directory. Plaintext is an aligned
+.RI Label : " value"
+block;
+.B \-\-json
+emits a stable
+.RB { path ", " size_bytes ", " total_bytes }
+object. The
+.B total_bytes
+total capacity is reported only by Transmission 4.1+ and omitted otherwise (both
+in the object and the plaintext block). Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
 .SS "torrent"
 Manage individual torrents. All torrent operations live under the

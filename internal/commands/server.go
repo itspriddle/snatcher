@@ -14,12 +14,12 @@ import (
 func NewServerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
-		Short: "Manage servers, settings, stats, and port",
+		Short: "Manage servers, settings, stats, port, and free space",
 		Long: "Manage configured servers and the server itself.\n\n" +
 			"Maintain the inventory of named servers (add, list, default, " +
 			"show, ping, remove) and operate on the selected server's session " +
-			"settings, statistics, and BitTorrent listening port (settings, " +
-			"stats, port).",
+			"settings, statistics, BitTorrent listening port, and download-path " +
+			"free space (settings, stats, port, free-space).",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -40,6 +40,7 @@ func NewServerCmd() *cobra.Command {
 	cmd.AddCommand(NewSettingsCmd())
 	cmd.AddCommand(NewStatsCmd())
 	cmd.AddCommand(NewPortCmd())
+	cmd.AddCommand(NewFreeSpaceCmd())
 
 	return cmd
 }

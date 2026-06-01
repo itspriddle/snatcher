@@ -152,9 +152,54 @@ func TestClientDetectsOncePerClient(t *testing.T) {
 	}
 
 	// The CSRF/version probe (the only request that arrives without a cached
-	// session id) happens exactly once thanks to sync.Once; later calls reuse
-	// both the detected protocol and the cached session id.
+	// session id) happens exactly once: a successful detection is cached, so
+	// later calls reuse both the detected protocol and the cached session id.
 	assert.Equal(t, int32(1), probes.Load())
+}
+
+// TestClientReprobesAfterTransientDetectFailure verifies that a failed first
+// probe does not brick a long-lived client: only a successful detection is
+// cached, so the next call re-probes and recovers once the server is reachable.
+func TestClientReprobesAfterTransientDetectFailure(t *testing.T) {
+	var calls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Fail the very first request outright (transient transport failure),
+		// then behave like a normal JSON-RPC server from the second request on.
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(rpcVersionHeader, "6.0.0")
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"version": "4.1.0", "rpc_version_semver": "6.0.0"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+
+	// First detection hits the transient failure and is not cached.
+	_, err := c.Protocol(context.Background())
+	require.ErrorIs(t, err, ErrTransport)
+
+	// The client is not bricked: the next call re-probes and detects cleanly.
+	proto, err := c.Protocol(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, ProtocolJSONRPC, proto) //nolint:testifylint // encoded-compare false positive: ProtocolJSONRPC is an identifier name, not a JSON literal
+
+	session, err := c.SessionGet(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "4.1.0", session.Version)
 }
 
 func TestClientSessionStatsDispatchesThroughNegotiatedProtocol(t *testing.T) {
@@ -216,7 +261,7 @@ func TestClientTorrentGetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 
 	c := NewClient(srv.URL)
 
-	torrents, err := c.TorrentGet(context.Background(), nil)
+	torrents, err := c.TorrentGet(context.Background(), nil, nil)
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 	assert.Equal(t, int64(42), torrents[0].ID)

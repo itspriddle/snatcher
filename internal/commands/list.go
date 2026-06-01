@@ -65,7 +65,7 @@ var listFields = map[string]listColumn{
 		return output.Ratio(t.UploadRatio)
 	}},
 	"eta": {header: "ETA", rightAlign: true, value: func(t torrent.Torrent) string {
-		return formatETA(t.ETA)
+		return output.ETA(t.ETA)
 	}},
 	"peers": {header: "Peers", rightAlign: true, value: func(t torrent.Torrent) string {
 		return fmt.Sprintf("%d", t.PeersConnected)
@@ -189,7 +189,7 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			torrents, err := backend.ListTorrents(cmd.Context(), nil)
+			torrents, err := backend.ListTorrents(cmd.Context(), torrent.Selector{All: true})
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
@@ -381,6 +381,11 @@ func nameColumnLimit(torrents []torrent.Torrent, columns []listColumn, width int
 // truncate shortens s to at most limit runes, replacing the tail with a single
 // "…" when it would otherwise overflow. Truncation is rune-count based; wide
 // (CJK) display width is not yet accounted for.
+//
+// NOTE: this is intentionally CLI-only and must NOT be reused for TUI layout.
+// The TUI needs display-width-aware truncation (e.g. via a wide-character /
+// grapheme-cluster width measure) so a row of CJK or emoji names does not
+// overflow the pane; a rune count over-counts every wide glyph as one column.
 func truncate(s string, limit int) string {
 	if limit <= 0 {
 		return s
@@ -396,16 +401,6 @@ func truncate(s string, limit int) string {
 	}
 
 	return string(runes[:limit-1]) + "…"
-}
-
-// formatETA renders a torrent's ETA. A negative value is Transmission's
-// "unknown/not applicable" sentinel and renders as a dash.
-func formatETA(eta int64) string {
-	if eta < 0 {
-		return "-"
-	}
-
-	return output.Duration(eta)
 }
 
 // isTTY reports whether w is a terminal whose colored/aligned table output is

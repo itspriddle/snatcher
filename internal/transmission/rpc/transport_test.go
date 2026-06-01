@@ -233,6 +233,24 @@ func TestDoWrapsHTTPClientError(t *testing.T) {
 	require.ErrorIs(t, err, errDoer)
 }
 
+func TestNewTransportDefaultsToTimeoutClient(t *testing.T) {
+	tr := NewTransport("http://127.0.0.1:9091/transmission/rpc")
+
+	// The default client must bound a request so a black-holed connection cannot
+	// hang a long-lived polling client forever.
+	client, ok := tr.httpClient.(*http.Client)
+	require.True(t, ok, "default httpClient should be an *http.Client")
+	assert.NotZero(t, client.Timeout, "default client must apply a request timeout")
+}
+
+func TestWithHTTPClientOverridesDefaultTimeoutClient(t *testing.T) {
+	custom := failingDoer{}
+	tr := NewTransport("http://127.0.0.1:9091/transmission/rpc", WithHTTPClient(custom))
+
+	// An explicitly supplied client replaces the timeout default entirely.
+	assert.Equal(t, custom, tr.httpClient)
+}
+
 var errDoer = errors.New("boom")
 
 type failingDoer struct{}

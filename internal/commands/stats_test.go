@@ -105,7 +105,7 @@ func statsConfigPath(t *testing.T, rpcVersion, jsonrpcBody, bespokeBody string) 
 	}.handler())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }

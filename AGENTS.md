@@ -56,10 +56,14 @@ Layers, outermost to innermost:
 - **`internal/cli`** — builds the root cobra command and wires subcommands.
 - **`internal/commands`** — one command group per file. Depends only on
   `torrent.Backend` plus `config`/`secrets`/`output`. `commands.dial()` (in
-  `server_registry.go`) is the *single* seam where a command crosses into the
-  concrete backend: it loads config, reads the keyring password, and returns a
-  `torrent.Backend`. That same file holds the named-server registry subcommands
-  (`server add`/`list`/`default`/`show`/`ping`/`remove`).
+  `server_registry.go`) is where a command *constructs* the concrete backend: it
+  loads config, reads the keyring password, and returns a `torrent.Backend`. That
+  same file holds the named-server registry subcommands
+  (`server add`/`list`/`default`/`show`/`ping`/`remove`). The one other place the
+  concrete `transmission` package is touched is `api.go`, which type-asserts the
+  Transmission-specific `APICaller` capability (the power-user `api` escape hatch)
+  rather than constructing a backend — a deliberate, documented assertion, not a
+  second construction seam.
 - **`internal/torrent`** — the neutral seam itself: the `Backend` interface, the
   `Torrent`/`Stats`/`ServerInfo` types, the `Selector` (id/hash/`--all` parsing
   for mutation commands), and the in-memory list transforms (filter/search/sort).
@@ -106,8 +110,8 @@ header-less rows when piped or when `NO_COLOR` is set.
 `$XDG_CONFIG_HOME/snatcher/config.json`, read and written directly by
 `internal/config` (no viper — it lowercases map keys, which would corrupt
 case-sensitive aliases). The file holds a `servers` map of named aliases (each
-with a `url` and `username`) plus a `default_server` alias; legacy single-server
-files are migrated on read. The config package no longer reads env vars. Server
+with a `url` and `username`) plus a `default_server` alias — the only schema the
+config package knows. The config package no longer reads env vars. Server
 selection precedence (`--server` flag > `SNATCHER_SERVER` env > `default_server`)
 is resolved at the command layer by `dial`/`config.Resolve`, not in the config
 package. The password lives only in the OS keyring (`internal/secrets`), keyed by
@@ -115,8 +119,8 @@ server URL — never on disk.
 
 `config.json` is trusted, operator-owned input. The `validateURL` userinfo guard
 (rejecting embedded `user:pass@` credentials) applies only at `server add` time;
-URLs loaded from a legacy or hand-edited config are used as-is, with no
-load-time re-validation.
+URLs loaded from a hand-edited config are used as-is, with no load-time
+re-validation.
 
 Adding a command: create a file in `internal/commands`, register it in
 `internal/cli/root.go`, then regenerate `.surface` (see below).

@@ -92,11 +92,12 @@ func TestServerAddStoresConfigAndKeyring(t *testing.T) {
 
 	cfg, loadErr := config.Load(cfgPath)
 	require.NoError(t, loadErr)
-	assert.Equal(t, "http://localhost:9091/transmission/rpc", cfg.ServerURL)
-	assert.Equal(t, "alice", cfg.Username)
+	srv := cfg.Servers["localhost:9091"]
+	assert.Equal(t, "http://localhost:9091/transmission/rpc", srv.URL)
+	assert.Equal(t, "alice", srv.Username)
 
 	// Password lands in the keyring, never in config.
-	pw, getErr := secrets.Get(cfg.ServerURL)
+	pw, getErr := secrets.Get(srv.URL)
 	require.NoError(t, getErr)
 	assert.Equal(t, "hunter2", pw)
 }
@@ -285,7 +286,10 @@ func TestServerAddSameURLKeepsSecret(t *testing.T) {
 
 	const url = "http://host:9091/transmission/rpc"
 
-	require.NoError(t, config.Save(config.Config{ServerURL: url, Username: "alice"}, cfgPath))
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{config.HostAlias(url): {URL: url, Username: "alice"}},
+		DefaultServer: config.HostAlias(url),
+	}, cfgPath))
 	require.NoError(t, secrets.Set(url, "oldpw"))
 
 	_, _, err := runServer(t, "newpw\n",
@@ -319,10 +323,11 @@ func TestServerAddEmptyPasswordStoresNoSecret(t *testing.T) {
 	// Config is saved, but no keyring secret is written for an empty password.
 	cfg, loadErr := config.Load(cfgPath)
 	require.NoError(t, loadErr)
-	assert.Equal(t, "http://host:9091/transmission/rpc", cfg.ServerURL)
-	assert.Equal(t, "alice", cfg.Username)
+	srv := cfg.Servers["host:9091"]
+	assert.Equal(t, "http://host:9091/transmission/rpc", srv.URL)
+	assert.Equal(t, "alice", srv.Username)
 
-	_, getErr := secrets.Get(cfg.ServerURL)
+	_, getErr := secrets.Get(srv.URL)
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
 }
 
@@ -331,7 +336,10 @@ func TestServerAddEmptyPasswordDropsExistingSecret(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
 	const url = "http://host:9091/transmission/rpc"
-	require.NoError(t, config.Save(config.Config{ServerURL: url, Username: "alice"}, cfgPath))
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{config.HostAlias(url): {URL: url, Username: "alice"}},
+		DefaultServer: config.HostAlias(url),
+	}, cfgPath))
 	require.NoError(t, secrets.Set(url, "oldpw"))
 
 	_, _, err := runServer(t, "",
@@ -561,7 +569,7 @@ func TestServerDefaultUnknownAlias(t *testing.T) {
 func TestServerShowPlaintext(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: "http://host:9091/rpc", Username: "bob"}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"host:9091": {URL: "http://host:9091/rpc", Username: "bob"}}, DefaultServer: "host:9091"}, cfgPath))
 	require.NoError(t, secrets.Set("http://host:9091/rpc", "pw"))
 
 	out, _, err := runServer(t, "", "show", "--config", cfgPath)
@@ -578,7 +586,7 @@ func TestServerShowPlaintext(t *testing.T) {
 func TestServerShowJSON(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: "http://host:9091/rpc", Username: "bob"}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"host:9091": {URL: "http://host:9091/rpc", Username: "bob"}}, DefaultServer: "host:9091"}, cfgPath))
 
 	out, _, err := runServer(t, "", "show", "--config", cfgPath, "--json")
 	require.NoError(t, err)
@@ -663,7 +671,7 @@ func TestServerPingJSONRPC(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL, Username: "alice"}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL, Username: "alice"}}, DefaultServer: "test"}, cfgPath))
 	require.NoError(t, secrets.Set(srv.URL, "pw"))
 
 	out, _, err := runServer(t, "", "ping", "--config", cfgPath, "--json")
@@ -743,7 +751,7 @@ func TestServerPingBespokePlaintext(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	out, _, err := runServer(t, "", "ping", "--config", cfgPath)
 	require.NoError(t, err)
@@ -771,7 +779,7 @@ func TestServerPingConnectionFailure(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	_, _, err := runServer(t, "", "ping", "--config", cfgPath)
 	require.Error(t, err)
@@ -788,7 +796,7 @@ func TestServerPingHTMLResponseHint(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	_, _, err := runServer(t, "", "ping", "--config", cfgPath)
 	require.Error(t, err)
@@ -801,7 +809,7 @@ func TestServerPingHTMLResponseHint(t *testing.T) {
 func TestServerRemoveDefaultClearsConfigAndKeyring(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: "http://host:9091/rpc", Username: "bob"}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"host:9091": {URL: "http://host:9091/rpc", Username: "bob"}}, DefaultServer: "host:9091"}, cfgPath))
 	require.NoError(t, secrets.Set("http://host:9091/rpc", "pw"))
 
 	// Omitting the alias removes the configured default.

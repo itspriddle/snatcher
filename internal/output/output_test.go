@@ -163,6 +163,26 @@ func TestDuration(t *testing.T) {
 	}
 }
 
+func TestETA(t *testing.T) {
+	tests := []struct {
+		name string
+		eta  int64
+		want string
+	}{
+		{"unknown is dash", -1, "-"},
+		{"large negative is dash", -100, "-"},
+		{"zero", 0, "0s"},
+		{"seconds", 45, "45s"},
+		{"hours minutes seconds", 3*3600 + 4*60 + 5, "3h 4m 5s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, ETA(tt.eta))
+		})
+	}
+}
+
 func TestJQValidExpression(t *testing.T) {
 	type payload struct {
 		UploadSpeed int64  `json:"upload_speed"`

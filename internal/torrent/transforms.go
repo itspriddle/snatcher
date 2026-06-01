@@ -165,7 +165,7 @@ const (
 	// SortSize orders by total size.
 	SortSize SortField = "size"
 
-	// SortProgress orders by download completion (percentDone).
+	// SortProgress orders by download completion (PercentDone).
 	SortProgress SortField = "progress"
 
 	// SortRatio orders by upload ratio.

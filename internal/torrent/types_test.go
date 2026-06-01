@@ -193,12 +193,12 @@ func TestTorrentJSONContract(t *testing.T) {
 
 	// Every documented field is present under its expected key.
 	for _, key := range []string{
-		"id", "hash", "name", "status", "percentDone", "totalSize",
-		"sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload",
-		"uploadRatio", "eta", "peersConnected", "peersSendingToUs",
-		"peersGettingFromUs", "addedDate", "doneDate", "activityDate",
-		"downloadDir", "error", "labels", "queuePosition", "isFinished",
-		"isStalled",
+		"id", "hash", "name", "status", "percent_done", "total_size",
+		"size_when_done", "left_until_done", "rate_download", "rate_upload",
+		"upload_ratio", "eta", "peers_connected", "peers_sending_to_us",
+		"peers_getting_from_us", "added_date", "done_date", "activity_date",
+		"download_dir", "error", "labels", "queue_position", "is_finished",
+		"is_stalled",
 	} {
 		assert.Contains(t, got, key, "missing json key %q", key)
 	}
@@ -209,4 +209,133 @@ func TestTorrentJSONContract(t *testing.T) {
 	assert.Contains(t, string(raw), `"status":"downloading"`)
 	assert.Equal(t, "abc123", got["hash"])
 	assert.Equal(t, float64(7), got["id"])
+}
+
+// TestTorrentDetailJSONContract confirms TorrentDetail's json tags are all
+// snake_case (matching the rest of the neutral types) and that the embedded
+// Torrent flattens into the same object — so a single info --json blob carries
+// both the list fields and the detail fields under stable keys.
+func TestTorrentDetailJSONContract(t *testing.T) {
+	detail := torrent.TorrentDetail{
+		Torrent:    torrent.Torrent{ID: 7, Hash: "abc123", Name: "ubuntu.iso"},
+		Files:      []torrent.File{{Name: "ubuntu.iso", Length: 2048, BytesCompleted: 1024, Wanted: true, Priority: 1}},
+		Peers:      []torrent.Peer{{Address: "10.0.0.1", Port: 51413}},
+		Trackers:   []torrent.Tracker{{Announce: "http://t/announce", SeederCount: 42}},
+		Pieces:     []bool{true, false},
+		MagnetLink: "magnet:?xt=urn:btih:abc123",
+	}
+
+	raw, err := json.Marshal(detail)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+
+	// The embedded Torrent's keys flatten into the same object.
+	assert.Equal(t, float64(7), got["id"], "embedded Torrent flattens into the detail object")
+	assert.Equal(t, "abc123", got["hash"])
+
+	// Every detail-only key is present and snake_case.
+	for _, key := range []string{
+		"files", "peers", "trackers", "pieces", "magnet_link", "downloaded_ever",
+		"uploaded_ever", "corrupt_ever", "have_valid", "piece_count", "piece_size",
+		"comment", "creator", "date_created", "is_private", "seconds_downloading",
+		"seconds_seeding", "recheck_progress", "metadata_percent_complete",
+	} {
+		assert.Contains(t, got, key, "missing detail json key %q", key)
+	}
+
+	// The nested File/Peer/Tracker objects use snake_case keys too.
+	files, ok := got["files"].([]any)
+	require.True(t, ok)
+	require.Len(t, files, 1)
+	file, ok := files[0].(map[string]any)
+	require.True(t, ok)
+	for _, key := range []string{"name", "length", "bytes_completed", "wanted", "priority"} {
+		assert.Contains(t, file, key, "missing File json key %q", key)
+	}
+
+	tracker, ok := got["trackers"].([]any)[0].(map[string]any)
+	require.True(t, ok)
+	for _, key := range []string{
+		"announce", "host", "sitename", "announce_state", "seeder_count",
+		"leecher_count", "download_count", "last_announce_result",
+		"next_announce_time",
+	} {
+		assert.Contains(t, tracker, key, "missing Tracker json key %q", key)
+	}
+
+	peer, ok := got["peers"].([]any)[0].(map[string]any)
+	require.True(t, ok)
+	for _, key := range []string{
+		"address", "port", "client", "progress", "rate_to_client", "rate_to_peer",
+		"flag_str", "is_encrypted",
+	} {
+		assert.Contains(t, peer, key, "missing Peer json key %q", key)
+	}
+}
+
+// TestFieldKeysDefaultsToAll confirms an empty projection (nil or len 0) expands
+// to the full AllFields set, in order, so a bare ListTorrents call still fills
+// every Torrent field.
+func TestFieldKeysDefaultsToAll(t *testing.T) {
+	want := make([]string, len(torrent.AllFields))
+	for i, f := range torrent.AllFields {
+		want[i] = string(f)
+	}
+
+	assert.Equal(t, want, torrent.FieldKeys(nil), "nil projection expands to AllFields")
+	assert.Equal(t, want, torrent.FieldKeys([]torrent.Field{}), "empty projection expands to AllFields")
+}
+
+// TestFieldKeysProjectsSubset confirms a non-empty projection is translated to
+// its canonical keys in the given order, untouched.
+func TestFieldKeysProjectsSubset(t *testing.T) {
+	got := torrent.FieldKeys([]torrent.Field{
+		torrent.FieldName, torrent.FieldID, torrent.FieldStatus,
+	})
+	assert.Equal(t, []string{"name", "id", "status"}, got)
+}
+
+// TestAllFieldsCoversTorrentJSONContract pins AllFields to exactly the Torrent
+// struct's json tags: every projectable field maps to a real key and no key is
+// missed, so a full projection decodes the whole record.
+func TestAllFieldsCoversTorrentJSONContract(t *testing.T) {
+	raw, err := json.Marshal(torrent.Torrent{})
+	require.NoError(t, err)
+
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(raw, &obj))
+
+	fieldKeys := make(map[string]struct{}, len(torrent.AllFields))
+	for _, f := range torrent.AllFields {
+		key := string(f)
+		assert.Contains(t, obj, key, "Field %q has no matching Torrent json tag", key)
+		fieldKeys[key] = struct{}{}
+	}
+
+	for key := range obj {
+		assert.Contains(t, fieldKeys, key, "Torrent json key %q is not a projectable Field", key)
+	}
+}
+
+// TestPollFieldsAreValidSubset confirms PollFields is a strict, deduplicated
+// subset of AllFields (every poll field is a real, projectable Field), so a poll
+// projection never requests an unknown key.
+func TestPollFieldsAreValidSubset(t *testing.T) {
+	all := make(map[torrent.Field]struct{}, len(torrent.AllFields))
+	for _, f := range torrent.AllFields {
+		all[f] = struct{}{}
+	}
+
+	require.NotEmpty(t, torrent.PollFields)
+	require.Less(t, len(torrent.PollFields), len(torrent.AllFields), "PollFields is a strict subset")
+
+	seen := make(map[torrent.Field]struct{}, len(torrent.PollFields))
+	for _, f := range torrent.PollFields {
+		assert.Contains(t, all, f, "poll field %q is not in AllFields", f)
+		_, dup := seen[f]
+		assert.False(t, dup, "poll field %q is duplicated", f)
+		seen[f] = struct{}{}
+	}
 }

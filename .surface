@@ -10,6 +10,7 @@ CMD snatcher api
 CMD snatcher server
 CMD snatcher server add
 CMD snatcher server default
+CMD snatcher server free-space
 CMD snatcher server list
 CMD snatcher server ping
 CMD snatcher server port
@@ -53,6 +54,10 @@ FLAG snatcher server add --password-stdin type=bool
 FLAG snatcher server add --url type=string
 FLAG snatcher server add --username type=string
 FLAG snatcher server default --config type=string
+FLAG snatcher server free-space --config type=string
+FLAG snatcher server free-space --jq type=string
+FLAG snatcher server free-space --json type=bool
+FLAG snatcher server free-space --server type=string
 FLAG snatcher server list --config type=string
 FLAG snatcher server list --jq type=string
 FLAG snatcher server list --json type=bool

@@ -15,11 +15,18 @@ import (
 // matchable with errors.Is.
 var ErrAuth = errors.New("torrent: authentication failed")
 
-// ErrUnreachable signals that the backend could not be reached or returned an
-// error that is not an authentication failure (a transport problem, an
-// unexpected HTTP status, or a server-side RPC error). It is matchable with
-// errors.Is.
+// ErrUnreachable signals a transport-level failure: the backend could not be
+// reached, the HTTP exchange could not complete, or the server returned an
+// unexpected non-2xx status. A request the server accepted but rejected at the
+// application level is ErrServer, not this. It is matchable with errors.Is.
 var ErrUnreachable = errors.New("torrent: server unreachable")
+
+// ErrServer signals that the backend accepted the request at the transport level
+// but reported a server-side RPC application error (e.g. an invalid argument or
+// a rejected operation). It is distinct from ErrUnreachable so a status bar can
+// tell "can't reach host" from "server rejected the request". It is matchable
+// with errors.Is.
+var ErrServer = errors.New("torrent: server error")
 
 // ErrUnsupported signals that the backend server is older than the minimum
 // version snatcher supports. It is matchable with errors.Is.
@@ -71,6 +78,24 @@ type PortTest struct {
 	IPProtocol string `json:"ip_protocol,omitempty"`
 }
 
+// FreeSpace is the vendor-neutral result of a free-space query on a download
+// path, returned by Backend.FreeSpace. TotalBytes is only populated when the
+// backend reports it (Transmission >= 4.1.0); it is omitted otherwise, mirroring
+// how PortTest.IPProtocol is optional.
+type FreeSpace struct {
+	// Path is the directory the free-space query was carried out on (echoed back
+	// by the server).
+	Path string `json:"path"`
+
+	// SizeBytes is the free space available in the directory, in bytes.
+	SizeBytes int64 `json:"size_bytes"`
+
+	// TotalBytes is the directory's total capacity, in bytes, or 0 (omitted) when
+	// the backend did not report it (the bespoke scheme on a server too old to
+	// return it).
+	TotalBytes int64 `json:"total_bytes,omitempty"`
+}
+
 // Stats is the vendor-neutral session statistics returned by Backend.Stats.
 type Stats struct {
 	// ActiveTorrentCount is the number of active torrents.
@@ -95,12 +120,12 @@ type Stats struct {
 	CurrentStats StatsSnapshot `json:"current_stats"`
 }
 
-// Backend is the vendor-neutral interface every BitTorrent client adapter
-// implements. Commands depend on this interface rather than any concrete
-// client. Methods honor the supplied context for cancellation and deadlines,
-// and map client-specific failures to the neutral sentinels (ErrAuth,
-// ErrUnreachable).
-type Backend interface {
+// Reader is the read-only half of Backend: the methods that only query the
+// server and never mutate it. A pane or caller that only needs to observe the
+// server can depend on this narrower interface. Methods honor the supplied
+// context for cancellation and deadlines, and map client-specific failures to
+// the neutral sentinels (ErrAuth, ErrUnreachable, ErrServer).
+type Reader interface {
 	// ServerInfo performs a round-trip to the server and returns its neutral
 	// ServerInfo.
 	ServerInfo(ctx context.Context) (ServerInfo, error)
@@ -108,12 +133,46 @@ type Backend interface {
 	// Stats returns the server's neutral session statistics.
 	Stats(ctx context.Context) (Stats, error)
 
-	// ListTorrents returns the server's torrents as neutral Torrents. A nil or
-	// empty ids slice returns all torrents; otherwise the server filters to the
-	// given numeric ids. The returned slice is never nil on success (it is empty
-	// when there are no matching torrents).
-	ListTorrents(ctx context.Context, ids []int64) ([]Torrent, error)
+	// ListTorrents returns the torrents matched by sel as neutral Torrents. An
+	// All selector (or one whose RPCIDs is empty) returns every torrent;
+	// otherwise the server filters to the selected ids/hashes. The optional
+	// fields projection limits which Torrent fields the server returns and
+	// snatcher decodes (see PollFields for the cheap polling subset); an empty
+	// projection requests the full record (AllFields). Fields not requested are
+	// left at their zero value. The returned slice is never nil on success (it is
+	// empty when there are no matching torrents).
+	ListTorrents(ctx context.Context, sel Selector, fields ...Field) ([]Torrent, error)
 
+	// TorrentDetail returns the full detail view (files, peers, trackers, the
+	// pieces bitfield, the magnet link, and the overview scalars, on top of the
+	// embedded Torrent record) for the single torrent with the given numeric id,
+	// in one round-trip. An id that matches no torrent returns an error.
+	TorrentDetail(ctx context.Context, id int64) (TorrentDetail, error)
+
+	// GetSession performs a round-trip to the server and returns its neutral
+	// SessionSettings (the server's current configurable session settings).
+	GetSession(ctx context.Context) (SessionSettings, error)
+
+	// TestPort checks whether the configured peer port is reachable from outside
+	// and returns the neutral PortTest. The result's Open flag is a probe value
+	// (a reachable-but-closed port is not an error); a transport or auth failure
+	// maps to the neutral sentinels (ErrAuth, ErrUnreachable).
+	TestPort(ctx context.Context) (PortTest, error)
+
+	// FreeSpace queries the free space (and, when the server reports it, the total
+	// capacity) on the given download path and returns the neutral FreeSpace. The
+	// result's TotalBytes is omitted when the backend does not report it (a
+	// Transmission server too old to return it); a transport or auth failure maps
+	// to the neutral sentinels (ErrAuth, ErrUnreachable).
+	FreeSpace(ctx context.Context, path string) (FreeSpace, error)
+}
+
+// Mutator is the write half of Backend: the methods that change server state
+// (start/stop, queue moves, removal, relocation, per-torrent and per-file
+// edits, adding a torrent, and writing session settings). Methods honor the
+// supplied context for cancellation and deadlines, and map client-specific
+// failures to the neutral sentinels (ErrAuth, ErrUnreachable, ErrServer).
+type Mutator interface {
 	// StartTorrents resumes the torrents matched by sel (start-now when now is
 	// true, disregarding queue position). An All selector targets every torrent.
 	// Starting an already-started torrent is a no-op.
@@ -172,15 +231,19 @@ type Backend interface {
 	// every torrent. The call confirms success and carries no response payload.
 	SetTorrents(ctx context.Context, sel Selector, changes map[string]any) error
 
+	// SetFiles applies per-file selection and priority changes to the torrents
+	// matched by sel. The changes' index lists select which files within each
+	// torrent to mark wanted/unwanted or set to high/normal/low priority; only the
+	// non-empty FileChanges fields are written, and an empty FileChanges is a
+	// no-op. An All selector targets every torrent. The call confirms success and
+	// carries no response payload.
+	SetFiles(ctx context.Context, sel Selector, changes FileChanges) error
+
 	// AddTorrent adds a single torrent described by req (exactly one of Metainfo,
 	// URL, or Magnet identifies the source) and returns the neutral AddResult. A
 	// torrent that was already present is reported via AddResult.Duplicate rather
 	// than as an error.
 	AddTorrent(ctx context.Context, req AddRequest) (AddResult, error)
-
-	// GetSession performs a round-trip to the server and returns its neutral
-	// SessionSettings (the server's current configurable session settings).
-	GetSession(ctx context.Context) (SessionSettings, error)
 
 	// SetSession writes the supplied session settings. The changes map is keyed by
 	// neutral kebab-case setting key (e.g. "peer-port", "dht-enabled") with the
@@ -188,10 +251,21 @@ type Backend interface {
 	// Only the keys present in changes are written. The call confirms success and
 	// carries no response payload.
 	SetSession(ctx context.Context, changes map[string]any) error
+}
 
-	// TestPort checks whether the configured peer port is reachable from outside
-	// and returns the neutral PortTest. The result's Open flag is a probe value
-	// (a reachable-but-closed port is not an error); a transport or auth failure
-	// maps to the neutral sentinels (ErrAuth, ErrUnreachable).
-	TestPort(ctx context.Context) (PortTest, error)
+// Backend is the vendor-neutral interface every BitTorrent client adapter
+// implements. Commands depend on this interface rather than any concrete
+// client. It composes the read-only Reader and the write-side Mutator and adds
+// a Close hook for releasing any resources the backend holds (a no-op for a
+// stateless adapter; the seam a future pooled or long-lived backend uses for
+// cleanup). Methods honor the supplied context for cancellation and deadlines,
+// and map client-specific failures to the neutral sentinels (ErrAuth,
+// ErrUnreachable, ErrServer).
+type Backend interface {
+	Reader
+	Mutator
+
+	// Close releases any resources held by the backend. It is safe to call on a
+	// stateless adapter (a no-op) and may be called more than once.
+	Close() error
 }

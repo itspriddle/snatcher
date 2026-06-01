@@ -320,7 +320,7 @@ func TestJSONRPCProtocolTorrentGet(t *testing.T) {
 
 	tr := NewTransport(srv.URL)
 
-	torrents, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, nil)
+	torrents, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 
@@ -344,12 +344,16 @@ func TestJSONRPCProtocolTorrentGet(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
 
 	// JSON-RPC 2.0 envelope: snake_case method, fields requested in params, no ids
-	// when none are requested.
+	// when none are requested. An empty fields argument requests the full
+	// canonical set translated to the JSON-RPC wire names (hash -> hash_string,
+	// error -> error+error_string).
 	assert.Equal(t, "torrent_get", gotBody["method"])
 	params, ok := gotBody["params"].(map[string]any)
 	require.True(t, ok)
-	assert.Contains(t, params, "fields")
 	assert.NotContains(t, params, "ids")
+	assert.ElementsMatch(t, resolveTorrentGetFields(nil, torrentGetFieldsJSONRPCMap), fieldStrings(t, params["fields"]))
+	assert.Contains(t, fieldStrings(t, params["fields"]), "hash_string")
+	assert.Contains(t, fieldStrings(t, params["fields"]), "error_string")
 }
 
 func TestBespokeProtocolTorrentGet(t *testing.T) {
@@ -394,7 +398,7 @@ func TestBespokeProtocolTorrentGet(t *testing.T) {
 
 	tr := NewTransport(srv.URL)
 
-	torrents, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, nil)
+	torrents, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 
@@ -413,11 +417,15 @@ func TestBespokeProtocolTorrentGet(t *testing.T) {
 	var gotBody map[string]any
 	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
 
-	// Bespoke envelope: kebab-case method, fields in arguments.
+	// Bespoke envelope: kebab-case method, fields in arguments. An empty fields
+	// argument requests the full canonical set translated to the bespoke wire
+	// names (hash -> hashString, error -> error+errorString).
 	assert.Equal(t, "torrent-get", gotBody["method"])
 	args, ok := gotBody["arguments"].(map[string]any)
 	require.True(t, ok)
-	assert.Contains(t, args, "fields")
+	assert.ElementsMatch(t, resolveTorrentGetFields(nil, torrentGetFieldsBespokeMap), fieldStrings(t, args["fields"]))
+	assert.Contains(t, fieldStrings(t, args["fields"]), "hashString")
+	assert.Contains(t, fieldStrings(t, args["fields"]), "errorString")
 }
 
 func TestTorrentGetSendsIDs(t *testing.T) {
@@ -432,7 +440,7 @@ func TestTorrentGetSendsIDs(t *testing.T) {
 
 		tr := NewTransport(srv.URL)
 
-		_, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, []int64{1, 2})
+		_, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, []any{int64(1), int64(2)}, nil)
 		require.NoError(t, err)
 		assert.Contains(t, string(rawBody), `"ids":[1,2]`)
 	})
@@ -448,10 +456,105 @@ func TestTorrentGetSendsIDs(t *testing.T) {
 
 		tr := NewTransport(srv.URL)
 
-		_, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, []int64{3})
+		_, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, []any{int64(3)}, nil)
 		require.NoError(t, err)
 		assert.Contains(t, string(rawBody), `"ids":[3]`)
 	})
+
+	t.Run("jsonrpc mixes ids and hashes", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": {"torrents": []}, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, []any{int64(1), "abc123"}, nil)
+		require.NoError(t, err)
+		assert.Contains(t, string(rawBody), `"ids":[1,"abc123"]`)
+	})
+}
+
+// TestTorrentGetProjectsRequestedFields verifies that a requested canonical
+// subset maps to the correct wire field names in both schemes, and that an empty
+// fields argument requests the full canonical set.
+func TestTorrentGetProjectsRequestedFields(t *testing.T) {
+	captureFields := func(t *testing.T, proto Protocol, response string, fields []string) []string {
+		t.Helper()
+
+		var rawBody []byte
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(response))
+		}))
+		defer srv.Close()
+
+		_, err := proto.TorrentGet(context.Background(), NewTransport(srv.URL), nil, fields)
+		require.NoError(t, err)
+
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &body))
+
+		switch p := body["params"].(type) {
+		case map[string]any:
+			return fieldStrings(t, p["fields"])
+		default:
+			args, ok := body["arguments"].(map[string]any)
+			require.True(t, ok)
+			return fieldStrings(t, args["fields"])
+		}
+	}
+
+	const jsonrpcResp = `{"jsonrpc": "2.0", "result": {"torrents": []}, "id": 1}`
+	const bespokeResp = `{"arguments": {"torrents": []}, "result": "success", "tag": 1}`
+
+	t.Run("jsonrpc subset maps canonical to wire", func(t *testing.T) {
+		got := captureFields(t, jsonrpcProtocol{}, jsonrpcResp, []string{"id", "hash", "error"})
+		// hash -> hash_string; error -> error + error_string.
+		assert.Equal(t, []string{"id", "hash_string", "error", "error_string"}, got)
+	})
+
+	t.Run("bespoke subset maps canonical to wire", func(t *testing.T) {
+		got := captureFields(t, bespokeProtocol{}, bespokeResp, []string{"id", "hash", "error"})
+		// hash -> hashString; error -> error + errorString.
+		assert.Equal(t, []string{"id", "hashString", "error", "errorString"}, got)
+	})
+
+	t.Run("jsonrpc empty fields requests full set", func(t *testing.T) {
+		got := captureFields(t, jsonrpcProtocol{}, jsonrpcResp, nil)
+		assert.ElementsMatch(t, resolveTorrentGetFields(nil, torrentGetFieldsJSONRPCMap), got)
+	})
+
+	t.Run("bespoke empty fields requests full set", func(t *testing.T) {
+		got := captureFields(t, bespokeProtocol{}, bespokeResp, nil)
+		assert.ElementsMatch(t, resolveTorrentGetFields(nil, torrentGetFieldsBespokeMap), got)
+	})
+
+	t.Run("unknown canonical fields are skipped", func(t *testing.T) {
+		got := captureFields(t, jsonrpcProtocol{}, jsonrpcResp, []string{"id", "not_a_field"})
+		assert.Equal(t, []string{"id"}, got)
+	})
+}
+
+// fieldStrings converts a decoded JSON "fields" value (an []any of strings) to a
+// []string for assertions.
+func fieldStrings(t *testing.T, v any) []string {
+	t.Helper()
+
+	raw, ok := v.([]any)
+	require.True(t, ok, "fields is not a JSON array")
+
+	out := make([]string, len(raw))
+	for i, item := range raw {
+		s, ok := item.(string)
+		require.True(t, ok, "field is not a string")
+		out[i] = s
+	}
+
+	return out
 }
 
 func TestProtocolTorrentStart(t *testing.T) {
@@ -1447,7 +1550,7 @@ func TestJSONRPCProtocolTorrentGetMapsErrorObject(t *testing.T) {
 
 	tr := NewTransport(srv.URL)
 
-	_, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, nil)
+	_, err := jsonrpcProtocol{}.TorrentGet(context.Background(), tr, nil, nil)
 	require.ErrorIs(t, err, ErrRPC)
 	assert.ErrorContains(t, err, "method not found")
 }
@@ -1460,7 +1563,7 @@ func TestBespokeProtocolTorrentGetMapsNonSuccessResult(t *testing.T) {
 
 	tr := NewTransport(srv.URL)
 
-	_, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, nil)
+	_, err := bespokeProtocol{}.TorrentGet(context.Background(), tr, nil, nil)
 	require.ErrorIs(t, err, ErrRPC)
 	assert.ErrorContains(t, err, "forbidden")
 }
@@ -2178,4 +2281,414 @@ func TestBespokeProtocolPortTestMapsNonSuccessResult(t *testing.T) {
 	_, err := bespokeProtocol{}.PortTest(context.Background(), tr)
 	require.ErrorIs(t, err, ErrRPC)
 	assert.ErrorContains(t, err, "no such session")
+}
+
+func TestJSONRPCProtocolFreeSpace(t *testing.T) {
+	var rawBody []byte
+
+	// Snake_case result keys matching docs/transmission/rpc-spec-411.md; a 4.1+
+	// server reports total_size.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"path": "/downloads", "size_bytes": 1024, "total_size": 4096},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := jsonrpcProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/downloads", result.Path)
+	assert.Equal(t, int64(1024), result.SizeBytes)
+	assert.Equal(t, int64(4096), result.TotalBytes)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// JSON-RPC 2.0 envelope: snake_case method, jsonrpc/id present, no tag; the
+	// queried path is sent in params.
+	assert.Equal(t, "2.0", gotBody["jsonrpc"])
+	assert.Equal(t, "free_space", gotBody["method"])
+	assert.Contains(t, gotBody, "id")
+	assert.NotContains(t, gotBody, "tag")
+
+	params, ok := gotBody["params"].(map[string]any)
+	require.True(t, ok, "params is an object")
+	assert.Equal(t, "/downloads", params["path"])
+}
+
+func TestBespokeProtocolFreeSpace(t *testing.T) {
+	var rawBody []byte
+
+	// Kebab-case free size (size-bytes) matching docs/transmission/rpc-spec-406.md;
+	// the total capacity is spelled total_size on the wire even here.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"arguments": {"path": "/downloads", "size-bytes": 1024, "total_size": 4096},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := bespokeProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/downloads", result.Path)
+	assert.Equal(t, int64(1024), result.SizeBytes)
+	assert.Equal(t, int64(4096), result.TotalBytes)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// Bespoke envelope: kebab-case method, tag present, no jsonrpc; the queried
+	// path is sent in arguments.
+	assert.Equal(t, "free-space", gotBody["method"])
+	assert.Contains(t, gotBody, "tag")
+	assert.NotContains(t, gotBody, "jsonrpc")
+
+	args, ok := gotBody["arguments"].(map[string]any)
+	require.True(t, ok, "arguments is an object")
+	assert.Equal(t, "/downloads", args["path"])
+}
+
+func TestBespokeProtocolFreeSpaceOmitsTotalOnOldServer(t *testing.T) {
+	// A bespoke server too old to return total_size omits it; TotalBytes stays 0.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"arguments": {"path": "/downloads", "size-bytes": 2048},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := bespokeProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(2048), result.SizeBytes)
+	assert.Zero(t, result.TotalBytes, "an old bespoke server reports no total capacity")
+}
+
+func TestJSONRPCProtocolFreeSpaceMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": 7, "message": "No such directory"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := jsonrpcProtocol{}.FreeSpace(context.Background(), tr, "/nope")
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "No such directory")
+}
+
+func TestBespokeProtocolFreeSpaceMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "no such session", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := bespokeProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "no such session")
+}
+
+// piecesB64 is a base64 bitfield for a 10-piece torrent: bytes 0xB0 0x40, so
+// pieces 0, 2, 3, and 9 are complete (MSB-first within each byte).
+const piecesB64 = "sEA="
+
+// assertDetail asserts the shared detail expectations both protocols must decode
+// identically, so the two golden tests can't drift apart. It covers the embedded
+// torrent identity, the merged file selection state, the peer/tracker fields, the
+// base64 pieces bitfield, the magnet link, and the overview scalars.
+func assertDetail(t *testing.T, got TorrentDetail) {
+	t.Helper()
+
+	// Embedded Torrent (the list fields) is present.
+	assert.Equal(t, int64(7), got.ID)
+	assert.Equal(t, "abc123", got.Hash)
+	assert.Equal(t, "ubuntu.iso", got.Name)
+
+	// Files merge the parallel files/wanted/priorities arrays by index. The first
+	// file is wanted at high priority; the second is unwanted at low priority.
+	require.Len(t, got.Files, 2)
+	assert.Equal(t, "ubuntu.iso", got.Files[0].Name)
+	assert.Equal(t, int64(2048), got.Files[0].Length)
+	assert.Equal(t, int64(1024), got.Files[0].BytesCompleted)
+	assert.True(t, got.Files[0].Wanted)
+	assert.Equal(t, 1, got.Files[0].Priority)
+	assert.Equal(t, "readme.txt", got.Files[1].Name)
+	assert.False(t, got.Files[1].Wanted)
+	assert.Equal(t, -1, got.Files[1].Priority)
+
+	// Peers.
+	require.Len(t, got.Peers, 1)
+	assert.Equal(t, "10.0.0.1", got.Peers[0].Address)
+	assert.Equal(t, 51413, got.Peers[0].Port)
+	assert.Equal(t, "Transmission 4.0", got.Peers[0].Client)
+	assert.InDelta(t, 0.5, got.Peers[0].Progress, 0.0001)
+	assert.Equal(t, int64(1000), got.Peers[0].RateToClient)
+	assert.Equal(t, int64(200), got.Peers[0].RateToPeer)
+	assert.Equal(t, "TDdEi", got.Peers[0].FlagStr)
+	assert.True(t, got.Peers[0].IsEncrypted)
+
+	// Trackers (from trackerStats).
+	require.Len(t, got.Trackers, 1)
+	assert.Equal(t, "http://tracker.example/announce", got.Trackers[0].Announce)
+	assert.Equal(t, "tracker.example", got.Trackers[0].Host)
+	assert.Equal(t, "example", got.Trackers[0].Sitename)
+	assert.Equal(t, 1, got.Trackers[0].AnnounceState)
+	assert.Equal(t, 42, got.Trackers[0].SeederCount)
+	assert.Equal(t, 7, got.Trackers[0].LeecherCount)
+	assert.Equal(t, 100, got.Trackers[0].DownloadCount)
+	assert.Equal(t, "Success", got.Trackers[0].LastAnnounceResult)
+	assert.Equal(t, int64(1700000200), got.Trackers[0].NextAnnounceTime)
+
+	// Pieces bitfield: pieces 0, 2, 3, and 9 are complete.
+	assert.Equal(t,
+		[]bool{true, false, true, true, false, false, false, false, false, true},
+		got.Pieces,
+	)
+
+	// Overview scalars.
+	assert.Equal(t, "magnet:?xt=urn:btih:abc123", got.MagnetLink)
+	assert.Equal(t, int64(4096), got.DownloadedEver)
+	assert.Equal(t, int64(8192), got.UploadedEver)
+	assert.Equal(t, int64(0), got.CorruptEver)
+	assert.Equal(t, int64(1024), got.HaveValid)
+	assert.Equal(t, int64(10), got.PieceCount)
+	assert.Equal(t, int64(262144), got.PieceSize)
+	assert.Equal(t, "a comment", got.Comment)
+	assert.Equal(t, "mkbt", got.Creator)
+	assert.Equal(t, int64(1690000000), got.DateCreated)
+	assert.True(t, got.IsPrivate)
+	assert.Equal(t, int64(3600), got.SecondsDownloading)
+	assert.Equal(t, int64(7200), got.SecondsSeeding)
+	assert.InDelta(t, 1.0, got.RecheckProgress, 0.0001)
+	assert.InDelta(t, 1.0, got.MetadataPercentComplete, 0.0001)
+}
+
+// TestJSONRPCProtocolTorrentGetDetail decodes a full snake_case detail response,
+// exercising the JSON-RPC parity case: wanted is a JSON boolean array, and pieces
+// is a base64 bitfield.
+func TestJSONRPCProtocolTorrentGetDetail(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"torrents": [{
+				"id": 7,
+				"hash_string": "abc123",
+				"name": "ubuntu.iso",
+				"status": 4,
+				"files": [
+					{"name": "ubuntu.iso", "length": 2048, "bytes_completed": 1024},
+					{"name": "readme.txt", "length": 256, "bytes_completed": 0}
+				],
+				"wanted": [true, false],
+				"priorities": [1, -1],
+				"peers": [{
+					"address": "10.0.0.1",
+					"port": 51413,
+					"client_name": "Transmission 4.0",
+					"progress": 0.5,
+					"rate_to_client": 1000,
+					"rate_to_peer": 200,
+					"flag_str": "TDdEi",
+					"is_encrypted": true
+				}],
+				"tracker_stats": [{
+					"announce": "http://tracker.example/announce",
+					"host": "tracker.example",
+					"sitename": "example",
+					"announce_state": 1,
+					"seeder_count": 42,
+					"leecher_count": 7,
+					"download_count": 100,
+					"last_announce_result": "Success",
+					"next_announce_time": 1700000200
+				}],
+				"pieces": "` + piecesB64 + `",
+				"magnet_link": "magnet:?xt=urn:btih:abc123",
+				"downloaded_ever": 4096,
+				"uploaded_ever": 8192,
+				"corrupt_ever": 0,
+				"have_valid": 1024,
+				"piece_count": 10,
+				"piece_size": 262144,
+				"comment": "a comment",
+				"creator": "mkbt",
+				"date_created": 1690000000,
+				"is_private": true,
+				"seconds_downloading": 3600,
+				"seconds_seeding": 7200,
+				"recheck_progress": 1.0,
+				"metadata_percent_complete": 1.0
+			}]},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	details, err := jsonrpcProtocol{}.TorrentGetDetail(context.Background(), NewTransport(srv.URL), []any{int64(7)})
+	require.NoError(t, err)
+	require.Len(t, details, 1)
+
+	assertDetail(t, details[0])
+
+	// The request asks for the detail field set (including the detail-only fields)
+	// and the selected id.
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+	assert.Equal(t, "torrent_get", gotBody["method"])
+	params, ok := gotBody["params"].(map[string]any)
+	require.True(t, ok)
+	fields := fieldStrings(t, params["fields"])
+	assert.Contains(t, fields, "files")
+	assert.Contains(t, fields, "tracker_stats")
+	assert.Contains(t, fields, "pieces")
+	assert.Contains(t, fields, "magnet_link")
+	assert.Equal(t, []any{float64(7)}, params["ids"])
+}
+
+// TestBespokeProtocolTorrentGetDetail decodes a full camelCase detail response,
+// exercising the bespoke parity case: wanted is a 0/1 integer array (not
+// booleans), and pieces is a base64 bitfield. The decoded shape must match the
+// JSON-RPC golden exactly.
+func TestBespokeProtocolTorrentGetDetail(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"arguments": {"torrents": [{
+				"id": 7,
+				"hashString": "abc123",
+				"name": "ubuntu.iso",
+				"status": 4,
+				"files": [
+					{"name": "ubuntu.iso", "length": 2048, "bytesCompleted": 1024},
+					{"name": "readme.txt", "length": 256, "bytesCompleted": 0}
+				],
+				"wanted": [1, 0],
+				"priorities": [1, -1],
+				"peers": [{
+					"address": "10.0.0.1",
+					"port": 51413,
+					"clientName": "Transmission 4.0",
+					"progress": 0.5,
+					"rateToClient": 1000,
+					"rateToPeer": 200,
+					"flagStr": "TDdEi",
+					"isEncrypted": true
+				}],
+				"trackerStats": [{
+					"announce": "http://tracker.example/announce",
+					"host": "tracker.example",
+					"sitename": "example",
+					"announceState": 1,
+					"seederCount": 42,
+					"leecherCount": 7,
+					"downloadCount": 100,
+					"lastAnnounceResult": "Success",
+					"nextAnnounceTime": 1700000200
+				}],
+				"pieces": "` + piecesB64 + `",
+				"magnetLink": "magnet:?xt=urn:btih:abc123",
+				"downloadedEver": 4096,
+				"uploadedEver": 8192,
+				"corruptEver": 0,
+				"haveValid": 1024,
+				"pieceCount": 10,
+				"pieceSize": 262144,
+				"comment": "a comment",
+				"creator": "mkbt",
+				"dateCreated": 1690000000,
+				"isPrivate": true,
+				"secondsDownloading": 3600,
+				"secondsSeeding": 7200,
+				"recheckProgress": 1.0,
+				"metadataPercentComplete": 1.0
+			}]},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	details, err := bespokeProtocol{}.TorrentGetDetail(context.Background(), NewTransport(srv.URL), []any{int64(7)})
+	require.NoError(t, err)
+	require.Len(t, details, 1)
+
+	assertDetail(t, details[0])
+
+	// The request asks for the camelCase detail field set and the selected id.
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+	assert.Equal(t, "torrent-get", gotBody["method"])
+	args, ok := gotBody["arguments"].(map[string]any)
+	require.True(t, ok)
+	fields := fieldStrings(t, args["fields"])
+	assert.Contains(t, fields, "files")
+	assert.Contains(t, fields, "trackerStats")
+	assert.Contains(t, fields, "pieces")
+	assert.Contains(t, fields, "magnetLink")
+}
+
+// TestDecodePiecesBitfield covers the base64 bitfield decoder's bit order, the
+// pieceCount bound (padding bits past the last piece are dropped), and the
+// graceful handling of empty or malformed input.
+func TestDecodePiecesBitfield(t *testing.T) {
+	t.Run("decodes MSB-first within each byte, bounded by pieceCount", func(t *testing.T) {
+		got := decodePiecesBitfield(piecesB64, 10)
+		assert.Equal(t,
+			[]bool{true, false, true, true, false, false, false, false, false, true},
+			got,
+		)
+	})
+
+	t.Run("drops padding bits past pieceCount", func(t *testing.T) {
+		// Same two bytes, but only 4 pieces: the trailing bits are ignored.
+		got := decodePiecesBitfield(piecesB64, 4)
+		assert.Equal(t, []bool{true, false, true, true}, got)
+	})
+
+	t.Run("empty string yields nil", func(t *testing.T) {
+		assert.Nil(t, decodePiecesBitfield("", 10))
+	})
+
+	t.Run("zero pieceCount yields nil", func(t *testing.T) {
+		assert.Nil(t, decodePiecesBitfield(piecesB64, 0))
+	})
+
+	t.Run("invalid base64 yields nil, not an error", func(t *testing.T) {
+		assert.Nil(t, decodePiecesBitfield("not base64!!", 8))
+	})
+
+	t.Run("bounds allocation by payload, not by an oversized pieceCount", func(t *testing.T) {
+		// piecesB64 decodes to 2 bytes, so the bitfield can hold at most 16
+		// bits. A malicious pieceCount must not drive the result (or its
+		// preallocation) past len(raw)*8.
+		got := decodePiecesBitfield(piecesB64, 1_000_000)
+		assert.Len(t, got, 16)
+	})
 }

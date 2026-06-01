@@ -211,6 +211,19 @@ func isTerminalControl(r rune) bool {
 	return r < 0x20 || r == 0x7F || (r >= 0x80 && r <= 0x9F)
 }
 
+// ETA formats a torrent's estimated time remaining. A negative value is
+// Transmission's "unknown / not applicable" sentinel and renders as a dash;
+// any other value is formatted as a compact Duration. It is the single source
+// of truth for the ETA sentinel rule, shared by the CLI list output and the
+// future TUI so neither re-encodes the convention.
+func ETA(eta int64) string {
+	if eta < 0 {
+		return "-"
+	}
+
+	return Duration(eta)
+}
+
 // Duration formats a number of seconds as a compact "Nd Nh Nm Ns" string,
 // omitting leading zero units (e.g. 273905 -> "3d 4h 5m 5s"). Zero yields "0s".
 func Duration(seconds int64) string {

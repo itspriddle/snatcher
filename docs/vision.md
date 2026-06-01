@@ -83,6 +83,20 @@ Use "snatcher [command] --help" for more information about a command.
 - https://github.com/charmbracelet/huh - form fields
 - https://github.com/charmbracelet/gum - possible references, but not direct use
 
+## UI
+
+### Status Bar
+
+- Transmission version
+- Transmission hostname
+- Global download
+- Global download limit
+- Global upload
+- Global upload limit
+- Free space on disk
+- Total space used by torrents
+
+
 ### Keybindings
 
 #### Global
@@ -136,14 +150,12 @@ Always visible.
 
 - `s` - start selected torrent
 - `p` - pause selected torrent
-- `i` - set prio?
 - `v` - verify selected torrent
 - `r` - reannounce selected torrent to trackers
 - `q` - move in queue
 - `d` - delete selected torrent (with confirmation, ask for data too)
 - `y` - copy magnet link for selected torrent to clipboard
 - `l` - set labels for selected torrent
-- `enter` - show torrent details pane, focus
 - `space` - open action menu
     - force start
     - start
@@ -167,18 +179,34 @@ Always visible.
         - seed ratio limit (checkbox? and number input)
         - stop seeding when inactive for (checkbox? and number input for minutes)
 
-- `O` - show details > overview tab for selected torrent
+- `enter` / `O` - show details > overview tab for selected torrent
 - `F` - show details > files tab
+- `C` - show details > pieces tab ??
+- `P` - show details > peers tab ??
 - `T` - show details > trackers tab
-- `P` - show details > peers tab
-- `L` - show details > labels tab
 - `esc` - select no torrent (details stays if visible, but empty)
 
 Todo: need something to search in the table, like / in vim, but taken above...
 
 #### Torrents Window > Torrent Filter Pane (Left)
 
-Notes: all, downloading, completed, etc nav list
+- Status
+    - All (#)
+    - Downloading (#)
+    - Completed (#)
+    - Active (#)
+    - Inactive (#)
+    - Stopped (#)
+    - Error (#)
+    - Waiting (#)
+- Labels (dynamic)
+    - Label 1 (#)
+    - No Label (#)
+- Trackers
+    - Tracker 1 (#)
+    - Tracker 2 (#)
+
+With an item selected:
 
 - `s` - start all (with confirmation)
 - `p` - pause all (with confirmation)

@@ -64,7 +64,7 @@ func NewInfoCmd() *cobra.Command {
 				return output.JSON(cmd.OutOrStdout(), match)
 			}
 
-			writeInfoPlaintext(cmd, match, columns)
+			writeInfoPlaintext(cmd, match.Torrent, columns)
 
 			return nil
 		},
@@ -79,48 +79,51 @@ func NewInfoCmd() *cobra.Command {
 	return cmd
 }
 
-// resolveTorrent fetches the single torrent named by sel. A numeric id narrows
-// the fetch with the backend's RPC-side id filter; a hash fetches all torrents
-// and matches on Hash, consistent with how mutation commands resolve hashes. In
-// both cases the result is matched in memory so the command is correct even if a
-// backend over-returns. It returns an error with a non-zero exit when no torrent
-// matches, naming the original argument (arg).
-func resolveTorrent(cmd *cobra.Command, backend torrent.Backend, serverURL string, sel torrent.Selector, arg string) (torrent.Torrent, error) {
-	var (
-		ids      []int64
-		wantID   int64
-		byID     bool
-		wantHash string
-	)
-
-	switch {
-	case len(sel.IDs) == 1:
-		ids = sel.IDs
-		wantID = sel.IDs[0]
-		byID = true
-	case len(sel.Hashes) == 1:
-		wantHash = sel.Hashes[0]
+// resolveTorrent fetches the full detail view of the single torrent named by
+// sel. An id selector goes straight to TorrentDetail in one round-trip. A hash
+// selector first resolves the hash to its numeric id with a cheap, server-side-
+// filtered list (PollFields, one round-trip), then fetches the detail by that id
+// — TorrentDetail is keyed by id, so a hash costs one extra lookup. It returns an
+// error with a non-zero exit when no torrent matches, naming the original
+// argument (arg).
+func resolveTorrent(cmd *cobra.Command, backend torrent.Backend, serverURL string, sel torrent.Selector, arg string) (torrent.TorrentDetail, error) {
+	id, err := resolveTorrentID(cmd, backend, serverURL, sel, arg)
+	if err != nil {
+		return torrent.TorrentDetail{}, err
 	}
 
-	torrents, err := backend.ListTorrents(cmd.Context(), ids)
+	detail, err := backend.TorrentDetail(cmd.Context(), id)
 	if err != nil {
-		return torrent.Torrent{}, fmt.Errorf("connecting to %s: %w", serverURL, err)
+		return torrent.TorrentDetail{}, fmt.Errorf("connecting to %s: %w", serverURL, err)
+	}
+
+	return detail, nil
+}
+
+// resolveTorrentID returns the numeric id for the single torrent named by sel.
+// An id selector returns its id directly. A hash selector is filtered server-side
+// in one round-trip (PollFields, cheap) and matched in memory so the lookup is
+// correct even if a backend over-returns. It errors, naming arg, when no torrent
+// matches.
+func resolveTorrentID(cmd *cobra.Command, backend torrent.Backend, serverURL string, sel torrent.Selector, arg string) (int64, error) {
+	if len(sel.IDs) == 1 {
+		return sel.IDs[0], nil
+	}
+
+	wantHash := sel.Hashes[0]
+
+	torrents, err := backend.ListTorrents(cmd.Context(), sel, torrent.PollFields...)
+	if err != nil {
+		return 0, fmt.Errorf("connecting to %s: %w", serverURL, err)
 	}
 
 	for _, t := range torrents {
-		if byID {
-			if t.ID == wantID {
-				return t, nil
-			}
-			continue
-		}
-
 		if strings.EqualFold(t.Hash, wantHash) {
-			return t, nil
+			return t.ID, nil
 		}
 	}
 
-	return torrent.Torrent{}, fmt.Errorf("no torrent matched: %s", arg)
+	return 0, fmt.Errorf("no torrent matched: %s", arg)
 }
 
 // writeInfoPlaintext renders one torrent's fields as a vertical "key: value"

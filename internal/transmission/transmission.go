@@ -24,8 +24,13 @@ type Backend struct {
 	client *rpc.Client
 }
 
-// Compile-time assertion that *Backend satisfies torrent.Backend.
-var _ torrent.Backend = (*Backend)(nil)
+// Compile-time assertions that *Backend satisfies the neutral interfaces: the
+// read-only Reader, the write-side Mutator, and the composed Backend.
+var (
+	_ torrent.Reader  = (*Backend)(nil)
+	_ torrent.Mutator = (*Backend)(nil)
+	_ torrent.Backend = (*Backend)(nil)
+)
 
 // Compile-time assertion that *Backend satisfies APICaller.
 var _ APICaller = (*Backend)(nil)
@@ -148,12 +153,14 @@ func (b *Backend) Stats(ctx context.Context) (torrent.Stats, error) {
 }
 
 // ListTorrents performs a TorrentGet round-trip and returns the neutral
-// Torrents. A nil or empty ids slice returns all torrents; otherwise the server
-// filters to the given numeric ids. RPC failures are mapped to the neutral
-// sentinels. The returned slice is non-nil on success, empty when there are no
-// matching torrents.
-func (b *Backend) ListTorrents(ctx context.Context, ids []int64) ([]torrent.Torrent, error) {
-	raw, err := b.client.TorrentGet(ctx, ids)
+// Torrents matched by sel. An All selector (or one whose RPCIDs is empty)
+// returns every torrent; otherwise the server filters to the selected
+// ids/hashes. The fields projection is translated to the rpc client's canonical
+// snake_case keys; an empty projection requests the full set. RPC failures are
+// mapped to the neutral sentinels. The returned slice is non-nil on success,
+// empty when there are no matching torrents.
+func (b *Backend) ListTorrents(ctx context.Context, sel torrent.Selector, fields ...torrent.Field) ([]torrent.Torrent, error) {
+	raw, err := b.client.TorrentGet(ctx, sel.RPCIDs(), torrent.FieldKeys(fields))
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -164,6 +171,23 @@ func (b *Backend) ListTorrents(ctx context.Context, ids []int64) ([]torrent.Torr
 	}
 
 	return torrents, nil
+}
+
+// TorrentDetail performs a single detail TorrentGet round-trip for the torrent
+// with the given numeric id and maps the canonical rpc.TorrentDetail to the
+// neutral torrent.TorrentDetail. An id that matches no torrent returns an error.
+// RPC failures are mapped to the neutral sentinels.
+func (b *Backend) TorrentDetail(ctx context.Context, id int64) (torrent.TorrentDetail, error) {
+	raw, err := b.client.TorrentGetDetail(ctx, []any{id})
+	if err != nil {
+		return torrent.TorrentDetail{}, mapError(err)
+	}
+
+	if len(raw) == 0 {
+		return torrent.TorrentDetail{}, fmt.Errorf("no torrent matched id %d", id)
+	}
+
+	return mapTorrentDetail(raw[0]), nil
 }
 
 // StartTorrents resumes the torrents matched by sel, dispatching to
@@ -257,6 +281,36 @@ func (b *Backend) SetTorrents(ctx context.Context, sel torrent.Selector, changes
 	return mapError(b.client.TorrentSet(ctx, sel.RPCIDs(), settings))
 }
 
+// SetFiles applies per-file selection and priority changes to the torrents
+// matched by sel, routing them through rpc.Client.TorrentSet as the canonical
+// snake_case torrent-set arguments files_wanted / files_unwanted / priority_high
+// / priority_normal / priority_low. The rpc layer translates each to its wire
+// spelling — verbatim snake_case for JSON-RPC 2.0, the mechanical "_"->"-" kebab
+// transform for bespoke (none of these keys is a camelCase exception). Only the
+// non-empty FileChanges fields are sent; an empty FileChanges issues no
+// torrent-set arguments (a no-op). An All selector omits the ids argument so the
+// server targets every torrent. RPC failures are mapped to the neutral sentinels.
+func (b *Backend) SetFiles(ctx context.Context, sel torrent.Selector, changes torrent.FileChanges) error {
+	settings := make(map[string]any, 5)
+	if len(changes.Wanted) > 0 {
+		settings["files_wanted"] = changes.Wanted
+	}
+	if len(changes.Unwanted) > 0 {
+		settings["files_unwanted"] = changes.Unwanted
+	}
+	if len(changes.PriorityHigh) > 0 {
+		settings["priority_high"] = changes.PriorityHigh
+	}
+	if len(changes.PriorityNormal) > 0 {
+		settings["priority_normal"] = changes.PriorityNormal
+	}
+	if len(changes.PriorityLow) > 0 {
+		settings["priority_low"] = changes.PriorityLow
+	}
+
+	return mapError(b.client.TorrentSet(ctx, sel.RPCIDs(), settings))
+}
+
 // AddTorrent adds a single torrent via the rpc client's TorrentAdd. It
 // base64-encodes raw Metainfo into the RPC metainfo field, maps URL/Magnet to
 // the RPC filename field, and passes DownloadDir/Paused/Labels through. The
@@ -334,6 +388,33 @@ func (b *Backend) TestPort(ctx context.Context) (torrent.PortTest, error) {
 	}, nil
 }
 
+// FreeSpace performs a FreeSpace round-trip for path and maps the canonical
+// rpc.FreeSpaceResult to the neutral torrent.FreeSpace. TotalBytes is carried
+// through as reported (0 when the server is too old to return total capacity, in
+// which case the neutral json tag omits it). RPC failures are mapped to the
+// neutral sentinels.
+func (b *Backend) FreeSpace(ctx context.Context, path string) (torrent.FreeSpace, error) {
+	result, err := b.client.FreeSpace(ctx, path)
+	if err != nil {
+		return torrent.FreeSpace{}, mapError(err)
+	}
+
+	return torrent.FreeSpace{
+		Path:       result.Path,
+		SizeBytes:  result.SizeBytes,
+		TotalBytes: result.TotalBytes,
+	}, nil
+}
+
+// Close releases any resources held by the backend. The Transmission adapter is
+// stateless (it holds only an rpc.Client over the shared HTTP transport and
+// caches nothing on disk), so Close is a no-op that always returns nil. It
+// exists to satisfy torrent.Backend's cleanup seam for a future pooled or
+// long-lived backend.
+func (b *Backend) Close() error {
+	return nil
+}
+
 // CallAPI issues an arbitrary RPC method with raw arguments and returns the
 // normalized APIResponse. Transport and auth failures are mapped to the neutral
 // sentinels via mapError; an RPC-level non-success is *not* mapped to a Go error
@@ -385,6 +466,53 @@ func mapTorrent(t rpc.Torrent) torrent.Torrent {
 		QueuePosition:      t.QueuePosition,
 		IsFinished:         t.IsFinished,
 		IsStalled:          t.IsStalled,
+	}
+}
+
+// mapTorrentDetail converts a canonical rpc.TorrentDetail into the neutral
+// torrent.TorrentDetail: the embedded Torrent is mapped via mapTorrent (so the
+// status promotion applies), and the detail collections and scalars are copied
+// across. The rpc and neutral File/Peer/Tracker types share identical layouts,
+// so each slice converts element-wise.
+func mapTorrentDetail(d rpc.TorrentDetail) torrent.TorrentDetail {
+	files := make([]torrent.File, len(d.Files))
+	for i, f := range d.Files {
+		files[i] = torrent.File(f)
+	}
+
+	peers := make([]torrent.Peer, len(d.Peers))
+	for i, p := range d.Peers {
+		peers[i] = torrent.Peer(p)
+	}
+
+	trackers := make([]torrent.Tracker, len(d.Trackers))
+	for i, tr := range d.Trackers {
+		trackers[i] = torrent.Tracker(tr)
+	}
+
+	return torrent.TorrentDetail{
+		Torrent: mapTorrent(d.Torrent),
+
+		Files:    files,
+		Peers:    peers,
+		Trackers: trackers,
+		Pieces:   d.Pieces,
+
+		MagnetLink:              d.MagnetLink,
+		DownloadedEver:          d.DownloadedEver,
+		UploadedEver:            d.UploadedEver,
+		CorruptEver:             d.CorruptEver,
+		HaveValid:               d.HaveValid,
+		PieceCount:              d.PieceCount,
+		PieceSize:               d.PieceSize,
+		Comment:                 d.Comment,
+		Creator:                 d.Creator,
+		DateCreated:             d.DateCreated,
+		IsPrivate:               d.IsPrivate,
+		SecondsDownloading:      d.SecondsDownloading,
+		SecondsSeeding:          d.SecondsSeeding,
+		RecheckProgress:         d.RecheckProgress,
+		MetadataPercentComplete: d.MetadataPercentComplete,
 	}
 }
 
@@ -465,8 +593,9 @@ func rpcSettingKey(key string) string {
 // preserving the original error in the wrap chain (so errors.Is against the rpc
 // sentinels still works and the server message is retained). An rpc.ErrAuth
 // becomes torrent.ErrAuth; rpc.ErrUnsupported becomes torrent.ErrUnsupported;
-// rpc.ErrTransport and rpc.ErrRPC become torrent.ErrUnreachable. A nil error is
-// returned unchanged.
+// rpc.ErrRPC (a server-side application error) becomes torrent.ErrServer; any
+// other failure — including rpc.ErrTransport — becomes torrent.ErrUnreachable.
+// A nil error is returned unchanged.
 func mapError(err error) error {
 	if err == nil {
 		return nil
@@ -478,6 +607,10 @@ func mapError(err error) error {
 
 	if errors.Is(err, rpc.ErrUnsupported) {
 		return fmt.Errorf("%w: %w", torrent.ErrUnsupported, err)
+	}
+
+	if errors.Is(err, rpc.ErrRPC) {
+		return fmt.Errorf("%w: %w", torrent.ErrServer, err)
 	}
 
 	return fmt.Errorf("%w: %w", torrent.ErrUnreachable, err)
