@@ -62,14 +62,29 @@ Use "snatcher [command] --help" for more information about a command.
 
 ### Aliases
 
-- [ ] `snatcher torrent up` / `snatcher upload`
 - [x] `snatcher torrent mv`
 - [x] `snatcher torrent rm`
 - [x] `snatcher torrent ls`
+- [x] `snatcher torrent pause` => `snatcher torrent stop`
+
+### Renames
+
+- [ ] `snatcher torrent set` -> `snatcher torrent update` 
+- [ ] `snatcher torrent upload` -> `snatcher torrent add` / `snatcher add`
+- [ ] `snatcher torrent info` -> `snatcher torrent show` 
+- [ ] `snatcher server settings set` -> `snatcher server settings update` 
 
 ### Helpers?
 
-- `snatcher server toggle-alt-speed` - toggle alt-speed, show new state
+- [ ] `snatcher server bandwidth show [download|upload] [--alt]` - show speeds (current and limits)
+- [ ] `snatcher server bandwidth update <download|upload> [--alt]...` - set up/down speed limits
+- [ ] `snatcher server bandwidth alt on|off|toggle` - toggle/set alt-speed
+- [ ] `snatcher torrent label add|rm|set|ls ...` - manage labels for torrent(s)
+- [ ] `snatcher server doctor` - check for common issues with server connection, auth, config, network (server side, port) etc
+    - show torrents with errors?
+    - show old torrents with low seeding?
+    - top X largest torrents?
+- [ ] `snatcher torrent verify --all-with-errors` - verify all torrents with error status
 
 ## TUI
 
@@ -77,6 +92,7 @@ Use "snatcher [command] --help" for more information about a command.
     - Torrents (Default)
     - Tracker Search (Prowlarr)
     - Settings
+    - (V2) File manager, view by size and seeding info to determine whether to delete
 
 - https://github.com/daltonsw/bubbleup - popups
 - https://github.com/lrstanley/bubblezone - mouse?
@@ -324,3 +340,15 @@ Tabs: General (Snatcher), Polling, Download, Network, Bandwidth, Queue
 - `[` / `]` - move between tabs, cycle
 - `tab` / `shift-tab` / `up` / `down` - move between fields, cycle on current tab only
 - `enter` - edit field, if select dropdown open it, if toggle toggle it, etc
+
+---
+
+## Bugs
+
+Auth issue:
+
+```
+scarif:~/snatcher $ ./snatcher server add --name default --url 'https://torrents.priddle.network/transmission/rpc'
+Password:
+Error: secrets: deleting password for "https://torrents.priddle.network/transmission/rpc": exec: "dbus-launch": executable file not found in $PATH
+```
