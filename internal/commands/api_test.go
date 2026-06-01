@@ -2,7 +2,6 @@ package commands
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +15,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/torrent/torrenttest"
 )
 
 // sessionGetResponse is a bespoke session-get payload used as the canned answer
@@ -154,57 +153,10 @@ func TestAPINotConfigured(t *testing.T) {
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-// noAPIBackend implements torrent.Backend but not transmission.APICaller, so it
-// exercises the missing-capability branch of apiCaller.
-type noAPIBackend struct{}
-
-func (noAPIBackend) ServerInfo(context.Context) (torrent.ServerInfo, error) {
-	return torrent.ServerInfo{}, nil
-}
-func (noAPIBackend) Stats(context.Context) (torrent.Stats, error) { return torrent.Stats{}, nil }
-func (noAPIBackend) ListTorrents(context.Context, torrent.Selector, ...torrent.Field) ([]torrent.Torrent, error) {
-	return nil, nil
-}
-func (noAPIBackend) TorrentDetail(context.Context, int64) (torrent.TorrentDetail, error) {
-	return torrent.TorrentDetail{}, nil
-}
-func (noAPIBackend) StartTorrents(context.Context, torrent.Selector, bool) error { return nil }
-func (noAPIBackend) StopTorrents(context.Context, torrent.Selector) error        { return nil }
-func (noAPIBackend) VerifyTorrents(context.Context, torrent.Selector) error      { return nil }
-func (noAPIBackend) ReannounceTorrents(context.Context, torrent.Selector) error  { return nil }
-func (noAPIBackend) QueueMoveTop(context.Context, torrent.Selector) error        { return nil }
-func (noAPIBackend) QueueMoveUp(context.Context, torrent.Selector) error         { return nil }
-func (noAPIBackend) QueueMoveDown(context.Context, torrent.Selector) error       { return nil }
-func (noAPIBackend) QueueMoveBottom(context.Context, torrent.Selector) error     { return nil }
-func (noAPIBackend) RemoveTorrents(context.Context, torrent.Selector, bool) error {
-	return nil
-}
-func (noAPIBackend) MoveTorrents(context.Context, torrent.Selector, string, bool) error {
-	return nil
-}
-func (noAPIBackend) SetTorrents(context.Context, torrent.Selector, map[string]any) error {
-	return nil
-}
-func (noAPIBackend) SetFiles(context.Context, torrent.Selector, torrent.FileChanges) error {
-	return nil
-}
-func (noAPIBackend) AddTorrent(context.Context, torrent.AddRequest) (torrent.AddResult, error) {
-	return torrent.AddResult{}, nil
-}
-func (noAPIBackend) GetSession(context.Context) (torrent.SessionSettings, error) {
-	return torrent.SessionSettings{}, nil
-}
-func (noAPIBackend) SetSession(context.Context, map[string]any) error { return nil }
-func (noAPIBackend) TestPort(context.Context) (torrent.PortTest, error) {
-	return torrent.PortTest{}, nil
-}
-func (noAPIBackend) FreeSpace(context.Context, string) (torrent.FreeSpace, error) {
-	return torrent.FreeSpace{}, nil
-}
-func (noAPIBackend) Close() error { return nil }
-
 func TestAPIMissingCapabilityErrors(t *testing.T) {
-	_, err := apiCaller(noAPIBackend{})
+	// The torrenttest fake is a torrent.Backend but not a transmission.APICaller,
+	// so it exercises the missing-capability branch of apiCaller.
+	_, err := apiCaller(&torrenttest.Backend{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "backend does not support raw API calls")
 }
