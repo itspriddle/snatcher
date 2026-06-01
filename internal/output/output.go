@@ -3,7 +3,7 @@
 // can be read by eye or piped into automation.
 //
 // Render selection rule: --jq implies JSON input; plaintext is the default when
-// neither --json nor --jq is set. The helpers here are vendor-neutral and have no
+// neither --json nor --jq is set. The helpers here are generic and have no
 // dependency on the Transmission layer.
 package output
 

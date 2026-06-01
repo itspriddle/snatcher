@@ -266,7 +266,7 @@ func TestClientTorrentGetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	require.Len(t, torrents, 1)
 	assert.Equal(t, int64(42), torrents[0].ID)
 	assert.Equal(t, "deadbeef", torrents[0].Hash)
-	assert.Equal(t, 6, torrents[0].Status)
+	assert.Equal(t, StatusSeeding, torrents[0].Status)
 }
 
 func TestClientTorrentAddDispatchesThroughNegotiatedProtocol(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // settingType is the value type of a session setting, driving how a raw string
@@ -100,7 +100,7 @@ type settingDef struct {
 	desc string
 
 	// accessor returns the setting's current typed value from a session snapshot.
-	accessor func(torrent.SessionSettings) any
+	accessor func(transmission.SessionSettings) any
 }
 
 // settingRegistry is the single source of truth for every session setting the
@@ -112,130 +112,130 @@ var settingRegistry = []settingDef{
 	// Download.
 	{key: "download-dir", category: categoryDownload, typ: typeString, def: "~/Downloads",
 		desc:     "Default directory for completed downloads",
-		accessor: func(s torrent.SessionSettings) any { return s.DownloadDir }},
+		accessor: func(s transmission.SessionSettings) any { return s.DownloadDir }},
 	{key: "start-added-torrents", category: categoryDownload, typ: typeBool, def: true,
 		desc:     "Start torrents automatically when added",
-		accessor: func(s torrent.SessionSettings) any { return s.StartAddedTorrents }},
+		accessor: func(s transmission.SessionSettings) any { return s.StartAddedTorrents }},
 	{key: "rename-partial-files", category: categoryDownload, typ: typeBool, def: true,
 		desc:     "Append .part to incomplete files",
-		accessor: func(s torrent.SessionSettings) any { return s.RenamePartialFiles }},
+		accessor: func(s transmission.SessionSettings) any { return s.RenamePartialFiles }},
 	{key: "incomplete-dir-enabled", category: categoryDownload, typ: typeBool, def: false,
 		desc:     "Keep incomplete downloads in a separate directory",
-		accessor: func(s torrent.SessionSettings) any { return s.IncompleteDirEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.IncompleteDirEnabled }},
 	{key: "incomplete-dir", category: categoryDownload, typ: typeString, def: "",
 		desc:     "Directory for incomplete downloads (when enabled)",
-		accessor: func(s torrent.SessionSettings) any { return s.IncompleteDir }},
+		accessor: func(s transmission.SessionSettings) any { return s.IncompleteDir }},
 	{key: "seed-ratio-limited", category: categoryDownload, typ: typeBool, def: false,
 		desc:     "Stop seeding at the global seed-ratio limit",
-		accessor: func(s torrent.SessionSettings) any { return s.SeedRatioLimited }},
+		accessor: func(s transmission.SessionSettings) any { return s.SeedRatioLimited }},
 	{key: "seed-ratio-limit", category: categoryDownload, typ: typeFloat, def: 2.0,
 		desc:     "Global seed ratio to stop seeding at (when limited)",
-		accessor: func(s torrent.SessionSettings) any { return s.SeedRatioLimit }},
+		accessor: func(s transmission.SessionSettings) any { return s.SeedRatioLimit }},
 	{key: "idle-seeding-limit-enabled", category: categoryDownload, typ: typeBool, def: false,
 		desc:     "Stop seeding torrents that have been idle too long",
-		accessor: func(s torrent.SessionSettings) any { return s.IdleSeedingLimitEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.IdleSeedingLimitEnabled }},
 	{key: "idle-seeding-limit", category: categoryDownload, typ: typeInt, def: 30,
 		desc:     "Idle time in minutes before stopping seeding (when enabled)",
-		accessor: func(s torrent.SessionSettings) any { return s.IdleSeedingLimit }},
+		accessor: func(s transmission.SessionSettings) any { return s.IdleSeedingLimit }},
 	{key: "cache-size-mib", category: categoryDownload, typ: typeInt, def: 4,
 		desc:     "Disk cache size in MiB",
-		accessor: func(s torrent.SessionSettings) any { return s.CacheSizeMiB }},
+		accessor: func(s transmission.SessionSettings) any { return s.CacheSizeMiB }},
 
 	// Network.
 	{key: "peer-port", category: categoryNetwork, typ: typeInt, def: 51413,
 		desc:     "Port to listen for incoming peer connections",
-		accessor: func(s torrent.SessionSettings) any { return s.PeerPort }},
+		accessor: func(s transmission.SessionSettings) any { return s.PeerPort }},
 	{key: "peer-port-random-on-start", category: categoryNetwork, typ: typeBool, def: false,
 		desc:     "Pick a random peer port on each start",
-		accessor: func(s torrent.SessionSettings) any { return s.PeerPortRandomOnStart }},
+		accessor: func(s transmission.SessionSettings) any { return s.PeerPortRandomOnStart }},
 	{key: "port-forwarding-enabled", category: categoryNetwork, typ: typeBool, def: true,
 		desc:     "Request UPnP/NAT-PMP port forwarding",
-		accessor: func(s torrent.SessionSettings) any { return s.PortForwardingEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.PortForwardingEnabled }},
 	{key: "encryption", category: categoryNetwork, typ: typeEnum, def: "preferred",
 		allowed:  []string{"allowed", "preferred", "required"},
 		desc:     "Peer encryption mode (allowed, preferred, required)",
-		accessor: func(s torrent.SessionSettings) any { return s.Encryption }},
+		accessor: func(s transmission.SessionSettings) any { return s.Encryption }},
 	{key: "peer-limit-global", category: categoryNetwork, typ: typeInt, def: 200,
 		desc:     "Maximum peer connections across all torrents",
-		accessor: func(s torrent.SessionSettings) any { return s.PeerLimitGlobal }},
+		accessor: func(s transmission.SessionSettings) any { return s.PeerLimitGlobal }},
 	{key: "peer-limit-per-torrent", category: categoryNetwork, typ: typeInt, def: 50,
 		desc:     "Maximum peer connections per torrent",
-		accessor: func(s torrent.SessionSettings) any { return s.PeerLimitPerTorrent }},
+		accessor: func(s transmission.SessionSettings) any { return s.PeerLimitPerTorrent }},
 	{key: "pex-enabled", category: categoryNetwork, typ: typeBool, def: true,
 		desc:     "Enable Peer Exchange (PEX)",
-		accessor: func(s torrent.SessionSettings) any { return s.PexEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.PexEnabled }},
 	{key: "dht-enabled", category: categoryNetwork, typ: typeBool, def: true,
 		desc:     "Enable the Distributed Hash Table (DHT)",
-		accessor: func(s torrent.SessionSettings) any { return s.DHTEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.DHTEnabled }},
 	{key: "lpd-enabled", category: categoryNetwork, typ: typeBool, def: false,
 		desc:     "Enable Local Peer Discovery (LPD)",
-		accessor: func(s torrent.SessionSettings) any { return s.LPDEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.LPDEnabled }},
 	{key: "utp-enabled", category: categoryNetwork, typ: typeBool, def: true,
 		desc:     "Enable the uTP transport protocol",
-		accessor: func(s torrent.SessionSettings) any { return s.UTPEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.UTPEnabled }},
 	{key: "blocklist-enabled", category: categoryNetwork, typ: typeBool, def: false,
 		desc:     "Block peers listed in the blocklist",
-		accessor: func(s torrent.SessionSettings) any { return s.BlocklistEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.BlocklistEnabled }},
 	{key: "blocklist-url", category: categoryNetwork, typ: typeString, def: "http://www.example.com/blocklist",
 		desc:     "URL to fetch the peer blocklist from",
-		accessor: func(s torrent.SessionSettings) any { return s.BlocklistURL }},
+		accessor: func(s transmission.SessionSettings) any { return s.BlocklistURL }},
 	{key: "blocklist-size", category: categoryNetwork, typ: typeInt, def: nil, readOnly: true,
-		accessor: func(s torrent.SessionSettings) any { return s.BlocklistSize }},
+		accessor: func(s transmission.SessionSettings) any { return s.BlocklistSize }},
 
 	// Bandwidth.
 	{key: "speed-limit-down-enabled", category: categoryBandwidth, typ: typeBool, def: false,
 		desc:     "Enable the global download speed limit",
-		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitDownEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.SpeedLimitDownEnabled }},
 	{key: "speed-limit-down", category: categoryBandwidth, typ: typeInt64, def: int64(100),
 		desc:     "Global download speed limit in KB/s (when enabled)",
-		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitDown }},
+		accessor: func(s transmission.SessionSettings) any { return s.SpeedLimitDown }},
 	{key: "speed-limit-up-enabled", category: categoryBandwidth, typ: typeBool, def: false,
 		desc:     "Enable the global upload speed limit",
-		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitUpEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.SpeedLimitUpEnabled }},
 	{key: "speed-limit-up", category: categoryBandwidth, typ: typeInt64, def: int64(100),
 		desc:     "Global upload speed limit in KB/s (when enabled)",
-		accessor: func(s torrent.SessionSettings) any { return s.SpeedLimitUp }},
+		accessor: func(s transmission.SessionSettings) any { return s.SpeedLimitUp }},
 	{key: "alt-speed-enabled", category: categoryBandwidth, typ: typeBool, def: false,
 		desc:     "Use the alternative (throttled) speed limits now",
-		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.AltSpeedEnabled }},
 	{key: "alt-speed-down", category: categoryBandwidth, typ: typeInt64, def: int64(50),
 		desc:     "Alternative download speed limit in KB/s",
-		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedDown }},
+		accessor: func(s transmission.SessionSettings) any { return s.AltSpeedDown }},
 	{key: "alt-speed-up", category: categoryBandwidth, typ: typeInt64, def: int64(50),
 		desc:     "Alternative upload speed limit in KB/s",
-		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedUp }},
+		accessor: func(s transmission.SessionSettings) any { return s.AltSpeedUp }},
 	{key: "alt-speed-time-enabled", category: categoryBandwidth, typ: typeBool, def: false,
 		desc:     "Switch to alternative speeds on a daily schedule",
-		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.AltSpeedTimeEnabled }},
 	{key: "alt-speed-time-begin", category: categoryBandwidth, typ: typeInt, def: 540,
 		desc:     "Alternative-speed schedule start (minutes after midnight)",
-		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeBegin }},
+		accessor: func(s transmission.SessionSettings) any { return s.AltSpeedTimeBegin }},
 	{key: "alt-speed-time-end", category: categoryBandwidth, typ: typeInt, def: 1020,
 		desc:     "Alternative-speed schedule end (minutes after midnight)",
-		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeEnd }},
+		accessor: func(s transmission.SessionSettings) any { return s.AltSpeedTimeEnd }},
 	{key: "alt-speed-time-day", category: categoryBandwidth, typ: typeInt, def: 127,
 		desc:     "Days the alternative-speed schedule runs (bitfield, Sun=1)",
-		accessor: func(s torrent.SessionSettings) any { return s.AltSpeedTimeDay }},
+		accessor: func(s transmission.SessionSettings) any { return s.AltSpeedTimeDay }},
 
 	// Queue.
 	{key: "download-queue-enabled", category: categoryQueue, typ: typeBool, def: true,
 		desc:     "Limit how many torrents download at once",
-		accessor: func(s torrent.SessionSettings) any { return s.DownloadQueueEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.DownloadQueueEnabled }},
 	{key: "download-queue-size", category: categoryQueue, typ: typeInt, def: 5,
 		desc:     "Maximum torrents downloading at once (when enabled)",
-		accessor: func(s torrent.SessionSettings) any { return s.DownloadQueueSize }},
+		accessor: func(s transmission.SessionSettings) any { return s.DownloadQueueSize }},
 	{key: "seed-queue-enabled", category: categoryQueue, typ: typeBool, def: false,
 		desc:     "Limit how many torrents seed at once",
-		accessor: func(s torrent.SessionSettings) any { return s.SeedQueueEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.SeedQueueEnabled }},
 	{key: "seed-queue-size", category: categoryQueue, typ: typeInt, def: 10,
 		desc:     "Maximum torrents seeding at once (when enabled)",
-		accessor: func(s torrent.SessionSettings) any { return s.SeedQueueSize }},
+		accessor: func(s transmission.SessionSettings) any { return s.SeedQueueSize }},
 	{key: "queue-stalled-enabled", category: categoryQueue, typ: typeBool, def: true,
 		desc:     "Ignore stalled torrents when counting the queue",
-		accessor: func(s torrent.SessionSettings) any { return s.QueueStalledEnabled }},
+		accessor: func(s transmission.SessionSettings) any { return s.QueueStalledEnabled }},
 	{key: "queue-stalled-minutes", category: categoryQueue, typ: typeInt, def: 30,
 		desc:     "Idle minutes before a transfer counts as stalled",
-		accessor: func(s torrent.SessionSettings) any { return s.QueueStalledMinutes }},
+		accessor: func(s transmission.SessionSettings) any { return s.QueueStalledMinutes }},
 }
 
 // settingsByKey indexes the registry by key for O(1) lookup. It is built once at
@@ -825,7 +825,7 @@ func newSettingsResetCmd() *cobra.Command {
 // definitions from a session snapshot, in registry order. Values are the native
 // typed values (never sanitized — JSON/jq is a structured contract). An empty
 // set serializes as "[]" rather than "null".
-func settingRows(defs []settingDef, session torrent.SessionSettings) []settingRow {
+func settingRows(defs []settingDef, session transmission.SessionSettings) []settingRow {
 	rows := make([]settingRow, len(defs))
 	for i, def := range defs {
 		rows[i] = settingRow{
@@ -842,7 +842,7 @@ func settingRows(defs []settingDef, session torrent.SessionSettings) []settingRo
 // an aligned CATEGORY KEY VALUE table with a header on a TTY, or plain
 // tab-separated, header-less rows when piped or when NO_COLOR is set. It mirrors
 // the list command's TTY/piped split (isTTY).
-func writeSettingsPlaintext(cmd *cobra.Command, defs []settingDef, session torrent.SessionSettings) {
+func writeSettingsPlaintext(cmd *cobra.Command, defs []settingDef, session transmission.SessionSettings) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {
@@ -857,7 +857,7 @@ func writeSettingsPlaintext(cmd *cobra.Command, defs []settingDef, session torre
 // terminal control sequences for server-derived string settings (sanitize) so a
 // crafted download-dir cannot inject ANSI escapes. The JSON/jq paths never call
 // it.
-func settingCell(def settingDef, session torrent.SessionSettings) string {
+func settingCell(def settingDef, session transmission.SessionSettings) string {
 	v := formatSettingValue(def.accessor(session))
 	if serverDerivedSettings[def.key] {
 		v = output.SanitizeTerminal(v)
@@ -868,7 +868,7 @@ func settingCell(def settingDef, session torrent.SessionSettings) string {
 
 // writeSettingsPiped writes plain, tab-separated CATEGORY KEY VALUE rows with no
 // header — the stable scripting contract. An empty set writes nothing.
-func writeSettingsPiped(w io.Writer, defs []settingDef, session torrent.SessionSettings) {
+func writeSettingsPiped(w io.Writer, defs []settingDef, session transmission.SessionSettings) {
 	for _, def := range defs {
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", def.category, def.key, settingCell(def, session))
 	}
@@ -876,7 +876,7 @@ func writeSettingsPiped(w io.Writer, defs []settingDef, session torrent.SessionS
 
 // writeSettingsTable writes a whitespace-aligned CATEGORY KEY VALUE table with a
 // header row. An empty set writes a friendly "No settings." line.
-func writeSettingsTable(w io.Writer, defs []settingDef, session torrent.SessionSettings) {
+func writeSettingsTable(w io.Writer, defs []settingDef, session transmission.SessionSettings) {
 	if len(defs) == 0 {
 		_, _ = fmt.Fprintln(w, "No settings.")
 		return

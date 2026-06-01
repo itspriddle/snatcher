@@ -1,12 +1,16 @@
-package torrent
+package transmission
 
-import "strings"
+import (
+	"strings"
 
-// Source is the vendor-neutral classification of an upload argument: a local
-// .torrent file path, an HTTP(S) URL, or a magnet link. The upload command uses
-// it to decide how to populate an AddRequest and to tag each per-source result.
-// In output it renders as a stable lowercase token ("file"/"url"/"magnet") via
-// String(), mirroring the slug convention used elsewhere in this package.
+	"github.com/itspriddle/snatcher/internal/transmission/rpc"
+)
+
+// Source is the classification of an upload argument: a local .torrent file
+// path, an HTTP(S) URL, or a magnet link. The upload command uses it to decide
+// how to populate an AddRequest and to tag each per-source result. In output it
+// renders as a stable lowercase token ("file"/"url"/"magnet") via String(),
+// mirroring the slug convention used elsewhere in this package.
 type Source int
 
 const (
@@ -41,7 +45,7 @@ func (s Source) String() string {
 // ClassifySource classifies an upload argument into a Source. A "magnet:"
 // prefix is a magnet link; an "http://" or "https://" prefix is a URL;
 // anything else is treated as a local file path. The match is case-insensitive
-// on the scheme, mirroring the small classification helper in selector.go.
+// on the scheme.
 func ClassifySource(arg string) Source {
 	switch {
 	case hasPrefixFold(arg, "magnet:"):
@@ -64,11 +68,11 @@ func hasPrefixFold(s, prefix string) bool {
 	return strings.EqualFold(s[:len(prefix)], prefix)
 }
 
-// AddRequest is the vendor-neutral set of parameters for adding a torrent.
-// Exactly one of Metainfo, URL, or Magnet identifies the source: Metainfo is
-// the raw .torrent content (the Transmission adapter base64-encodes it on the
-// wire), URL is an HTTP(S) .torrent URL the server fetches, and Magnet is a
-// magnet link. The remaining fields are options applied to the add.
+// AddRequest is the set of parameters for adding a torrent. Exactly one of
+// Metainfo, URL, or Magnet identifies the source: Metainfo is the raw .torrent
+// content (base64-encoded on the wire), URL is an HTTP(S) .torrent URL the
+// server fetches, and Magnet is a magnet link. The remaining fields are options
+// applied to the add.
 type AddRequest struct {
 	// Metainfo is the raw .torrent file content. When set, URL and Magnet are
 	// empty.
@@ -93,19 +97,8 @@ type AddRequest struct {
 	Labels []string
 }
 
-// AddResult is the vendor-neutral result of adding a torrent. Duplicate reports
-// that the torrent was already present on the server (not an error); ID, Hash,
-// and Name still describe the existing torrent in that case.
-type AddResult struct {
-	// ID is the backend's session-scoped numeric identifier for the torrent.
-	ID int64 `json:"id"`
-
-	// Hash is the torrent's info-hash string.
-	Hash string `json:"hash"`
-
-	// Name is the torrent's display name.
-	Name string `json:"name"`
-
-	// Duplicate reports whether the torrent was already present on the server.
-	Duplicate bool `json:"duplicate"`
-}
+// AddResult is the result of adding a torrent. Duplicate reports that the
+// torrent was already present on the server (not an error); ID, Hash, and Name
+// still describe the existing torrent in that case. It is aliased from the rpc
+// client's AddResult, which decodes it off the wire with the same shape.
+type AddResult = rpc.AddResult

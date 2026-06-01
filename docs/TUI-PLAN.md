@@ -6,11 +6,11 @@ vision, window layout, exhaustive keybindings) and the `tui-design` skill
 document is authoritative for the TUI's **library stack, architecture, and
 build order**; `vision.md` remains authoritative for the **UX surface**.
 
-The TUI is pure UI-layer work: the vendor-neutral `torrent.Backend`
-(`internal/torrent`) already exposes every method the TUI needs short of
+The TUI is pure UI-layer work: the `*transmission.Client`
+(`internal/transmission`) already exposes every method the TUI needs short of
 Prowlarr — `Stats`, `GetSession`/`SetSession`, `ListTorrents`, and the full
 mutation set (start/stop/verify/reannounce/queue/remove/move/set/add). No
-backend changes are required until step 6.
+client changes are required until step 6.
 
 ## Library stack
 
@@ -33,7 +33,7 @@ Deferred (v2-ready, add when mouse lands):
 
 | Surface | Built with |
 |---------|------------|
-| Torrent list (main pane) | `bubbles/v2/table` + existing `internal/torrent` sort/filter/search transforms |
+| Torrent list (main pane) | `bubbles/v2/table` + existing `internal/transmission` sort/filter/search transforms |
 | Filter sidebar / in-list search | `bubbles/v2/list` (built-in `sahilm/fuzzy` filter) |
 | Detail pane (scrollable) | `bubbles/v2/viewport` |
 | Modals / confirmations / toasts | lipgloss `Compositor` layers |
@@ -69,18 +69,16 @@ Deferred (v2-ready, add when mouse lands):
 
 **Package placement preserves the layering rule.** TUI code lives in a new
 `internal/tui/` package (with sub-packages per window/component as it grows).
-It depends only on `torrent.Backend` plus `config`/`secrets` — never the
-concrete client, the same rule the commands follow. `internal/cli` launches it
-and injects the backend.
+It depends on `*transmission.Client` plus `config`/`secrets`, the same set the
+commands use. `internal/cli` launches it and injects the client.
 
 **Launch model.** Bare `snatcher` on a TTY launches the TUI (replacing today's
 `cmd.Help()` fallback in `internal/cli/root.go`). `--help`, an explicit
 subcommand, or non-TTY stdout keeps CLI behavior. Add `--theme` and
 `--no-nerd-font` as persistent root flags (shown in `vision.md`, not yet
 wired). `dial()` is currently unexported in `internal/commands`; expose a seam
-(`commands.Dial(...)` or a TUI constructor that takes a `torrent.Backend`) so
-`cli` can dial and inject without `internal/tui` importing the concrete
-backend.
+(`commands.Dial(...)` or a TUI constructor that takes a `*transmission.Client`)
+so `cli` can dial and inject the client into `internal/tui`.
 
 **Focus / routing is the core architecture.** The keybindings in `vision.md`
 are deeply context-dependent — the same key means different things in the
@@ -172,7 +170,7 @@ reusable fetch→update→render machine the torrent list will ride.
 ### 5. Torrent list (live)
 
 Make the torrent window live: `bubbles/v2/table` for the main pane driven by
-the existing `internal/torrent` transforms; the filter sidebar
+the existing `internal/transmission` transforms; the filter sidebar
 (`bubbles/v2/list`) drives which torrents are visible; per-row actions
 (start/stop/verify/remove/move/queue/set, copy magnet) wired to the backend
 mutations through the refresh pattern from step 3. Reuses everything above.

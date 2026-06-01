@@ -16,7 +16,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // bespokeSessionResponse is a session-get payload (kebab-case settings keys,
@@ -894,7 +894,7 @@ func TestSettingsResetNotConfigured(t *testing.T) {
 }
 
 func TestWriteSettingsTableAligned(t *testing.T) {
-	session := torrent.SessionSettings{PeerPort: 51413}
+	session := transmission.SessionSettings{PeerPort: 51413}
 
 	def, ok := lookupSetting("peer-port")
 	require.True(t, ok)
@@ -924,13 +924,13 @@ func TestWriteSettingsTableAligned(t *testing.T) {
 
 func TestWriteSettingsTableEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	writeSettingsTable(&buf, nil, torrent.SessionSettings{})
+	writeSettingsTable(&buf, nil, transmission.SessionSettings{})
 
 	assert.Equal(t, "No settings.", strings.TrimSpace(buf.String()))
 }
 
 func TestWriteSettingsTableSanitizesControlChars(t *testing.T) {
-	session := torrent.SessionSettings{DownloadDir: "\x1b[2Jmalicious"}
+	session := transmission.SessionSettings{DownloadDir: "\x1b[2Jmalicious"}
 
 	def, ok := lookupSetting("download-dir")
 	require.True(t, ok)

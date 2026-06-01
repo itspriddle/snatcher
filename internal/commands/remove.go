@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // NewRemoveCmd builds the "remove" command, which removes the torrents selected
@@ -52,7 +52,7 @@ func NewRemoveCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sel, err := torrent.ParseSelector(args, all)
+			sel, err := transmission.ParseSelector(args, all)
 			if err != nil {
 				return err
 			}
@@ -64,7 +64,7 @@ func NewRemoveCmd() *cobra.Command {
 
 			// List before removing so torrent names are available for the
 			// confirmation and output; afterward the torrents are gone.
-			torrents, err := backend.ListTorrents(cmd.Context(), torrent.Selector{All: true})
+			torrents, err := backend.ListTorrents(cmd.Context(), transmission.Selector{All: true})
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}

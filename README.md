@@ -14,8 +14,6 @@ keyring.
 
 ## Highlights
 
-- **Vendor-neutral core.** Commands depend on a neutral `Backend` interface, so
-  additional clients (e.g. qBittorrent) can slot in without rewriting commands.
 - **Transmission protocol auto-detection.** Requires **Transmission 4.0+** and
   speaks both the legacy bespoke RPC dialect (Transmission 4.0) and JSON-RPC 2.0
   (≥ 4.1.0), chosen automatically from a CSRF handshake. Older servers are
@@ -179,7 +177,6 @@ vision and Transmission RPC references.
 
 - TUI (windowed layout: torrents, settings, search)
 - Prowlarr / Torznab search integration
-- Additional backends (e.g. qBittorrent)
 
 See [`docs/vision.md`](docs/vision.md) for the full picture.
 

@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // errPortClosed is the sentinel returned (after the result has already been
@@ -29,7 +29,7 @@ type portState struct {
 
 // portStateFromSession projects the peer-port-related fields of a session
 // snapshot into the portState contract.
-func portStateFromSession(s torrent.SessionSettings) portState {
+func portStateFromSession(s transmission.SessionSettings) portState {
 	return portState{
 		Port:              s.PeerPort,
 		RandomOnStart:     s.PeerPortRandomOnStart,
@@ -307,7 +307,7 @@ func writePortState(cmd *cobra.Command, state portState) {
 // IPProtocol is appended only when the server reported it (JSON-RPC 2.0); it is
 // a fixed server-derived enum ("ipv4"/"ipv6"), not free-form text, so no
 // terminal sanitization is required.
-func writePortTest(cmd *cobra.Command, result torrent.PortTest) {
+func writePortTest(cmd *cobra.Command, result transmission.PortTest) {
 	out := cmd.OutOrStdout()
 
 	state := "closed"

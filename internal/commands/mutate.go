@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // mutationResult is the stable structured contract emitted by the mutation
@@ -53,7 +53,7 @@ type mutationResult struct {
 	// commands.
 	Fields map[string]any `json:"fields,omitempty"`
 
-	// Unmatched lists the requested selector tokens that matched no torrent. It is
+	// Unmatched lists the requested selector tokens that matched no transmission. It is
 	// omitted when every requested token matched (or for an --all selection).
 	Unmatched []string `json:"unmatched,omitempty"`
 
@@ -76,7 +76,7 @@ type mutationTorrent struct {
 // or hash is included, and any requested token that matched nothing is recorded
 // in Unmatched. When explicit selectors were given and none matched, it returns
 // an error naming the unmatched tokens.
-func resolveMutation(action string, sel torrent.Selector, torrents []torrent.Torrent) (mutationResult, error) {
+func resolveMutation(action string, sel transmission.Selector, torrents []transmission.Torrent) (mutationResult, error) {
 	result := mutationResult{Action: action, all: sel.All}
 
 	if sel.All {

@@ -15,7 +15,6 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
-	"github.com/itspriddle/snatcher/internal/torrent/torrenttest"
 )
 
 // sessionGetResponse is a bespoke session-get payload used as the canned answer
@@ -151,14 +150,6 @@ func TestAPINotConfigured(t *testing.T) {
 	_, _, err := runAPI(t, "--config", cfgPath, "session-get")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
-}
-
-func TestAPIMissingCapabilityErrors(t *testing.T) {
-	// The torrenttest fake is a torrent.Backend but not a transmission.APICaller,
-	// so it exercises the missing-capability branch of apiCaller.
-	_, err := apiCaller(&torrenttest.Backend{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "backend does not support raw API calls")
 }
 
 func TestBuildArgumentsFieldTypes(t *testing.T) {

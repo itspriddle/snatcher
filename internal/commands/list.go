@@ -12,7 +12,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // listColumn describes a single rendered column: its header, how a torrent's
@@ -21,7 +21,7 @@ import (
 // that must be neutralized of terminal control sequences before display.
 type listColumn struct {
 	header     string
-	value      func(torrent.Torrent) string
+	value      func(transmission.Torrent) string
 	rightAlign bool
 	truncate   bool
 	// sanitize marks columns whose value comes from the remote server or
@@ -37,49 +37,49 @@ type listColumn struct {
 // accessors, and alignment, shared by both the TTY aligned output and the piped
 // tab-separated output. New columns are added here.
 var listFields = map[string]listColumn{
-	"id": {header: "ID", rightAlign: true, value: func(t torrent.Torrent) string {
+	"id": {header: "ID", rightAlign: true, value: func(t transmission.Torrent) string {
 		return fmt.Sprintf("%d", t.ID)
 	}},
-	"hash": {header: "Hash", value: func(t torrent.Torrent) string {
+	"hash": {header: "Hash", value: func(t transmission.Torrent) string {
 		return t.Hash
 	}},
-	"name": {header: "Name", truncate: true, sanitize: true, value: func(t torrent.Torrent) string {
+	"name": {header: "Name", truncate: true, sanitize: true, value: func(t transmission.Torrent) string {
 		return t.Name
 	}},
-	"status": {header: "Status", value: func(t torrent.Torrent) string {
+	"status": {header: "Status", value: func(t transmission.Torrent) string {
 		return t.Status.String()
 	}},
-	"done": {header: "Done", rightAlign: true, value: func(t torrent.Torrent) string {
+	"done": {header: "Done", rightAlign: true, value: func(t transmission.Torrent) string {
 		return output.Percent(t.PercentDone)
 	}},
-	"size": {header: "Size", rightAlign: true, value: func(t torrent.Torrent) string {
+	"size": {header: "Size", rightAlign: true, value: func(t transmission.Torrent) string {
 		return output.Bytes(t.TotalSize)
 	}},
-	"down": {header: "Down", rightAlign: true, value: func(t torrent.Torrent) string {
+	"down": {header: "Down", rightAlign: true, value: func(t transmission.Torrent) string {
 		return output.Speed(t.RateDownload)
 	}},
-	"up": {header: "Up", rightAlign: true, value: func(t torrent.Torrent) string {
+	"up": {header: "Up", rightAlign: true, value: func(t transmission.Torrent) string {
 		return output.Speed(t.RateUpload)
 	}},
-	"ratio": {header: "Ratio", rightAlign: true, value: func(t torrent.Torrent) string {
+	"ratio": {header: "Ratio", rightAlign: true, value: func(t transmission.Torrent) string {
 		return output.Ratio(t.UploadRatio)
 	}},
-	"eta": {header: "ETA", rightAlign: true, value: func(t torrent.Torrent) string {
+	"eta": {header: "ETA", rightAlign: true, value: func(t transmission.Torrent) string {
 		return output.ETA(t.ETA)
 	}},
-	"peers": {header: "Peers", rightAlign: true, value: func(t torrent.Torrent) string {
+	"peers": {header: "Peers", rightAlign: true, value: func(t transmission.Torrent) string {
 		return fmt.Sprintf("%d", t.PeersConnected)
 	}},
-	"added": {header: "Added", value: func(t torrent.Torrent) string {
+	"added": {header: "Added", value: func(t transmission.Torrent) string {
 		return output.Date(t.AddedDate)
 	}},
-	"download_dir": {header: "Download Dir", sanitize: true, value: func(t torrent.Torrent) string {
+	"download_dir": {header: "Download Dir", sanitize: true, value: func(t transmission.Torrent) string {
 		return t.DownloadDir
 	}},
-	"error": {header: "Error", sanitize: true, value: func(t torrent.Torrent) string {
+	"error": {header: "Error", sanitize: true, value: func(t transmission.Torrent) string {
 		return t.Error
 	}},
-	"labels": {header: "Labels", sanitize: true, value: func(t torrent.Torrent) string {
+	"labels": {header: "Labels", sanitize: true, value: func(t transmission.Torrent) string {
 		return strings.Join(t.Labels, ",")
 	}},
 }
@@ -169,12 +169,12 @@ func NewListCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			filter, err := torrent.ParseFilter(filterFlag)
+			filter, err := transmission.ParseFilter(filterFlag)
 			if err != nil {
 				return err
 			}
 
-			sortField, err := torrent.ParseSortField(sortFlag)
+			sortField, err := transmission.ParseSortField(sortFlag)
 			if err != nil {
 				return err
 			}
@@ -189,7 +189,7 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			torrents, err := backend.ListTorrents(cmd.Context(), torrent.Selector{All: true})
+			torrents, err := backend.ListTorrents(cmd.Context(), transmission.Selector{All: true})
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
@@ -197,9 +197,9 @@ func NewListCmd() *cobra.Command {
 			// Apply the in-memory transforms in a fixed order: status filter,
 			// then name search, then sort. This order is shared by every output
 			// mode (table, piped, JSON/jq).
-			torrents = torrent.FilterByStatus(torrents, filter)
-			torrents = torrent.SearchByName(torrents, searchFlag)
-			torrents = torrent.SortTorrents(torrents, sortField, reverse)
+			torrents = transmission.FilterByStatus(torrents, filter)
+			torrents = transmission.SearchByName(torrents, searchFlag)
+			torrents = transmission.SortTorrents(torrents, sortField, reverse)
 
 			if jqExpr != "" {
 				return output.JQ(cmd.OutOrStdout(), jsonTorrents(torrents), jqExpr)
@@ -230,9 +230,9 @@ func NewListCmd() *cobra.Command {
 
 // jsonTorrents normalizes a torrent slice for structured output so an empty
 // result serializes as "[]" rather than "null".
-func jsonTorrents(torrents []torrent.Torrent) []torrent.Torrent {
+func jsonTorrents(torrents []transmission.Torrent) []transmission.Torrent {
 	if torrents == nil {
-		return []torrent.Torrent{}
+		return []transmission.Torrent{}
 	}
 
 	return torrents
@@ -241,7 +241,7 @@ func jsonTorrents(torrents []torrent.Torrent) []torrent.Torrent {
 // writeListPlaintext renders torrents in the appropriate plaintext mode for the
 // command's output: an aligned, header-and-truncation table on a TTY, or plain
 // tab-separated, full-value, header-less rows when piped or when NO_COLOR is set.
-func writeListPlaintext(cmd *cobra.Command, torrents []torrent.Torrent, columns []listColumn) {
+func writeListPlaintext(cmd *cobra.Command, torrents []transmission.Torrent, columns []listColumn) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {
@@ -256,7 +256,7 @@ func writeListPlaintext(cmd *cobra.Command, torrents []torrent.Torrent, columns 
 // control sequences for columns whose text is untrusted, server-derived
 // (sanitize). It is the single rendering seam shared by the table and piped
 // paths so both apply the same protection; the JSON/jq paths never call it.
-func cellValue(col listColumn, t torrent.Torrent) string {
+func cellValue(col listColumn, t transmission.Torrent) string {
 	v := col.value(t)
 	if col.sanitize {
 		v = output.SanitizeTerminal(v)
@@ -267,7 +267,7 @@ func cellValue(col listColumn, t torrent.Torrent) string {
 
 // writeListPiped writes plain, tab-separated, full-value rows with no header —
 // the stable scripting contract. An empty list writes nothing.
-func writeListPiped(w io.Writer, torrents []torrent.Torrent, columns []listColumn) {
+func writeListPiped(w io.Writer, torrents []transmission.Torrent, columns []listColumn) {
 	for _, t := range torrents {
 		cells := make([]string, len(columns))
 		for i, col := range columns {
@@ -282,7 +282,7 @@ func writeListPiped(w io.Writer, torrents []torrent.Torrent, columns []listColum
 // columns right-aligned and text columns left-aligned, truncating truncatable
 // columns (Name) with an ellipsis so rows fit width. An empty list writes a
 // friendly "No torrents." line. A width of 0 disables truncation.
-func writeListTable(w io.Writer, torrents []torrent.Torrent, columns []listColumn, width int) {
+func writeListTable(w io.Writer, torrents []transmission.Torrent, columns []listColumn, width int) {
 	if len(torrents) == 0 {
 		_, _ = fmt.Fprintln(w, "No torrents.")
 		return
@@ -324,7 +324,7 @@ func writeListTable(w io.Writer, torrents []torrent.Torrent, columns []listColum
 // occupy so the widest row fits within width. It returns 0 (no truncation) when
 // the width is unknown or already roomy enough. Only the first truncatable
 // column is considered.
-func nameColumnLimit(torrents []torrent.Torrent, columns []listColumn, width int) int {
+func nameColumnLimit(torrents []transmission.Torrent, columns []listColumn, width int) int {
 	if width <= 0 {
 		return 0
 	}

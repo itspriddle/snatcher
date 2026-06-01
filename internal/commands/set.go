@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // NewSetCmd builds the "set" command, which writes mutable per-torrent fields
@@ -44,7 +44,7 @@ func NewSetCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sel, err := torrent.ParseSelector(args, all)
+			sel, err := transmission.ParseSelector(args, all)
 			if err != nil {
 				return err
 			}
@@ -67,7 +67,7 @@ func NewSetCmd() *cobra.Command {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
 
-			torrents, err := backend.ListTorrents(cmd.Context(), torrent.Selector{All: true})
+			torrents, err := backend.ListTorrents(cmd.Context(), transmission.Selector{All: true})
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}

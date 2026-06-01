@@ -1,4 +1,4 @@
-package torrent
+package transmission
 
 import (
 	"fmt"
@@ -6,14 +6,13 @@ import (
 	"strings"
 )
 
-// Selector is a vendor-neutral selection of torrents for the mutation commands
-// (start, stop, and later remove/verify). It captures the three selection forms
-// the CLI supports: numeric per-session IDs, 40-character SHA1 info-hashes, and
-// an "all torrents" flag. Build one with ParseSelector and feed RPCIDs() to the
-// backend so every write command resolves positional arguments through one
-// tested helper.
+// Selector is a selection of torrents for the mutation commands (start, stop,
+// remove, verify, …). It captures the three selection forms the CLI supports:
+// numeric per-session IDs, 40-character SHA1 info-hashes, and an "all torrents"
+// flag. Build one with ParseSelector and feed RPCIDs() to the client so every
+// write command resolves positional arguments through one tested helper.
 type Selector struct {
-	// IDs are the backend's numeric per-session identifiers.
+	// IDs are the server's numeric per-session identifiers.
 	IDs []int64
 
 	// Hashes are 40-character SHA1 info-hash strings.

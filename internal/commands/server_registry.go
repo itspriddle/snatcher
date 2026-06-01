@@ -1,7 +1,6 @@
 // Package commands holds snatcher's CLI command groups, one file per group.
-// Commands depend only on the vendor-neutral torrent.Backend (built by the
-// shared dial helper), the config/secrets/output packages, and cobra; they
-// never import a concrete client directly.
+// Commands depend on the concrete *transmission.Client (built by the shared dial
+// helper), the config/secrets/output packages, and cobra.
 package commands
 
 import (
@@ -19,7 +18,6 @@ import (
 	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/secrets"
-	"github.com/itspriddle/snatcher/internal/torrent"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -547,13 +545,13 @@ func firstArg(args []string) string {
 }
 
 // dial loads config (honoring configPath), resolves which named server to use,
-// reads that server's password from the keyring, and constructs the Transmission
-// backend as a torrent.Backend. It returns the backend and the resolved server
-// URL. It is the single seam where commands cross into a concrete backend.
+// reads that server's password from the keyring, and constructs the concrete
+// *transmission.Client. It returns the client and the resolved server URL. It is
+// the single seam where commands construct the client.
 //
 // Server selection precedence is: the server argument (the --server flag) >
 // the SNATCHER_SERVER environment variable > the configured default server.
-func dial(configPath, server string) (torrent.Backend, string, error) {
+func dial(configPath, server string) (*transmission.Client, string, error) {
 	cfg, configured, err := loadConfig(configPath)
 	if err != nil {
 		return nil, "", err

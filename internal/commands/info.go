@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // NewInfoCmd builds the "info" command, which dials the backend, resolves a
@@ -36,7 +36,7 @@ func NewInfoCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sel, err := torrent.ParseSelector(args, false)
+			sel, err := transmission.ParseSelector(args, false)
 			if err != nil {
 				return err
 			}
@@ -86,15 +86,15 @@ func NewInfoCmd() *cobra.Command {
 // — TorrentDetail is keyed by id, so a hash costs one extra lookup. It returns an
 // error with a non-zero exit when no torrent matches, naming the original
 // argument (arg).
-func resolveTorrent(cmd *cobra.Command, backend torrent.Backend, serverURL string, sel torrent.Selector, arg string) (torrent.TorrentDetail, error) {
+func resolveTorrent(cmd *cobra.Command, backend *transmission.Client, serverURL string, sel transmission.Selector, arg string) (transmission.TorrentDetail, error) {
 	id, err := resolveTorrentID(cmd, backend, serverURL, sel, arg)
 	if err != nil {
-		return torrent.TorrentDetail{}, err
+		return transmission.TorrentDetail{}, err
 	}
 
 	detail, err := backend.TorrentDetail(cmd.Context(), id)
 	if err != nil {
-		return torrent.TorrentDetail{}, fmt.Errorf("connecting to %s: %w", serverURL, err)
+		return transmission.TorrentDetail{}, fmt.Errorf("connecting to %s: %w", serverURL, err)
 	}
 
 	return detail, nil
@@ -105,14 +105,14 @@ func resolveTorrent(cmd *cobra.Command, backend torrent.Backend, serverURL strin
 // in one round-trip (PollFields, cheap) and matched in memory so the lookup is
 // correct even if a backend over-returns. It errors, naming arg, when no torrent
 // matches.
-func resolveTorrentID(cmd *cobra.Command, backend torrent.Backend, serverURL string, sel torrent.Selector, arg string) (int64, error) {
+func resolveTorrentID(cmd *cobra.Command, backend *transmission.Client, serverURL string, sel transmission.Selector, arg string) (int64, error) {
 	if len(sel.IDs) == 1 {
 		return sel.IDs[0], nil
 	}
 
 	wantHash := sel.Hashes[0]
 
-	torrents, err := backend.ListTorrents(cmd.Context(), sel, torrent.PollFields...)
+	torrents, err := backend.ListTorrents(cmd.Context(), sel, transmission.PollFields...)
 	if err != nil {
 		return 0, fmt.Errorf("connecting to %s: %w", serverURL, err)
 	}
@@ -131,7 +131,7 @@ func resolveTorrentID(cmd *cobra.Command, backend torrent.Backend, serverURL str
 // when NO_COLOR is set, each line is "key<TAB>value" (header-less, scripting-
 // stable). Sanitizable fields pass through cellValue's SanitizeTerminal in both
 // paths; the JSON/jq paths never reach here.
-func writeInfoPlaintext(cmd *cobra.Command, t torrent.Torrent, columns []listColumn) {
+func writeInfoPlaintext(cmd *cobra.Command, t transmission.Torrent, columns []listColumn) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {

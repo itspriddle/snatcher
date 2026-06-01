@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/torrent"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // NewStatsCmd builds the "stats" command, which dials the backend, fetches
@@ -62,7 +62,7 @@ func NewStatsCmd() *cobra.Command {
 
 // writeStatsPlaintext renders stats as an aligned, human-readable summary using
 // the output package's byte/speed formatters.
-func writeStatsPlaintext(cmd *cobra.Command, stats torrent.Stats) {
+func writeStatsPlaintext(cmd *cobra.Command, stats transmission.Stats) {
 	out := cmd.OutOrStdout()
 
 	_, _ = fmt.Fprintf(out, "Torrents:        %d total, %d active, %d paused\n",
@@ -79,7 +79,7 @@ func writeStatsPlaintext(cmd *cobra.Command, stats torrent.Stats) {
 
 // writeSnapshot renders a single stats snapshot's uploaded/downloaded totals
 // indented beneath its heading.
-func writeSnapshot(cmd *cobra.Command, snap torrent.StatsSnapshot) {
+func writeSnapshot(cmd *cobra.Command, snap transmission.StatsSnapshot) {
 	out := cmd.OutOrStdout()
 
 	_, _ = fmt.Fprintf(out, "  Uploaded:      %s\n", output.Bytes(snap.UploadedBytes))
