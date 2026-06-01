@@ -120,12 +120,12 @@ type Stats struct {
 	CurrentStats StatsSnapshot `json:"current_stats"`
 }
 
-// Backend is the vendor-neutral interface every BitTorrent client adapter
-// implements. Commands depend on this interface rather than any concrete
-// client. Methods honor the supplied context for cancellation and deadlines,
-// and map client-specific failures to the neutral sentinels (ErrAuth,
-// ErrUnreachable).
-type Backend interface {
+// Reader is the read-only half of Backend: the methods that only query the
+// server and never mutate it. A pane or caller that only needs to observe the
+// server can depend on this narrower interface. Methods honor the supplied
+// context for cancellation and deadlines, and map client-specific failures to
+// the neutral sentinels (ErrAuth, ErrUnreachable, ErrServer).
+type Reader interface {
 	// ServerInfo performs a round-trip to the server and returns its neutral
 	// ServerInfo.
 	ServerInfo(ctx context.Context) (ServerInfo, error)
@@ -149,6 +149,30 @@ type Backend interface {
 	// in one round-trip. An id that matches no torrent returns an error.
 	TorrentDetail(ctx context.Context, id int64) (TorrentDetail, error)
 
+	// GetSession performs a round-trip to the server and returns its neutral
+	// SessionSettings (the server's current configurable session settings).
+	GetSession(ctx context.Context) (SessionSettings, error)
+
+	// TestPort checks whether the configured peer port is reachable from outside
+	// and returns the neutral PortTest. The result's Open flag is a probe value
+	// (a reachable-but-closed port is not an error); a transport or auth failure
+	// maps to the neutral sentinels (ErrAuth, ErrUnreachable).
+	TestPort(ctx context.Context) (PortTest, error)
+
+	// FreeSpace queries the free space (and, when the server reports it, the total
+	// capacity) on the given download path and returns the neutral FreeSpace. The
+	// result's TotalBytes is omitted when the backend does not report it (a
+	// Transmission server too old to return it); a transport or auth failure maps
+	// to the neutral sentinels (ErrAuth, ErrUnreachable).
+	FreeSpace(ctx context.Context, path string) (FreeSpace, error)
+}
+
+// Mutator is the write half of Backend: the methods that change server state
+// (start/stop, queue moves, removal, relocation, per-torrent and per-file
+// edits, adding a torrent, and writing session settings). Methods honor the
+// supplied context for cancellation and deadlines, and map client-specific
+// failures to the neutral sentinels (ErrAuth, ErrUnreachable, ErrServer).
+type Mutator interface {
 	// StartTorrents resumes the torrents matched by sel (start-now when now is
 	// true, disregarding queue position). An All selector targets every torrent.
 	// Starting an already-started torrent is a no-op.
@@ -221,27 +245,27 @@ type Backend interface {
 	// than as an error.
 	AddTorrent(ctx context.Context, req AddRequest) (AddResult, error)
 
-	// GetSession performs a round-trip to the server and returns its neutral
-	// SessionSettings (the server's current configurable session settings).
-	GetSession(ctx context.Context) (SessionSettings, error)
-
 	// SetSession writes the supplied session settings. The changes map is keyed by
 	// neutral kebab-case setting key (e.g. "peer-port", "dht-enabled") with the
 	// parsed typed value; the backend translates each key to its own wire scheme.
 	// Only the keys present in changes are written. The call confirms success and
 	// carries no response payload.
 	SetSession(ctx context.Context, changes map[string]any) error
+}
 
-	// TestPort checks whether the configured peer port is reachable from outside
-	// and returns the neutral PortTest. The result's Open flag is a probe value
-	// (a reachable-but-closed port is not an error); a transport or auth failure
-	// maps to the neutral sentinels (ErrAuth, ErrUnreachable).
-	TestPort(ctx context.Context) (PortTest, error)
+// Backend is the vendor-neutral interface every BitTorrent client adapter
+// implements. Commands depend on this interface rather than any concrete
+// client. It composes the read-only Reader and the write-side Mutator and adds
+// a Close hook for releasing any resources the backend holds (a no-op for a
+// stateless adapter; the seam a future pooled or long-lived backend uses for
+// cleanup). Methods honor the supplied context for cancellation and deadlines,
+// and map client-specific failures to the neutral sentinels (ErrAuth,
+// ErrUnreachable, ErrServer).
+type Backend interface {
+	Reader
+	Mutator
 
-	// FreeSpace queries the free space (and, when the server reports it, the total
-	// capacity) on the given download path and returns the neutral FreeSpace. The
-	// result's TotalBytes is omitted when the backend does not report it (a
-	// Transmission server too old to return it); a transport or auth failure maps
-	// to the neutral sentinels (ErrAuth, ErrUnreachable).
-	FreeSpace(ctx context.Context, path string) (FreeSpace, error)
+	// Close releases any resources held by the backend. It is safe to call on a
+	// stateless adapter (a no-op) and may be called more than once.
+	Close() error
 }

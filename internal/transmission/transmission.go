@@ -24,8 +24,13 @@ type Backend struct {
 	client *rpc.Client
 }
 
-// Compile-time assertion that *Backend satisfies torrent.Backend.
-var _ torrent.Backend = (*Backend)(nil)
+// Compile-time assertions that *Backend satisfies the neutral interfaces: the
+// read-only Reader, the write-side Mutator, and the composed Backend.
+var (
+	_ torrent.Reader  = (*Backend)(nil)
+	_ torrent.Mutator = (*Backend)(nil)
+	_ torrent.Backend = (*Backend)(nil)
+)
 
 // Compile-time assertion that *Backend satisfies APICaller.
 var _ APICaller = (*Backend)(nil)
@@ -399,6 +404,15 @@ func (b *Backend) FreeSpace(ctx context.Context, path string) (torrent.FreeSpace
 		SizeBytes:  result.SizeBytes,
 		TotalBytes: result.TotalBytes,
 	}, nil
+}
+
+// Close releases any resources held by the backend. The Transmission adapter is
+// stateless (it holds only an rpc.Client over the shared HTTP transport and
+// caches nothing on disk), so Close is a no-op that always returns nil. It
+// exists to satisfy torrent.Backend's cleanup seam for a future pooled or
+// long-lived backend.
+func (b *Backend) Close() error {
+	return nil
 }
 
 // CallAPI issues an arbitrary RPC method with raw arguments and returns the

@@ -201,6 +201,7 @@ func (noAPIBackend) TestPort(context.Context) (torrent.PortTest, error) {
 func (noAPIBackend) FreeSpace(context.Context, string) (torrent.FreeSpace, error) {
 	return torrent.FreeSpace{}, nil
 }
+func (noAPIBackend) Close() error { return nil }
 
 func TestAPIMissingCapabilityErrors(t *testing.T) {
 	_, err := apiCaller(noAPIBackend{})
