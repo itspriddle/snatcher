@@ -89,11 +89,16 @@ Use "snatcher [command] --help" for more information about a command.
 
 - `q` / `Ctrl-c` - quit
 - `?` - show help (hide if help open)
+- `ctrl-t` - open torrents window
+- `ctrl-p` - open prowlarr window
+- `,` - open settings window
 - Note: spamming esc should get us back to main torrent page I think, but
   confirm
 
+
 #### Torrents Window Globals
 
+```
 +------------------------------------------------------------------------------+
 | All            | Ubuntu 1 ....                                               |
 | Active         | Ubuntu 2 ....                                               |
@@ -110,6 +115,7 @@ Use "snatcher [command] --help" for more information about a command.
 | Info                                                                         |
 |                                                                              |
 +------------------------------------------------------------------------------+
+```
 
 - `{` - show left pane (filters) (?)
 - `}` - show right (bottom) pane (details) (?)
@@ -121,9 +127,8 @@ Use "snatcher [command] --help" for more information about a command.
 - `/` - open search window
 - `u` - upload torrent (file, URL, magnet link)
 - `a` - toggle alt-speed
-- `r` - force state refresh from server
+- `R` - force state refresh from server
 - `c` - configure visible columns in list pane
-- `,` - show settings window
 
 #### Torrents Window > Torrent List Pane (Main)
 
@@ -133,11 +138,34 @@ Always visible.
 - `p` - pause selected torrent
 - `i` - set prio?
 - `v` - verify selected torrent
+- `r` - reannounce selected torrent to trackers
+- `q` - move in queue
 - `d` - delete selected torrent (with confirmation, ask for data too)
-    - go with `r` for remove?
 - `y` - copy magnet link for selected torrent to clipboard
 - `l` - set labels for selected torrent
 - `enter` - show torrent details pane, focus
+- `space` - open action menu
+    - force start
+    - start
+    - pause
+    - verify
+    - reannounce
+    - copy magnet link
+    - queue
+        - up
+        - down
+        - top
+        - bottom
+    - set labels
+    - delete (with confirmation, ask for data too)
+    - trackers
+    - other
+        - honor session upload limit
+        - max download speed (checkbox and input for speed)
+        - max upload speed (checkbox and input for speed)
+        - peer limit (number input)
+        - seed ratio limit (checkbox? and number input)
+        - stop seeding when inactive for (checkbox? and number input for minutes)
 
 - `O` - show details > overview tab for selected torrent
 - `F` - show details > files tab
@@ -167,8 +195,37 @@ Tabs: overview, files, trackers, peers, labels
 - `[` / `]` - move between tabs, cycle, keep focus in this pane
 - `esc` - focus torrent list pane
 
+Overview:
+
+- transfer info
+- torrent info
+
+Files:
+
+- table/list: name, size, done size, percent, priority
+- `space` - action menu for file
+    - high prio
+    - normal prio
+    - low prio
+    - set wanted
+    - set unwanted
+
+Pieces: 
+
+- filled/unfilled squares?
+
+Peers:
+
+- table/list: ip, port, client, progress("have"?), down speed, up speed, encrypted, status
+- no actions?
+
+Trackers:
+
+- table/list: announce url, status, next update, seeds, peers, downloads
+
 #### Prowlarr Window Global 
 
+```
 +------------------------------------------------------------------------------+
 |                                                                              |
 |                                                                              |
@@ -185,6 +242,7 @@ Tabs: overview, files, trackers, peers, labels
 |                                                                              |
 |                                                                              |
 +------------------------------------------------------------------------------+
+```
 
 #### Prowlarr Window > Search Pane (Top)
 
