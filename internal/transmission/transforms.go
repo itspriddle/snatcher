@@ -1,4 +1,4 @@
-package torrent
+package transmission
 
 import (
 	"cmp"
@@ -42,7 +42,7 @@ const (
 	// FilterQueuedToSeed matches torrents queued to seed.
 	FilterQueuedToSeed Filter = "queued-to-seed"
 
-	// FilterError matches torrents the backend reported an error for.
+	// FilterError matches torrents the server reported an error for.
 	FilterError Filter = "error"
 )
 
@@ -153,7 +153,7 @@ func SearchByName(torrents []Torrent, query string) []Torrent {
 type SortField string
 
 const (
-	// SortQueue orders by the backend queue position (the default).
+	// SortQueue orders by the server queue position (the default).
 	SortQueue SortField = "queue"
 
 	// SortName orders by name (case-insensitive).

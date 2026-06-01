@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/itspriddle/snatcher/internal/torrent"
 	"github.com/itspriddle/snatcher/internal/transmission/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -212,16 +211,16 @@ func TestBackendMapsAuthError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.ServerInfo(context.Background())
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, ErrAuth)
 	// The underlying rpc sentinel is preserved in the wrap chain.
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendMapsUnsupportedVersion(t *testing.T) {
 	// No version header -> bespoke path runs the 4.0+ floor against the probe's
 	// session-get body. A server reporting rpc-version 16 (Transmission 3.00) is
-	// refused and mapped to the neutral torrent.ErrUnsupported.
+	// refused and mapped to the neutral ErrUnsupported.
 	srv := httptest.NewServer(transmissionStub{
 		rpcVersionHeader: "",
 		responses: map[string]string{
@@ -237,9 +236,9 @@ func TestBackendMapsUnsupportedVersion(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.ServerInfo(context.Background())
-	require.ErrorIs(t, err, torrent.ErrUnsupported)
+	require.ErrorIs(t, err, ErrUnsupported)
 	require.ErrorIs(t, err, rpc.ErrUnsupported)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendMapsTransportError(t *testing.T) {
@@ -251,9 +250,9 @@ func TestBackendMapsTransportError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.ServerInfo(context.Background())
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, ErrUnreachable)
 	require.ErrorIs(t, err, rpc.ErrTransport)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, ErrAuth)
 }
 
 func TestBackendMapsRPCError(t *testing.T) {
@@ -271,10 +270,10 @@ func TestBackendMapsRPCError(t *testing.T) {
 	// A server-side RPC error (bespoke result != "success") maps to ErrServer
 	// while preserving the rpc.ErrRPC sentinel and its message. It is distinct
 	// from a transport failure (ErrUnreachable).
-	require.ErrorIs(t, err, torrent.ErrServer)
+	require.ErrorIs(t, err, ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	require.ErrorContains(t, err, "no such session")
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 // TestMapErrorDistinguishesServerFromTransport verifies that mapError separates a
@@ -285,14 +284,14 @@ func TestMapErrorDistinguishesServerFromTransport(t *testing.T) {
 	require.NoError(t, mapError(nil))
 
 	serverErr := mapError(fmt.Errorf("%w: bad argument", rpc.ErrRPC))
-	require.ErrorIs(t, serverErr, torrent.ErrServer)
+	require.ErrorIs(t, serverErr, ErrServer)
 	require.ErrorIs(t, serverErr, rpc.ErrRPC)
-	require.NotErrorIs(t, serverErr, torrent.ErrUnreachable)
+	require.NotErrorIs(t, serverErr, ErrUnreachable)
 
 	transportErr := mapError(fmt.Errorf("%w: connection refused", rpc.ErrTransport))
-	require.ErrorIs(t, transportErr, torrent.ErrUnreachable)
+	require.ErrorIs(t, transportErr, ErrUnreachable)
 	require.ErrorIs(t, transportErr, rpc.ErrTransport)
-	assert.NotErrorIs(t, transportErr, torrent.ErrServer)
+	assert.NotErrorIs(t, transportErr, ErrServer)
 }
 
 func TestBackendListTorrents(t *testing.T) {
@@ -336,7 +335,7 @@ func TestBackendListTorrents(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
+	torrents, err := b.ListTorrents(context.Background(), Selector{All: true})
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 
@@ -344,7 +343,7 @@ func TestBackendListTorrents(t *testing.T) {
 	assert.Equal(t, int64(7), got.ID)
 	assert.Equal(t, "abc123", got.Hash)
 	assert.Equal(t, "ubuntu.iso", got.Name)
-	assert.Equal(t, torrent.StatusDownloading, got.Status)
+	assert.Equal(t, StatusDownloading, got.Status)
 	assert.InDelta(t, 0.5, got.PercentDone, 0.0001)
 	assert.Equal(t, int64(2048), got.TotalSize)
 	assert.Equal(t, int64(1000), got.RateDownload)
@@ -381,11 +380,11 @@ func TestBackendListTorrentsPromotesErrorStatus(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
+	torrents, err := b.ListTorrents(context.Background(), Selector{All: true})
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 
-	assert.Equal(t, torrent.StatusError, torrents[0].Status)
+	assert.Equal(t, StatusError, torrents[0].Status)
 	assert.Equal(t, "tracker gave error", torrents[0].Error)
 }
 
@@ -400,7 +399,7 @@ func TestBackendListTorrentsEmpty(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
+	torrents, err := b.ListTorrents(context.Background(), Selector{All: true})
 	require.NoError(t, err)
 	assert.NotNil(t, torrents)
 	assert.Empty(t, torrents)
@@ -425,11 +424,11 @@ func TestBackendListTorrentsFiltersByID(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{IDs: []int64{2}})
+	torrents, err := b.ListTorrents(context.Background(), Selector{IDs: []int64{2}})
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 	assert.Equal(t, int64(2), torrents[0].ID)
-	assert.Equal(t, torrent.StatusSeeding, torrents[0].Status)
+	assert.Equal(t, StatusSeeding, torrents[0].Status)
 	assert.Contains(t, captured, `"ids":[2]`)
 }
 
@@ -456,12 +455,12 @@ func TestBackendListTorrentsProjectsFields(t *testing.T) {
 	b := New(srv.URL)
 
 	// The full set (empty projection) requests every wire field.
-	_, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
+	_, err := b.ListTorrents(context.Background(), Selector{All: true})
 	require.NoError(t, err)
 	fullFields := wireFields(t, captured)
 
 	// PollFields requests a strict subset of the wire fields.
-	_, err = b.ListTorrents(context.Background(), torrent.Selector{All: true}, torrent.PollFields...)
+	_, err = b.ListTorrents(context.Background(), Selector{All: true}, PollFields...)
 	require.NoError(t, err)
 	pollFields := wireFields(t, captured)
 
@@ -495,9 +494,9 @@ func TestBackendListTorrentsMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	_, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
-	require.ErrorIs(t, err, torrent.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	_, err := b.ListTorrents(context.Background(), Selector{All: true})
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendListTorrentsMapsTransportError(t *testing.T) {
@@ -508,9 +507,9 @@ func TestBackendListTorrentsMapsTransportError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	_, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	_, err := b.ListTorrents(context.Background(), Selector{All: true})
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrAuth)
 }
 
 func TestBackendTorrentDetail(t *testing.T) {
@@ -548,10 +547,10 @@ func TestBackendTorrentDetail(t *testing.T) {
 	detail, err := b.TorrentDetail(context.Background(), 7)
 	require.NoError(t, err)
 
-	// The embedded Torrent maps through mapTorrent (status promotion applies).
+	// The embedded Torrent carries the derived Status (status promotion applies).
 	assert.Equal(t, int64(7), detail.ID)
 	assert.Equal(t, "abc123", detail.Hash)
-	assert.Equal(t, torrent.StatusDownloading, detail.Status)
+	assert.Equal(t, StatusDownloading, detail.Status)
 
 	// The detail collections and scalars map across.
 	require.Len(t, detail.Files, 1)
@@ -594,7 +593,7 @@ func TestBackendTorrentDetailMapsAuthError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.TorrentDetail(context.Background(), 1)
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, ErrAuth)
 }
 
 // captureActionServer is a Transmission stub that records the body of the first
@@ -643,7 +642,7 @@ func TestBackendStartTorrents(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			sel := Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
 			err := b.StartTorrents(context.Background(), sel, tt.now)
 			require.NoError(t, err)
 
@@ -661,7 +660,7 @@ func TestBackendStopTorrents(t *testing.T) {
 
 	b := New(srv.URL)
 
-	sel := torrent.Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
+	sel := Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
 	err := b.StopTorrents(context.Background(), sel)
 	require.NoError(t, err)
 
@@ -678,7 +677,7 @@ func TestBackendStartStopAllOmitsIDs(t *testing.T) {
 
 		b := New(srv.URL)
 
-		err := b.StartTorrents(context.Background(), torrent.Selector{All: true}, false)
+		err := b.StartTorrents(context.Background(), Selector{All: true}, false)
 		require.NoError(t, err)
 
 		assert.Contains(t, captured, `"method":"torrent_start"`)
@@ -693,7 +692,7 @@ func TestBackendStartStopAllOmitsIDs(t *testing.T) {
 
 		b := New(srv.URL)
 
-		err := b.StopTorrents(context.Background(), torrent.Selector{All: true})
+		err := b.StopTorrents(context.Background(), Selector{All: true})
 		require.NoError(t, err)
 
 		assert.Contains(t, captured, `"method":"torrent_stop"`)
@@ -712,8 +711,8 @@ func TestBackendStopTorrentsMapsRPCError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.StopTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrServer)
+	err := b.StopTorrents(context.Background(), Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -737,7 +736,7 @@ func TestBackendVerifyTorrents(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			sel := Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
 			err := b.VerifyTorrents(context.Background(), sel)
 			require.NoError(t, err)
 
@@ -755,7 +754,7 @@ func TestBackendVerifyTorrentsAllOmitsIDs(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.VerifyTorrents(context.Background(), torrent.Selector{All: true})
+	err := b.VerifyTorrents(context.Background(), Selector{All: true})
 	require.NoError(t, err)
 
 	assert.Contains(t, captured, `"method":"torrent_verify"`)
@@ -773,8 +772,8 @@ func TestBackendVerifyTorrentsMapsRPCError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.VerifyTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrServer)
+	err := b.VerifyTorrents(context.Background(), Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -798,7 +797,7 @@ func TestBackendReannounceTorrents(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			sel := Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
 			err := b.ReannounceTorrents(context.Background(), sel)
 			require.NoError(t, err)
 
@@ -816,7 +815,7 @@ func TestBackendReannounceTorrentsAllOmitsIDs(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.ReannounceTorrents(context.Background(), torrent.Selector{All: true})
+	err := b.ReannounceTorrents(context.Background(), Selector{All: true})
 	require.NoError(t, err)
 
 	assert.Contains(t, captured, `"method":"torrent_reannounce"`)
@@ -834,8 +833,8 @@ func TestBackendReannounceTorrentsMapsRPCError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.ReannounceTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrServer)
+	err := b.ReannounceTorrents(context.Background(), Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -848,39 +847,39 @@ func TestBackendReannounceTorrentsMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.ReannounceTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	err := b.ReannounceTorrents(context.Background(), Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendQueueMove(t *testing.T) {
 	tests := []struct {
 		name          string
-		call          func(*Backend, context.Context, torrent.Selector) error
+		call          func(*Backend, context.Context, Selector) error
 		jsonrpcMethod string
 		bespokeMethod string
 	}{
 		{
 			name:          "top",
-			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveTop(ctx, sel) },
+			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveTop(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_top"`,
 			bespokeMethod: `"method":"queue-move-top"`,
 		},
 		{
 			name:          "up",
-			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveUp(ctx, sel) },
+			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveUp(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_up"`,
 			bespokeMethod: `"method":"queue-move-up"`,
 		},
 		{
 			name:          "down",
-			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveDown(ctx, sel) },
+			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveDown(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_down"`,
 			bespokeMethod: `"method":"queue-move-down"`,
 		},
 		{
 			name:          "bottom",
-			call:          func(b *Backend, ctx context.Context, sel torrent.Selector) error { return b.QueueMoveBottom(ctx, sel) },
+			call:          func(b *Backend, ctx context.Context, sel Selector) error { return b.QueueMoveBottom(ctx, sel) },
 			jsonrpcMethod: `"method":"queue_move_bottom"`,
 			bespokeMethod: `"method":"queue-move-bottom"`,
 		},
@@ -895,7 +894,7 @@ func TestBackendQueueMove(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			sel := Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
 			err := tt.call(b, context.Background(), sel)
 			require.NoError(t, err)
 
@@ -911,7 +910,7 @@ func TestBackendQueueMove(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
+			sel := Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}
 			err := tt.call(b, context.Background(), sel)
 			require.NoError(t, err)
 
@@ -929,7 +928,7 @@ func TestBackendQueueMoveAllOmitsIDs(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.QueueMoveTop(context.Background(), torrent.Selector{All: true})
+	err := b.QueueMoveTop(context.Background(), Selector{All: true})
 	require.NoError(t, err)
 
 	assert.Contains(t, captured, `"method":"queue_move_top"`)
@@ -947,8 +946,8 @@ func TestBackendQueueMoveMapsRPCError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.QueueMoveUp(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrServer)
+	err := b.QueueMoveUp(context.Background(), Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -961,9 +960,9 @@ func TestBackendQueueMoveMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.QueueMoveBottom(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	err := b.QueueMoveBottom(context.Background(), Selector{IDs: []int64{1}})
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendStartTorrentsMapsAuthError(t *testing.T) {
@@ -974,9 +973,9 @@ func TestBackendStartTorrentsMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.StartTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, false)
-	require.ErrorIs(t, err, torrent.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	err := b.StartTorrents(context.Background(), Selector{IDs: []int64{1}}, false)
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendRemoveTorrents(t *testing.T) {
@@ -1002,7 +1001,7 @@ func TestBackendRemoveTorrents(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
+			sel := Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
 			err := b.RemoveTorrents(context.Background(), sel, tt.deleteData)
 			require.NoError(t, err)
 
@@ -1021,7 +1020,7 @@ func TestBackendRemoveTorrentsAllOmitsIDs(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.RemoveTorrents(context.Background(), torrent.Selector{All: true}, true)
+	err := b.RemoveTorrents(context.Background(), Selector{All: true}, true)
 	require.NoError(t, err)
 
 	assert.Contains(t, captured, `"method":"torrent_remove"`)
@@ -1037,9 +1036,9 @@ func TestBackendRemoveTorrentsMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.RemoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, false)
-	require.ErrorIs(t, err, torrent.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	err := b.RemoveTorrents(context.Background(), Selector{IDs: []int64{1}}, false)
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendRemoveTorrentsMapsTransportError(t *testing.T) {
@@ -1050,9 +1049,9 @@ func TestBackendRemoveTorrentsMapsTransportError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.RemoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, false)
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	err := b.RemoveTorrents(context.Background(), Selector{IDs: []int64{1}}, false)
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrAuth)
 }
 
 func TestBackendMoveTorrents(t *testing.T) {
@@ -1078,7 +1077,7 @@ func TestBackendMoveTorrents(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
+			sel := Selector{IDs: []int64{2}, Hashes: []string{"cafebabe"}}
 			err := b.MoveTorrents(context.Background(), sel, "/data/media", tt.move)
 			require.NoError(t, err)
 
@@ -1098,7 +1097,7 @@ func TestBackendMoveTorrentsAllOmitsIDs(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.MoveTorrents(context.Background(), torrent.Selector{All: true}, "/data/media", true)
+	err := b.MoveTorrents(context.Background(), Selector{All: true}, "/data/media", true)
 	require.NoError(t, err)
 
 	assert.Contains(t, captured, `"method":"torrent_set_location"`)
@@ -1117,8 +1116,8 @@ func TestBackendMoveTorrentsMapsRPCError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.MoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, "/data/media", true)
-	require.ErrorIs(t, err, torrent.ErrServer)
+	err := b.MoveTorrents(context.Background(), Selector{IDs: []int64{1}}, "/data/media", true)
+	require.ErrorIs(t, err, ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -1131,9 +1130,9 @@ func TestBackendMoveTorrentsMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.MoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, "/data/media", true)
-	require.ErrorIs(t, err, torrent.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	err := b.MoveTorrents(context.Background(), Selector{IDs: []int64{1}}, "/data/media", true)
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendMoveTorrentsMapsTransportError(t *testing.T) {
@@ -1144,9 +1143,9 @@ func TestBackendMoveTorrentsMapsTransportError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.MoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, "/data/media", true)
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	err := b.MoveTorrents(context.Background(), Selector{IDs: []int64{1}}, "/data/media", true)
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrAuth)
 }
 
 func TestBackendSetTorrentsTranslatesKeys(t *testing.T) {
@@ -1190,7 +1189,7 @@ func TestBackendSetTorrentsTranslatesKeys(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{3}, Hashes: []string{"deadbeef"}}
+			sel := Selector{IDs: []int64{3}, Hashes: []string{"deadbeef"}}
 			err := b.SetTorrents(context.Background(), sel, map[string]any{
 				"bandwidth-priority": 1,
 				"seed-ratio-mode":    1,
@@ -1251,8 +1250,8 @@ func TestBackendSetFilesTranslatesKeys(t *testing.T) {
 
 			b := New(srv.URL)
 
-			sel := torrent.Selector{IDs: []int64{3}, Hashes: []string{"deadbeef"}}
-			err := b.SetFiles(context.Background(), sel, torrent.FileChanges{
+			sel := Selector{IDs: []int64{3}, Hashes: []string{"deadbeef"}}
+			err := b.SetFiles(context.Background(), sel, FileChanges{
 				Wanted:         []int{0, 1},
 				Unwanted:       []int{2},
 				PriorityHigh:   []int{0},
@@ -1278,7 +1277,7 @@ func TestBackendSetFilesOmitsEmptyFields(t *testing.T) {
 
 	// Only Wanted is populated; the other four FileChanges fields must not appear
 	// as torrent-set arguments.
-	err := b.SetFiles(context.Background(), torrent.Selector{IDs: []int64{1}}, torrent.FileChanges{
+	err := b.SetFiles(context.Background(), Selector{IDs: []int64{1}}, FileChanges{
 		Wanted: []int{0},
 	})
 	require.NoError(t, err)
@@ -1298,7 +1297,7 @@ func TestBackendSetFilesAllOmitsIDs(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.SetFiles(context.Background(), torrent.Selector{All: true}, torrent.FileChanges{
+	err := b.SetFiles(context.Background(), Selector{All: true}, FileChanges{
 		Wanted: []int{0},
 	})
 	require.NoError(t, err)
@@ -1316,10 +1315,10 @@ func TestBackendSetFilesMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.SetFiles(context.Background(), torrent.Selector{IDs: []int64{1}}, torrent.FileChanges{Wanted: []int{0}})
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	err := b.SetFiles(context.Background(), Selector{IDs: []int64{1}}, FileChanges{Wanted: []int{0}})
+	require.ErrorIs(t, err, ErrAuth)
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendSetTorrentsAllOmitsIDs(t *testing.T) {
@@ -1330,7 +1329,7 @@ func TestBackendSetTorrentsAllOmitsIDs(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.SetTorrents(context.Background(), torrent.Selector{All: true}, map[string]any{
+	err := b.SetTorrents(context.Background(), Selector{All: true}, map[string]any{
 		"honors-session-limits": false,
 	})
 	require.NoError(t, err)
@@ -1348,10 +1347,10 @@ func TestBackendSetTorrentsMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.SetTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, map[string]any{"peer-limit": 50})
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	err := b.SetTorrents(context.Background(), Selector{IDs: []int64{1}}, map[string]any{"peer-limit": 50})
+	require.ErrorIs(t, err, ErrAuth)
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendSetTorrentsMapsTransportError(t *testing.T) {
@@ -1362,9 +1361,9 @@ func TestBackendSetTorrentsMapsTransportError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	err := b.SetTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, map[string]any{"peer-limit": 50})
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	err := b.SetTorrents(context.Background(), Selector{IDs: []int64{1}}, map[string]any{"peer-limit": 50})
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrAuth)
 }
 
 // captureAddServer is a Transmission stub that records the body of the
@@ -1407,7 +1406,7 @@ func TestBackendAddTorrentByFile(t *testing.T) {
 	b := New(srv.URL)
 
 	metainfo := []byte("d8:announce0:e") // not real, just bytes to encode
-	res, err := b.AddTorrent(context.Background(), torrent.AddRequest{
+	res, err := b.AddTorrent(context.Background(), AddRequest{
 		Metainfo:    metainfo,
 		DownloadDir: "/downloads",
 		Paused:      true,
@@ -1435,7 +1434,7 @@ func TestBackendAddTorrentByURL(t *testing.T) {
 
 	b := New(srv.URL)
 
-	_, err := b.AddTorrent(context.Background(), torrent.AddRequest{
+	_, err := b.AddTorrent(context.Background(), AddRequest{
 		URL: "https://example.com/a.torrent",
 	})
 	require.NoError(t, err)
@@ -1453,7 +1452,7 @@ func TestBackendAddTorrentByMagnet(t *testing.T) {
 
 	b := New(srv.URL)
 
-	_, err := b.AddTorrent(context.Background(), torrent.AddRequest{
+	_, err := b.AddTorrent(context.Background(), AddRequest{
 		Magnet: "magnet:?xt=urn:btih:deadbeef",
 	})
 	require.NoError(t, err)
@@ -1478,7 +1477,7 @@ func TestBackendAddTorrentAddedResult(t *testing.T) {
 
 	b := New(srv.URL)
 
-	res, err := b.AddTorrent(context.Background(), torrent.AddRequest{URL: "https://example.com/a.torrent"})
+	res, err := b.AddTorrent(context.Background(), AddRequest{URL: "https://example.com/a.torrent"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(7), res.ID)
 	assert.Equal(t, "ubuntu.iso", res.Name)
@@ -1501,7 +1500,7 @@ func TestBackendAddTorrentDuplicateResult(t *testing.T) {
 
 	b := New(srv.URL)
 
-	res, err := b.AddTorrent(context.Background(), torrent.AddRequest{Magnet: "magnet:?xt=urn:btih:cafebabe"})
+	res, err := b.AddTorrent(context.Background(), AddRequest{Magnet: "magnet:?xt=urn:btih:cafebabe"})
 	// A duplicate is reported via the result, not as an error.
 	require.NoError(t, err)
 	assert.True(t, res.Duplicate)
@@ -1518,9 +1517,9 @@ func TestBackendAddTorrentMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	_, err := b.AddTorrent(context.Background(), torrent.AddRequest{URL: "https://example.com/a.torrent"})
-	require.ErrorIs(t, err, torrent.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	_, err := b.AddTorrent(context.Background(), AddRequest{URL: "https://example.com/a.torrent"})
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendCallAPISuccess(t *testing.T) {
@@ -1572,9 +1571,9 @@ func TestBackendCallAPIMapsAuthError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.CallAPI(context.Background(), "session-get", nil)
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, ErrAuth)
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendCallAPIMapsTransportError(t *testing.T) {
@@ -1586,9 +1585,9 @@ func TestBackendCallAPIMapsTransportError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.CallAPI(context.Background(), "session-get", nil)
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, ErrUnreachable)
 	require.ErrorIs(t, err, rpc.ErrTransport)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, ErrAuth)
 }
 
 func TestBackendGetSessionJSONRPC(t *testing.T) {
@@ -1688,9 +1687,9 @@ func TestBackendGetSessionMapsAuthError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.GetSession(context.Background())
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, ErrAuth)
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendSetSessionTranslatesKeys(t *testing.T) {
@@ -1781,9 +1780,9 @@ func TestBackendSetSessionMapsAuthError(t *testing.T) {
 	b := New(srv.URL)
 
 	err := b.SetSession(context.Background(), map[string]any{"peer-port": 12345})
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, ErrAuth)
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendTestPortJSONRPC(t *testing.T) {
@@ -1838,9 +1837,9 @@ func TestBackendTestPortMapsAuthError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.TestPort(context.Background())
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, ErrAuth)
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendTestPortMapsTransportError(t *testing.T) {
@@ -1852,9 +1851,9 @@ func TestBackendTestPortMapsTransportError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.TestPort(context.Background())
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, ErrUnreachable)
 	require.ErrorIs(t, err, rpc.ErrTransport)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, ErrAuth)
 }
 
 func TestBackendFreeSpaceJSONRPC(t *testing.T) {
@@ -1913,9 +1912,9 @@ func TestBackendFreeSpaceMapsAuthError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.FreeSpace(context.Background(), "/downloads")
-	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, ErrAuth)
 	require.ErrorIs(t, err, rpc.ErrAuth)
-	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestBackendFreeSpaceMapsTransportError(t *testing.T) {
@@ -1927,7 +1926,7 @@ func TestBackendFreeSpaceMapsTransportError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.FreeSpace(context.Background(), "/downloads")
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, ErrUnreachable)
 	require.ErrorIs(t, err, rpc.ErrTransport)
-	assert.NotErrorIs(t, err, torrent.ErrAuth)
+	assert.NotErrorIs(t, err, ErrAuth)
 }

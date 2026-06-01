@@ -314,7 +314,7 @@ type PortTestResult struct {
 	// IPProtocol is the IP protocol the test was carried out on ("ipv4" or
 	// "ipv6"), or empty when the server did not report it (the bespoke scheme
 	// never does, and JSON-RPC 2.0 omits it when it cannot be determined).
-	IPProtocol string `json:"ip_protocol"`
+	IPProtocol string `json:"ip_protocol,omitempty"`
 }
 
 // FreeSpaceResult is the canonical, protocol-neutral result of a FreeSpace call.
@@ -328,29 +328,37 @@ type FreeSpaceResult struct {
 	// SizeBytes is the free space available in the directory, in bytes.
 	SizeBytes int64 `json:"size_bytes"`
 
-	// TotalBytes is the directory's total capacity, in bytes, or 0 when the
-	// server did not report it.
-	TotalBytes int64 `json:"total_bytes"`
+	// TotalBytes is the directory's total capacity, in bytes, or 0 (omitted) when
+	// the server did not report it.
+	TotalBytes int64 `json:"total_bytes,omitempty"`
 }
 
 // Torrent is the canonical, protocol-neutral result of one torrent in a
 // TorrentGet call. Each Protocol implementation reads the correct per-scheme
-// field names and fills this shared shape, which the Transmission adapter maps
-// to the neutral torrent.Torrent. ErrorCode is Transmission's numeric error
-// field (0 = OK) and Error is the human-readable error string; the adapter uses
-// both to promote a torrent's status to "error".
+// field names into a wire struct and converts it to this shape via toCanonical,
+// which derives the Status enum from Transmission's raw status int and error
+// fields. Its json tags are snatcher's stable output projection for
+// --json/--jq, distinct from the per-protocol wire decode tags: the derived
+// Status serializes as a string slug, and the raw status int and error code are
+// not exposed (only the human-readable Error string is).
+//
+// Both the human-friendly numeric ID and the immutable hash are captured: the
+// ID is the default displayed identifier, while the hash is available via
+// --json and column selection for stable, server-independent identity.
 type Torrent struct {
-	// ID is the server's session-scoped numeric identifier.
+	// ID is the server's session-scoped numeric identifier. It is the default
+	// displayed identifier.
 	ID int64 `json:"id"`
 
-	// Hash is the torrent's info-hash string (hashString/hash_string).
+	// Hash is the torrent's info-hash string, a stable identity independent of
+	// the session-scoped ID.
 	Hash string `json:"hash"`
 
 	// Name is the torrent's display name.
 	Name string `json:"name"`
 
-	// Status is Transmission's raw status int (0–6).
-	Status int `json:"status"`
+	// Status is the derived lifecycle state.
+	Status Status `json:"status"`
 
 	// PercentDone is the download completion fraction in the range 0–1.
 	PercentDone float64 `json:"percent_done"`
@@ -397,10 +405,7 @@ type Torrent struct {
 	// DownloadDir is the directory the torrent's data is downloaded into.
 	DownloadDir string `json:"download_dir"`
 
-	// ErrorCode is Transmission's numeric error field (0 = OK).
-	ErrorCode int `json:"error_code"`
-
-	// Error is the human-readable error string (errorString/error_string).
+	// Error is the human-readable error string, or empty when there is no error.
 	Error string `json:"error"`
 
 	// Labels are the user-assigned labels on the torrent.
@@ -496,11 +501,11 @@ type Tracker struct {
 	NextAnnounceTime int64 `json:"next_announce_time"`
 }
 
-// TorrentDetail is the canonical, protocol-neutral detail view of a single
-// torrent. It embeds the canonical Torrent (so the list fields are present) and
-// adds the per-torrent collections and overview scalars, decoded identically
-// from both wire protocols. The Transmission adapter maps it to the neutral
-// torrent.TorrentDetail.
+// TorrentDetail is the canonical detail view of a single torrent. It embeds the
+// canonical Torrent (so the list fields are present) and adds the per-torrent
+// collections and overview scalars, decoded identically from both wire
+// protocols. Its json tags are snatcher's stable output projection, re-exported
+// from internal/transmission as transmission.TorrentDetail.
 type TorrentDetail struct {
 	Torrent
 
@@ -939,6 +944,38 @@ type jsonrpcTorrent struct {
 	QueuePosition      int64    `json:"queue_position"`
 	IsFinished         bool     `json:"is_finished"`
 	IsStalled          bool     `json:"is_stalled"`
+}
+
+// toCanonical converts a decoded JSON-RPC torrent into the canonical Torrent,
+// deriving the Status enum from the raw status int and error fields (a non-zero
+// error code or non-empty error string promotes to StatusError).
+func (t jsonrpcTorrent) toCanonical() Torrent {
+	return Torrent{
+		ID:                 t.ID,
+		Hash:               t.Hash,
+		Name:               t.Name,
+		Status:             StatusFromTransmission(t.Status, t.ErrorCode, t.Error),
+		PercentDone:        t.PercentDone,
+		TotalSize:          t.TotalSize,
+		SizeWhenDone:       t.SizeWhenDone,
+		LeftUntilDone:      t.LeftUntilDone,
+		RateDownload:       t.RateDownload,
+		RateUpload:         t.RateUpload,
+		UploadRatio:        t.UploadRatio,
+		ETA:                t.ETA,
+		PeersConnected:     t.PeersConnected,
+		PeersSendingToUs:   t.PeersSendingToUs,
+		PeersGettingFromUs: t.PeersGettingFromUs,
+		AddedDate:          t.AddedDate,
+		DoneDate:           t.DoneDate,
+		ActivityDate:       t.ActivityDate,
+		DownloadDir:        t.DownloadDir,
+		Error:              t.Error,
+		Labels:             t.Labels,
+		QueuePosition:      t.QueuePosition,
+		IsFinished:         t.IsFinished,
+		IsStalled:          t.IsStalled,
+	}
 }
 
 // jsonrpcTorrentResult is the snake_case torrent_get result shape.
@@ -1428,7 +1465,7 @@ func (p jsonrpcProtocol) TorrentGet(ctx context.Context, t transport, ids []any,
 
 	torrents := make([]Torrent, len(result.Torrents))
 	for i, raw := range result.Torrents {
-		torrents[i] = Torrent(raw)
+		torrents[i] = raw.toCanonical()
 	}
 
 	return torrents, nil
@@ -1502,7 +1539,7 @@ func (d jsonrpcDetailTorrent) toDetail() TorrentDetail {
 	}
 
 	return TorrentDetail{
-		Torrent: Torrent(d.jsonrpcTorrent),
+		Torrent: d.toCanonical(),
 
 		Files:    mergeFiles(files, fileStats, wanted, d.Priorities),
 		Peers:    peers,
@@ -2073,6 +2110,38 @@ type bespokeTorrent struct {
 	IsStalled          bool     `json:"isStalled"`
 }
 
+// toCanonical converts a decoded bespoke torrent into the canonical Torrent,
+// deriving the Status enum from the raw status int and error fields (a non-zero
+// error code or non-empty error string promotes to StatusError).
+func (t bespokeTorrent) toCanonical() Torrent {
+	return Torrent{
+		ID:                 t.ID,
+		Hash:               t.Hash,
+		Name:               t.Name,
+		Status:             StatusFromTransmission(t.Status, t.ErrorCode, t.Error),
+		PercentDone:        t.PercentDone,
+		TotalSize:          t.TotalSize,
+		SizeWhenDone:       t.SizeWhenDone,
+		LeftUntilDone:      t.LeftUntilDone,
+		RateDownload:       t.RateDownload,
+		RateUpload:         t.RateUpload,
+		UploadRatio:        t.UploadRatio,
+		ETA:                t.ETA,
+		PeersConnected:     t.PeersConnected,
+		PeersSendingToUs:   t.PeersSendingToUs,
+		PeersGettingFromUs: t.PeersGettingFromUs,
+		AddedDate:          t.AddedDate,
+		DoneDate:           t.DoneDate,
+		ActivityDate:       t.ActivityDate,
+		DownloadDir:        t.DownloadDir,
+		Error:              t.Error,
+		Labels:             t.Labels,
+		QueuePosition:      t.QueuePosition,
+		IsFinished:         t.IsFinished,
+		IsStalled:          t.IsStalled,
+	}
+}
+
 // bespokeTorrentArguments is the kebab-case torrent-get arguments shape.
 type bespokeTorrentArguments struct {
 	Torrents []bespokeTorrent `json:"torrents"`
@@ -2194,7 +2263,7 @@ func (d bespokeDetailTorrent) toDetail() TorrentDetail {
 	}
 
 	return TorrentDetail{
-		Torrent: Torrent(d.bespokeTorrent),
+		Torrent: d.toCanonical(),
 
 		Files:    mergeFiles(files, fileStats, wanted, d.Priorities),
 		Peers:    peers,
@@ -2515,7 +2584,7 @@ func (p bespokeProtocol) TorrentGet(ctx context.Context, t transport, ids []any,
 
 	torrents := make([]Torrent, len(args.Torrents))
 	for i, raw := range args.Torrents {
-		torrents[i] = Torrent(raw)
+		torrents[i] = raw.toCanonical()
 	}
 
 	return torrents, nil

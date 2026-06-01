@@ -1,271 +1,180 @@
-// Package torrent defines the vendor-neutral seam between snatcher's commands
-// and a concrete BitTorrent client. Commands depend only on the Backend
-// interface and the neutral types here, so a future qbittorrent backend can
-// slot in without rewriting commands. Today the only implementation is the
-// Transmission adapter in internal/transmission.
+// Package torrent is a temporary re-export shim over internal/transmission. The
+// domain model and the concrete client moved to internal/transmission; this
+// package re-exports every symbol the rest of the codebase still references
+// under the torrent.* path so commands and their tests compile unchanged while
+// the type collapse lands. It is scaffolding: a later step repoints all
+// consumers at internal/transmission directly and deletes this package.
 package torrent
 
 import (
 	"context"
-	"errors"
+
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// ErrAuth signals that the backend rejected the supplied credentials. It is the
-// neutral equivalent of a client-specific authentication failure and is
-// matchable with errors.Is.
-var ErrAuth = errors.New("torrent: authentication failed")
+// Error sentinels, re-exported from internal/transmission.
+var (
+	ErrAuth        = transmission.ErrAuth
+	ErrUnreachable = transmission.ErrUnreachable
+	ErrServer      = transmission.ErrServer
+	ErrUnsupported = transmission.ErrUnsupported
+)
 
-// ErrUnreachable signals a transport-level failure: the backend could not be
-// reached, the HTTP exchange could not complete, or the server returned an
-// unexpected non-2xx status. A request the server accepted but rejected at the
-// application level is ErrServer, not this. It is matchable with errors.Is.
-var ErrUnreachable = errors.New("torrent: server unreachable")
+// Domain types, re-exported as aliases from internal/transmission.
+type (
+	ServerInfo      = transmission.ServerInfo
+	Stats           = transmission.Stats
+	StatsSnapshot   = transmission.StatsSnapshot
+	PortTest        = transmission.PortTest
+	FreeSpace       = transmission.FreeSpace
+	SessionSettings = transmission.SessionSettings
+	Torrent         = transmission.Torrent
+	TorrentDetail   = transmission.TorrentDetail
+	File            = transmission.File
+	Peer            = transmission.Peer
+	Tracker         = transmission.Tracker
+	FileChanges     = transmission.FileChanges
+	AddRequest      = transmission.AddRequest
+	AddResult       = transmission.AddResult
+	Field           = transmission.Field
+	Status          = transmission.Status
+	Source          = transmission.Source
+	Selector        = transmission.Selector
+	Filter          = transmission.Filter
+	SortField       = transmission.SortField
+)
 
-// ErrServer signals that the backend accepted the request at the transport level
-// but reported a server-side RPC application error (e.g. an invalid argument or
-// a rejected operation). It is distinct from ErrUnreachable so a status bar can
-// tell "can't reach host" from "server rejected the request". It is matchable
-// with errors.Is.
-var ErrServer = errors.New("torrent: server error")
+// Status constants, re-exported from internal/transmission.
+const (
+	StatusStopped          = transmission.StatusStopped
+	StatusQueuedToVerify   = transmission.StatusQueuedToVerify
+	StatusVerifying        = transmission.StatusVerifying
+	StatusQueuedToDownload = transmission.StatusQueuedToDownload
+	StatusDownloading      = transmission.StatusDownloading
+	StatusQueuedToSeed     = transmission.StatusQueuedToSeed
+	StatusSeeding          = transmission.StatusSeeding
+	StatusError            = transmission.StatusError
+)
 
-// ErrUnsupported signals that the backend server is older than the minimum
-// version snatcher supports. It is matchable with errors.Is.
-var ErrUnsupported = errors.New("torrent: unsupported server version")
+// Source constants, re-exported from internal/transmission.
+const (
+	SourceFile   = transmission.SourceFile
+	SourceURL    = transmission.SourceURL
+	SourceMagnet = transmission.SourceMagnet
+)
 
-// ServerInfo is the vendor-neutral description of a connected server, returned
-// by Backend.ServerInfo.
-type ServerInfo struct {
-	// Version is the server's long version string, e.g. "4.0.6 (38c164933e)".
-	Version string `json:"version"`
+// Field constants, re-exported from internal/transmission.
+const (
+	FieldID                 = transmission.FieldID
+	FieldHash               = transmission.FieldHash
+	FieldName               = transmission.FieldName
+	FieldStatus             = transmission.FieldStatus
+	FieldPercentDone        = transmission.FieldPercentDone
+	FieldTotalSize          = transmission.FieldTotalSize
+	FieldSizeWhenDone       = transmission.FieldSizeWhenDone
+	FieldLeftUntilDone      = transmission.FieldLeftUntilDone
+	FieldRateDownload       = transmission.FieldRateDownload
+	FieldRateUpload         = transmission.FieldRateUpload
+	FieldUploadRatio        = transmission.FieldUploadRatio
+	FieldETA                = transmission.FieldETA
+	FieldPeersConnected     = transmission.FieldPeersConnected
+	FieldPeersSendingToUs   = transmission.FieldPeersSendingToUs
+	FieldPeersGettingFromUs = transmission.FieldPeersGettingFromUs
+	FieldAddedDate          = transmission.FieldAddedDate
+	FieldDoneDate           = transmission.FieldDoneDate
+	FieldActivityDate       = transmission.FieldActivityDate
+	FieldDownloadDir        = transmission.FieldDownloadDir
+	FieldError              = transmission.FieldError
+	FieldLabels             = transmission.FieldLabels
+	FieldQueuePosition      = transmission.FieldQueuePosition
+	FieldIsFinished         = transmission.FieldIsFinished
+	FieldIsStalled          = transmission.FieldIsStalled
+)
 
-	// RPCVersionSemver is the server's semver-compatible RPC API version, e.g.
-	// "6.0.0".
-	RPCVersionSemver string `json:"rpc_version_semver"`
+// Filter constants, re-exported from internal/transmission.
+const (
+	FilterAll              = transmission.FilterAll
+	FilterActive           = transmission.FilterActive
+	FilterDownloading      = transmission.FilterDownloading
+	FilterSeeding          = transmission.FilterSeeding
+	FilterStopped          = transmission.FilterStopped
+	FilterVerifying        = transmission.FilterVerifying
+	FilterQueuedToVerify   = transmission.FilterQueuedToVerify
+	FilterQueuedToDownload = transmission.FilterQueuedToDownload
+	FilterQueuedToSeed     = transmission.FilterQueuedToSeed
+	FilterError            = transmission.FilterError
+)
 
-	// Protocol is the negotiated wire protocol name (backend-specific, e.g.
-	// "jsonrpc-2.0" or "bespoke" for Transmission).
-	Protocol string `json:"protocol"`
-}
+// SortField constants, re-exported from internal/transmission.
+const (
+	SortQueue    = transmission.SortQueue
+	SortName     = transmission.SortName
+	SortAdded    = transmission.SortAdded
+	SortSize     = transmission.SortSize
+	SortProgress = transmission.SortProgress
+	SortRatio    = transmission.SortRatio
+	SortSpeed    = transmission.SortSpeed
+)
 
-// StatsSnapshot is the vendor-neutral shape of an aggregate stats snapshot
-// (cumulative across all sessions, or the current session only).
-type StatsSnapshot struct {
-	// UploadedBytes is the total number of bytes uploaded in the snapshot.
-	UploadedBytes int64 `json:"uploaded_bytes"`
+// Field projections, re-exported from internal/transmission.
+var (
+	AllFields  = transmission.AllFields
+	PollFields = transmission.PollFields
+)
 
-	// DownloadedBytes is the total number of bytes downloaded in the snapshot.
-	DownloadedBytes int64 `json:"downloaded_bytes"`
+// Domain functions, re-exported from internal/transmission.
+var (
+	StatusFromTransmission = transmission.StatusFromTransmission
+	FieldKeys              = transmission.FieldKeys
+	ParseSelector          = transmission.ParseSelector
+	ParseFilter            = transmission.ParseFilter
+	ParseSortField         = transmission.ParseSortField
+	ClassifySource         = transmission.ClassifySource
+	FilterByStatus         = transmission.FilterByStatus
+	SearchByName           = transmission.SearchByName
+	SortTorrents           = transmission.SortTorrents
+)
 
-	// FilesAdded is the number of files added in the snapshot.
-	FilesAdded int64 `json:"files_added"`
-
-	// SessionCount is the number of sessions counted in the snapshot.
-	SessionCount int64 `json:"session_count"`
-
-	// SecondsActive is the number of seconds active in the snapshot.
-	SecondsActive int64 `json:"seconds_active"`
-}
-
-// PortTest is the vendor-neutral result of a port-reachability check, returned
-// by Backend.TestPort. IPProtocol is only populated when the backend reports it
-// (Transmission's JSON-RPC 2.0 scheme); it is omitted otherwise.
-type PortTest struct {
-	// Open reports whether the configured peer port is reachable from outside.
-	Open bool `json:"open"`
-
-	// IPProtocol is the IP protocol the test was carried out on ("ipv4" or
-	// "ipv6"), or empty when the backend did not report it.
-	IPProtocol string `json:"ip_protocol,omitempty"`
-}
-
-// FreeSpace is the vendor-neutral result of a free-space query on a download
-// path, returned by Backend.FreeSpace. TotalBytes is only populated when the
-// backend reports it (Transmission >= 4.1.0); it is omitted otherwise, mirroring
-// how PortTest.IPProtocol is optional.
-type FreeSpace struct {
-	// Path is the directory the free-space query was carried out on (echoed back
-	// by the server).
-	Path string `json:"path"`
-
-	// SizeBytes is the free space available in the directory, in bytes.
-	SizeBytes int64 `json:"size_bytes"`
-
-	// TotalBytes is the directory's total capacity, in bytes, or 0 (omitted) when
-	// the backend did not report it (the bespoke scheme on a server too old to
-	// return it).
-	TotalBytes int64 `json:"total_bytes,omitempty"`
-}
-
-// Stats is the vendor-neutral session statistics returned by Backend.Stats.
-type Stats struct {
-	// ActiveTorrentCount is the number of active torrents.
-	ActiveTorrentCount int64 `json:"active_torrent_count"`
-
-	// PausedTorrentCount is the number of paused torrents.
-	PausedTorrentCount int64 `json:"paused_torrent_count"`
-
-	// TorrentCount is the total number of torrents.
-	TorrentCount int64 `json:"torrent_count"`
-
-	// DownloadSpeed is the current aggregate download speed in bytes/second.
-	DownloadSpeed int64 `json:"download_speed"`
-
-	// UploadSpeed is the current aggregate upload speed in bytes/second.
-	UploadSpeed int64 `json:"upload_speed"`
-
-	// CumulativeStats aggregates statistics across all sessions.
-	CumulativeStats StatsSnapshot `json:"cumulative_stats"`
-
-	// CurrentStats covers statistics for the current session only.
-	CurrentStats StatsSnapshot `json:"current_stats"`
-}
-
-// Reader is the read-only half of Backend: the methods that only query the
-// server and never mutate it. A pane or caller that only needs to observe the
-// server can depend on this narrower interface. Methods honor the supplied
-// context for cancellation and deadlines, and map client-specific failures to
-// the neutral sentinels (ErrAuth, ErrUnreachable, ErrServer).
+// Reader is the read-only half of Backend.
 type Reader interface {
-	// ServerInfo performs a round-trip to the server and returns its neutral
-	// ServerInfo.
 	ServerInfo(ctx context.Context) (ServerInfo, error)
-
-	// Stats returns the server's neutral session statistics.
 	Stats(ctx context.Context) (Stats, error)
-
-	// ListTorrents returns the torrents matched by sel as neutral Torrents. An
-	// All selector (or one whose RPCIDs is empty) returns every torrent;
-	// otherwise the server filters to the selected ids/hashes. The optional
-	// fields projection limits which Torrent fields the server returns and
-	// snatcher decodes (see PollFields for the cheap polling subset); an empty
-	// projection requests the full record (AllFields). Fields not requested are
-	// left at their zero value. The returned slice is never nil on success (it is
-	// empty when there are no matching torrents).
 	ListTorrents(ctx context.Context, sel Selector, fields ...Field) ([]Torrent, error)
-
-	// TorrentDetail returns the full detail view (files, peers, trackers, the
-	// pieces bitfield, the magnet link, and the overview scalars, on top of the
-	// embedded Torrent record) for the single torrent with the given numeric id,
-	// in one round-trip. An id that matches no torrent returns an error.
 	TorrentDetail(ctx context.Context, id int64) (TorrentDetail, error)
-
-	// GetSession performs a round-trip to the server and returns its neutral
-	// SessionSettings (the server's current configurable session settings).
 	GetSession(ctx context.Context) (SessionSettings, error)
-
-	// TestPort checks whether the configured peer port is reachable from outside
-	// and returns the neutral PortTest. The result's Open flag is a probe value
-	// (a reachable-but-closed port is not an error); a transport or auth failure
-	// maps to the neutral sentinels (ErrAuth, ErrUnreachable).
 	TestPort(ctx context.Context) (PortTest, error)
-
-	// FreeSpace queries the free space (and, when the server reports it, the total
-	// capacity) on the given download path and returns the neutral FreeSpace. The
-	// result's TotalBytes is omitted when the backend does not report it (a
-	// Transmission server too old to return it); a transport or auth failure maps
-	// to the neutral sentinels (ErrAuth, ErrUnreachable).
 	FreeSpace(ctx context.Context, path string) (FreeSpace, error)
 }
 
-// Mutator is the write half of Backend: the methods that change server state
-// (start/stop, queue moves, removal, relocation, per-torrent and per-file
-// edits, adding a torrent, and writing session settings). Methods honor the
-// supplied context for cancellation and deadlines, and map client-specific
-// failures to the neutral sentinels (ErrAuth, ErrUnreachable, ErrServer).
+// Mutator is the write half of Backend.
 type Mutator interface {
-	// StartTorrents resumes the torrents matched by sel (start-now when now is
-	// true, disregarding queue position). An All selector targets every torrent.
-	// Starting an already-started torrent is a no-op.
 	StartTorrents(ctx context.Context, sel Selector, now bool) error
-
-	// StopTorrents pauses the torrents matched by sel. An All selector targets
-	// every torrent. Stopping an already-stopped torrent is a no-op.
 	StopTorrents(ctx context.Context, sel Selector) error
-
-	// VerifyTorrents queues local-data verification (a re-hash of downloaded
-	// files against the torrent metadata) for the torrents matched by sel. An All
-	// selector targets every torrent. Verifying an already-verifying torrent is a
-	// no-op.
 	VerifyTorrents(ctx context.Context, sel Selector) error
-
-	// ReannounceTorrents forces the torrents matched by sel to re-announce to
-	// their trackers immediately, rather than waiting for the next scheduled
-	// announce. An All selector targets every torrent. Reannouncing is a no-op-safe
-	// action.
 	ReannounceTorrents(ctx context.Context, sel Selector) error
-
-	// QueueMoveTop moves the torrents matched by sel to the top of the server's
-	// queue. An All selector targets every torrent.
 	QueueMoveTop(ctx context.Context, sel Selector) error
-
-	// QueueMoveUp moves the torrents matched by sel up one position in the
-	// server's queue. An All selector targets every torrent.
 	QueueMoveUp(ctx context.Context, sel Selector) error
-
-	// QueueMoveDown moves the torrents matched by sel down one position in the
-	// server's queue. An All selector targets every torrent.
 	QueueMoveDown(ctx context.Context, sel Selector) error
-
-	// QueueMoveBottom moves the torrents matched by sel to the bottom of the
-	// server's queue. An All selector targets every torrent.
 	QueueMoveBottom(ctx context.Context, sel Selector) error
-
-	// RemoveTorrents removes the torrents matched by sel from the session, also
-	// deleting their downloaded local files when deleteData is true. An All
-	// selector targets every torrent. Removal is immediate and irreversible.
 	RemoveTorrents(ctx context.Context, sel Selector, deleteData bool) error
-
-	// MoveTorrents changes the download location of the torrents matched by sel to
-	// location. When move is true the backend relocates the existing files to
-	// location; when false it repoints at location and searches there for files
-	// that are already present (e.g. after a manual move). An All selector targets
-	// every torrent. The location is passed through as given; the backend does not
-	// validate that it exists or is writable.
 	MoveTorrents(ctx context.Context, sel Selector, location string, move bool) error
-
-	// SetTorrents writes per-torrent fields on the torrents matched by sel. The
-	// changes map is keyed by neutral kebab-case field key (e.g. "bandwidth-
-	// priority", "seed-ratio-mode") with the parsed typed value; the backend
-	// translates each key to its own wire scheme. Only the keys present in changes
-	// are written; unspecified fields are left untouched. An All selector targets
-	// every torrent. The call confirms success and carries no response payload.
 	SetTorrents(ctx context.Context, sel Selector, changes map[string]any) error
-
-	// SetFiles applies per-file selection and priority changes to the torrents
-	// matched by sel. The changes' index lists select which files within each
-	// torrent to mark wanted/unwanted or set to high/normal/low priority; only the
-	// non-empty FileChanges fields are written, and an empty FileChanges is a
-	// no-op. An All selector targets every torrent. The call confirms success and
-	// carries no response payload.
 	SetFiles(ctx context.Context, sel Selector, changes FileChanges) error
-
-	// AddTorrent adds a single torrent described by req (exactly one of Metainfo,
-	// URL, or Magnet identifies the source) and returns the neutral AddResult. A
-	// torrent that was already present is reported via AddResult.Duplicate rather
-	// than as an error.
 	AddTorrent(ctx context.Context, req AddRequest) (AddResult, error)
-
-	// SetSession writes the supplied session settings. The changes map is keyed by
-	// neutral kebab-case setting key (e.g. "peer-port", "dht-enabled") with the
-	// parsed typed value; the backend translates each key to its own wire scheme.
-	// Only the keys present in changes are written. The call confirms success and
-	// carries no response payload.
 	SetSession(ctx context.Context, changes map[string]any) error
 }
 
-// Backend is the vendor-neutral interface every BitTorrent client adapter
-// implements. Commands depend on this interface rather than any concrete
-// client. It composes the read-only Reader and the write-side Mutator and adds
-// a Close hook for releasing any resources the backend holds (a no-op for a
-// stateless adapter; the seam a future pooled or long-lived backend uses for
-// cleanup). Methods honor the supplied context for cancellation and deadlines,
-// and map client-specific failures to the neutral sentinels (ErrAuth,
-// ErrUnreachable, ErrServer).
+// Backend is the interface commands depend on. It composes Reader and Mutator
+// and adds Close. The concrete implementation is *transmission.Backend.
 type Backend interface {
 	Reader
 	Mutator
-
-	// Close releases any resources held by the backend. It is safe to call on a
-	// stateless adapter (a no-op) and may be called more than once.
 	Close() error
 }
+
+// Compile-time assertions that *transmission.Backend satisfies the interfaces.
+var (
+	_ Reader  = (*transmission.Backend)(nil)
+	_ Mutator = (*transmission.Backend)(nil)
+	_ Backend = (*transmission.Backend)(nil)
+)
