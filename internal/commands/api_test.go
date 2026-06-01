@@ -15,8 +15,16 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
-	"github.com/itspriddle/snatcher/internal/torrent/torrenttest"
+	"github.com/itspriddle/snatcher/internal/torrent"
 )
+
+// notAPICaller is a minimal torrent.Backend that does not implement
+// transmission.APICaller, exercising the missing-capability branch of apiCaller.
+// The embedded interface satisfies torrent.Backend at compile time; the methods
+// are never called because the type assertion fails first.
+type notAPICaller struct {
+	torrent.Backend
+}
 
 // sessionGetResponse is a bespoke session-get payload used as the canned answer
 // for the api command's real call (the CSRF probe is answered separately by the
@@ -154,9 +162,9 @@ func TestAPINotConfigured(t *testing.T) {
 }
 
 func TestAPIMissingCapabilityErrors(t *testing.T) {
-	// The torrenttest fake is a torrent.Backend but not a transmission.APICaller,
-	// so it exercises the missing-capability branch of apiCaller.
-	_, err := apiCaller(&torrenttest.Backend{})
+	// notAPICaller is a torrent.Backend but not a transmission.APICaller, so it
+	// exercises the missing-capability branch of apiCaller.
+	_, err := apiCaller(&notAPICaller{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "backend does not support raw API calls")
 }
