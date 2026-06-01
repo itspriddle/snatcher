@@ -199,53 +199,53 @@ type Torrent struct {
 	Status Status `json:"status"`
 
 	// PercentDone is the download completion fraction in the range 0–1.
-	PercentDone float64 `json:"percentDone"`
+	PercentDone float64 `json:"percent_done"`
 
 	// TotalSize is the total size of the torrent's contents, in bytes.
-	TotalSize int64 `json:"totalSize"`
+	TotalSize int64 `json:"total_size"`
 
 	// SizeWhenDone is the number of bytes the torrent will occupy once the
 	// selected files finish downloading, in bytes.
-	SizeWhenDone int64 `json:"sizeWhenDone"`
+	SizeWhenDone int64 `json:"size_when_done"`
 
 	// LeftUntilDone is the number of bytes still to download, in bytes.
-	LeftUntilDone int64 `json:"leftUntilDone"`
+	LeftUntilDone int64 `json:"left_until_done"`
 
 	// RateDownload is the current download rate, in bytes/second.
-	RateDownload int64 `json:"rateDownload"`
+	RateDownload int64 `json:"rate_download"`
 
 	// RateUpload is the current upload rate, in bytes/second.
-	RateUpload int64 `json:"rateUpload"`
+	RateUpload int64 `json:"rate_upload"`
 
 	// UploadRatio is the ratio of bytes uploaded to bytes downloaded.
-	UploadRatio float64 `json:"uploadRatio"`
+	UploadRatio float64 `json:"upload_ratio"`
 
 	// ETA is the estimated seconds until the download completes. A negative
 	// value means unknown/not applicable, matching Transmission's convention.
 	ETA int64 `json:"eta"`
 
 	// PeersConnected is the number of peers currently connected.
-	PeersConnected int64 `json:"peersConnected"`
+	PeersConnected int64 `json:"peers_connected"`
 
 	// PeersSendingToUs is the number of connected peers sending data to us.
-	PeersSendingToUs int64 `json:"peersSendingToUs"`
+	PeersSendingToUs int64 `json:"peers_sending_to_us"`
 
 	// PeersGettingFromUs is the number of connected peers downloading from us.
-	PeersGettingFromUs int64 `json:"peersGettingFromUs"`
+	PeersGettingFromUs int64 `json:"peers_getting_from_us"`
 
 	// AddedDate is the Unix timestamp (seconds) when the torrent was added.
-	AddedDate int64 `json:"addedDate"`
+	AddedDate int64 `json:"added_date"`
 
 	// DoneDate is the Unix timestamp (seconds) when the torrent finished
 	// downloading, or 0 if not complete.
-	DoneDate int64 `json:"doneDate"`
+	DoneDate int64 `json:"done_date"`
 
 	// ActivityDate is the Unix timestamp (seconds) of the torrent's most recent
 	// activity.
-	ActivityDate int64 `json:"activityDate"`
+	ActivityDate int64 `json:"activity_date"`
 
 	// DownloadDir is the directory the torrent's data is downloaded into.
-	DownloadDir string `json:"downloadDir"`
+	DownloadDir string `json:"download_dir"`
 
 	// Error is the backend's error message for the torrent, or empty when there
 	// is no error.
@@ -255,15 +255,15 @@ type Torrent struct {
 	Labels []string `json:"labels"`
 
 	// QueuePosition is the torrent's position in the backend's queue.
-	QueuePosition int64 `json:"queuePosition"`
+	QueuePosition int64 `json:"queue_position"`
 
 	// IsFinished reports whether seeding is complete (the seed ratio or idle
 	// limit has been reached).
-	IsFinished bool `json:"isFinished"`
+	IsFinished bool `json:"is_finished"`
 
 	// IsStalled reports whether the torrent has stalled (no data transfer for
 	// longer than the stalled threshold).
-	IsStalled bool `json:"isStalled"`
+	IsStalled bool `json:"is_stalled"`
 }
 
 // SessionSettings is the vendor-neutral snapshot of a server's configurable

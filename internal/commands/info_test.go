@@ -247,7 +247,7 @@ func TestInfoSanitizesHumanOutputNotJSON(t *testing.T) {
 
 	var got struct {
 		Name        string   `json:"name"`
-		DownloadDir string   `json:"downloadDir"`
+		DownloadDir string   `json:"download_dir"`
 		Error       string   `json:"error"`
 		Labels      []string `json:"labels"`
 	}

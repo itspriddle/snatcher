@@ -193,12 +193,12 @@ func TestTorrentJSONContract(t *testing.T) {
 
 	// Every documented field is present under its expected key.
 	for _, key := range []string{
-		"id", "hash", "name", "status", "percentDone", "totalSize",
-		"sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload",
-		"uploadRatio", "eta", "peersConnected", "peersSendingToUs",
-		"peersGettingFromUs", "addedDate", "doneDate", "activityDate",
-		"downloadDir", "error", "labels", "queuePosition", "isFinished",
-		"isStalled",
+		"id", "hash", "name", "status", "percent_done", "total_size",
+		"size_when_done", "left_until_done", "rate_download", "rate_upload",
+		"upload_ratio", "eta", "peers_connected", "peers_sending_to_us",
+		"peers_getting_from_us", "added_date", "done_date", "activity_date",
+		"download_dir", "error", "labels", "queue_position", "is_finished",
+		"is_stalled",
 	} {
 		assert.Contains(t, got, key, "missing json key %q", key)
 	}
