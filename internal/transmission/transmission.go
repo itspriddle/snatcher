@@ -25,20 +25,6 @@ type Client struct {
 	client *rpc.Client
 }
 
-// Compile-time assertion that *Client satisfies APICaller.
-var _ APICaller = (*Client)(nil)
-
-// APICaller is the capability for issuing arbitrary RPC calls. The api command
-// type-asserts the backend to this capability.
-type APICaller interface {
-	// CallAPI issues an arbitrary RPC method with raw arguments and returns the
-	// normalized APIResponse. method is the canonical kebab-case name; args is the
-	// raw arguments object (nil for a zero-argument method). An RPC-level failure
-	// is reported via APIResponse.OK == false, not a Go error; only transport and
-	// auth failures (mapped to the sentinels) return a Go error.
-	CallAPI(ctx context.Context, method string, args json.RawMessage) (APIResponse, error)
-}
-
 // APIResponse is the result of a CallAPI: the normalized response envelope plus
 // the exact server bytes and an OK flag. It mirrors rpc.RawResponse, so commands
 // render a stable shape (and can output the raw bytes verbatim) without

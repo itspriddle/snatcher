@@ -47,8 +47,7 @@ type apiEnvelope struct {
 // NewAPICmd builds the "api" command, a power-user escape hatch — modeled on
 // `gh api` — that issues an arbitrary Transmission RPC call and prints the
 // response. The arguments object is built from gh-style field flags (-f/-F) or a
-// raw JSON body (--input). The client must implement the Transmission APICaller
-// capability.
+// raw JSON body (--input).
 func NewAPICmd() *cobra.Command {
 	var (
 		configPath string
@@ -108,12 +107,7 @@ func NewAPICmd() *cobra.Command {
 				return err
 			}
 
-			caller, err := apiCaller(backend)
-			if err != nil {
-				return err
-			}
-
-			resp, err := caller.CallAPI(cmd.Context(), method, arguments)
+			resp, err := backend.CallAPI(cmd.Context(), method, arguments)
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
@@ -144,19 +138,6 @@ func NewAPICmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("input", "field")
 
 	return cmd
-}
-
-// apiCaller type-asserts the client to the Transmission APICaller capability,
-// returning a clear error when it lacks it. The generic call is kept as a
-// capability rather than a method on the client, so a client that does not
-// support it produces a "not supported" error rather than a panic.
-func apiCaller(client any) (transmission.APICaller, error) {
-	caller, ok := client.(transmission.APICaller)
-	if !ok {
-		return nil, errors.New("backend does not support raw API calls")
-	}
-
-	return caller, nil
 }
 
 // renderAPIResponse writes the API response in the selected output mode. --raw

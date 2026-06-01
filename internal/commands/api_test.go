@@ -17,10 +17,6 @@ import (
 	"github.com/itspriddle/snatcher/internal/config"
 )
 
-// notAPICaller is a value that does not implement transmission.APICaller,
-// exercising the missing-capability branch of apiCaller.
-type notAPICaller struct{}
-
 // sessionGetResponse is a bespoke session-get payload used as the canned answer
 // for the api command's real call (the CSRF probe is answered separately by the
 // stub's 409). The map key order in --raw output is the server's, so raw
@@ -154,14 +150,6 @@ func TestAPINotConfigured(t *testing.T) {
 	_, _, err := runAPI(t, "--config", cfgPath, "session-get")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
-}
-
-func TestAPIMissingCapabilityErrors(t *testing.T) {
-	// notAPICaller does not implement transmission.APICaller, so it exercises the
-	// missing-capability branch of apiCaller.
-	_, err := apiCaller(&notAPICaller{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "backend does not support raw API calls")
 }
 
 func TestBuildArgumentsFieldTypes(t *testing.T) {
