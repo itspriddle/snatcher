@@ -1164,7 +1164,8 @@ func resolveTorrentGetFields(fields []string, wireMap map[string][]string) []str
 // the result, since the final byte may carry padding bits past the last piece.
 // An empty string, or a value that is not valid base64, yields a nil slice
 // rather than an error — a malformed bitfield should not fail the whole detail
-// read.
+// read. The result length is bounded by the decoded payload (len(raw)*8), so a
+// bogus pieceCount cannot drive an unbounded allocation.
 func decodePiecesBitfield(encoded string, pieceCount int64) []bool {
 	if encoded == "" || pieceCount <= 0 {
 		return nil
@@ -1175,7 +1176,11 @@ func decodePiecesBitfield(encoded string, pieceCount int64) []bool {
 		return nil
 	}
 
-	bits := make([]bool, 0, pieceCount)
+	// Cap the preallocation to what the decoded bitfield can actually hold:
+	// pieceCount is untrusted server input, so a malformed or malicious value
+	// must not drive an allocation larger than the decoded payload (the loop
+	// already stops at the end of raw). bits never grows past len(raw)*8.
+	bits := make([]bool, 0, min(pieceCount, int64(len(raw))*8))
 	for i := int64(0); i < pieceCount; i++ {
 		byteIdx := i / 8
 		if byteIdx >= int64(len(raw)) {

@@ -2683,4 +2683,12 @@ func TestDecodePiecesBitfield(t *testing.T) {
 	t.Run("invalid base64 yields nil, not an error", func(t *testing.T) {
 		assert.Nil(t, decodePiecesBitfield("not base64!!", 8))
 	})
+
+	t.Run("bounds allocation by payload, not by an oversized pieceCount", func(t *testing.T) {
+		// piecesB64 decodes to 2 bytes, so the bitfield can hold at most 16
+		// bits. A malicious pieceCount must not drive the result (or its
+		// preallocation) past len(raw)*8.
+		got := decodePiecesBitfield(piecesB64, 1_000_000)
+		assert.Len(t, got, 16)
+	})
 }
