@@ -114,7 +114,7 @@ func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Co
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
 
-			torrents, err := backend.ListTorrents(cmd.Context(), nil)
+			torrents, err := backend.ListTorrents(cmd.Context(), torrent.Selector{All: true})
 			if err != nil {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}

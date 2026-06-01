@@ -336,7 +336,7 @@ func TestBackendListTorrents(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), nil)
+	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 
@@ -381,7 +381,7 @@ func TestBackendListTorrentsPromotesErrorStatus(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), nil)
+	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 
@@ -400,7 +400,7 @@ func TestBackendListTorrentsEmpty(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), nil)
+	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
 	require.NoError(t, err)
 	assert.NotNil(t, torrents)
 	assert.Empty(t, torrents)
@@ -425,12 +425,66 @@ func TestBackendListTorrentsFiltersByID(t *testing.T) {
 
 	b := New(srv.URL)
 
-	torrents, err := b.ListTorrents(context.Background(), []int64{2})
+	torrents, err := b.ListTorrents(context.Background(), torrent.Selector{IDs: []int64{2}})
 	require.NoError(t, err)
 	require.Len(t, torrents, 1)
 	assert.Equal(t, int64(2), torrents[0].ID)
 	assert.Equal(t, torrent.StatusSeeding, torrents[0].Status)
 	assert.Contains(t, captured, `"ids":[2]`)
+}
+
+// TestBackendListTorrentsProjectsFields asserts the fields projection reaches the
+// wire: a PollFields request asks the server for a strict subset of the wire
+// fields the full (empty) projection requests.
+func TestBackendListTorrentsProjectsFields(t *testing.T) {
+	var captured string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+
+		_, _ = w.Write([]byte(`{"arguments": {"torrents": []}, "result": "success", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	// The full set (empty projection) requests every wire field.
+	_, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
+	require.NoError(t, err)
+	fullFields := wireFields(t, captured)
+
+	// PollFields requests a strict subset of the wire fields.
+	_, err = b.ListTorrents(context.Background(), torrent.Selector{All: true}, torrent.PollFields...)
+	require.NoError(t, err)
+	pollFields := wireFields(t, captured)
+
+	require.NotEmpty(t, pollFields)
+	assert.Less(t, len(pollFields), len(fullFields), "PollFields requests fewer wire fields than the full set")
+	for _, f := range pollFields {
+		assert.Contains(t, fullFields, f, "poll wire field %q is also in the full set", f)
+	}
+}
+
+// wireFields decodes the "fields" array from a captured torrent-get request body
+// (it is "fields" under "arguments" on both wire schemes).
+func wireFields(t *testing.T, body string) []string {
+	t.Helper()
+
+	var envelope struct {
+		Arguments struct {
+			Fields []string `json:"fields"`
+		} `json:"arguments"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &envelope))
+
+	return envelope.Arguments.Fields
 }
 
 func TestBackendListTorrentsMapsAuthError(t *testing.T) {
@@ -441,7 +495,7 @@ func TestBackendListTorrentsMapsAuthError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	_, err := b.ListTorrents(context.Background(), nil)
+	_, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
 	require.ErrorIs(t, err, torrent.ErrAuth)
 	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
 }
@@ -454,7 +508,7 @@ func TestBackendListTorrentsMapsTransportError(t *testing.T) {
 
 	b := New(srv.URL)
 
-	_, err := b.ListTorrents(context.Background(), nil)
+	_, err := b.ListTorrents(context.Background(), torrent.Selector{All: true})
 	require.ErrorIs(t, err, torrent.ErrUnreachable)
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }

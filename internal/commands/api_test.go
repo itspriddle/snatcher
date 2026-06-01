@@ -162,7 +162,7 @@ func (noAPIBackend) ServerInfo(context.Context) (torrent.ServerInfo, error) {
 	return torrent.ServerInfo{}, nil
 }
 func (noAPIBackend) Stats(context.Context) (torrent.Stats, error) { return torrent.Stats{}, nil }
-func (noAPIBackend) ListTorrents(context.Context, []int64) ([]torrent.Torrent, error) {
+func (noAPIBackend) ListTorrents(context.Context, torrent.Selector, ...torrent.Field) ([]torrent.Torrent, error) {
 	return nil, nil
 }
 func (noAPIBackend) StartTorrents(context.Context, torrent.Selector, bool) error { return nil }

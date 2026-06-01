@@ -79,15 +79,14 @@ func NewInfoCmd() *cobra.Command {
 	return cmd
 }
 
-// resolveTorrent fetches the single torrent named by sel. A numeric id narrows
-// the fetch with the backend's RPC-side id filter; a hash fetches all torrents
-// and matches on Hash, consistent with how mutation commands resolve hashes. In
-// both cases the result is matched in memory so the command is correct even if a
-// backend over-returns. It returns an error with a non-zero exit when no torrent
-// matches, naming the original argument (arg).
+// resolveTorrent fetches the single torrent named by sel in one round-trip. The
+// selector (a single id or a single hash) is passed straight to ListTorrents, so
+// the server filters server-side whether the argument is an id or a hash — no
+// fetch-all-and-match-in-memory. The result is still matched in memory so the
+// command is correct even if a backend over-returns. It returns an error with a
+// non-zero exit when no torrent matches, naming the original argument (arg).
 func resolveTorrent(cmd *cobra.Command, backend torrent.Backend, serverURL string, sel torrent.Selector, arg string) (torrent.Torrent, error) {
 	var (
-		ids      []int64
 		wantID   int64
 		byID     bool
 		wantHash string
@@ -95,14 +94,13 @@ func resolveTorrent(cmd *cobra.Command, backend torrent.Backend, serverURL strin
 
 	switch {
 	case len(sel.IDs) == 1:
-		ids = sel.IDs
 		wantID = sel.IDs[0]
 		byID = true
 	case len(sel.Hashes) == 1:
 		wantHash = sel.Hashes[0]
 	}
 
-	torrents, err := backend.ListTorrents(cmd.Context(), ids)
+	torrents, err := backend.ListTorrents(cmd.Context(), sel)
 	if err != nil {
 		return torrent.Torrent{}, fmt.Errorf("connecting to %s: %w", serverURL, err)
 	}

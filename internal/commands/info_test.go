@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -185,6 +186,46 @@ func TestInfoJQ(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, `"ubuntu-24.04.iso"`, strings.TrimSpace(out))
+}
+
+// TestInfoSingleRoundTrip asserts info resolves a hash with exactly one
+// torrent-get request — the selector is filtered server-side, not fetched in
+// full and matched in memory. The CSRF handshake (the 409 probe) is excluded
+// from the count; only torrent-get method calls are tallied.
+func TestInfoSingleRoundTrip(t *testing.T) {
+	keyring.MockInit()
+
+	var torrentGets int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Transmission-Session-Id") == "" {
+			w.Header().Set("X-Transmission-Session-Id", "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		var envelope struct {
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&envelope)
+		if envelope.Method == "torrent-get" {
+			torrentGets++
+			_, _ = w.Write([]byte(bespokeInfoResponse))
+			return
+		}
+
+		_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "id": 1}`))
+	}))
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+
+	out, _, err := runInfo(t, "--config", cfgPath, infoHash1)
+	require.NoError(t, err)
+
+	fields := infoFields(t, out)
+	assert.Equal(t, infoHash1, fields["Hash"])
+	assert.Equal(t, 1, torrentGets, "info issues exactly one torrent-get round-trip")
 }
 
 func TestInfoNotFoundErrors(t *testing.T) {

@@ -148,19 +148,14 @@ func (b *Backend) Stats(ctx context.Context) (torrent.Stats, error) {
 }
 
 // ListTorrents performs a TorrentGet round-trip and returns the neutral
-// Torrents. A nil or empty ids slice returns all torrents; otherwise the server
-// filters to the given numeric ids. RPC failures are mapped to the neutral
-// sentinels. The returned slice is non-nil on success, empty when there are no
-// matching torrents.
-func (b *Backend) ListTorrents(ctx context.Context, ids []int64) ([]torrent.Torrent, error) {
-	rpcIDs := make([]any, len(ids))
-	for i, id := range ids {
-		rpcIDs[i] = id
-	}
-
-	// nil fields requests the full canonical set, keeping the neutral behavior
-	// identical until field projection is introduced at this seam.
-	raw, err := b.client.TorrentGet(ctx, rpcIDs, nil)
+// Torrents matched by sel. An All selector (or one whose RPCIDs is empty)
+// returns every torrent; otherwise the server filters to the selected
+// ids/hashes. The fields projection is translated to the rpc client's canonical
+// snake_case keys; an empty projection requests the full set. RPC failures are
+// mapped to the neutral sentinels. The returned slice is non-nil on success,
+// empty when there are no matching torrents.
+func (b *Backend) ListTorrents(ctx context.Context, sel torrent.Selector, fields ...torrent.Field) ([]torrent.Torrent, error) {
+	raw, err := b.client.TorrentGet(ctx, sel.RPCIDs(), torrent.FieldKeys(fields))
 	if err != nil {
 		return nil, mapError(err)
 	}

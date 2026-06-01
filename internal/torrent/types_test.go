@@ -210,3 +210,68 @@ func TestTorrentJSONContract(t *testing.T) {
 	assert.Equal(t, "abc123", got["hash"])
 	assert.Equal(t, float64(7), got["id"])
 }
+
+// TestFieldKeysDefaultsToAll confirms an empty projection (nil or len 0) expands
+// to the full AllFields set, in order, so a bare ListTorrents call still fills
+// every Torrent field.
+func TestFieldKeysDefaultsToAll(t *testing.T) {
+	want := make([]string, len(torrent.AllFields))
+	for i, f := range torrent.AllFields {
+		want[i] = string(f)
+	}
+
+	assert.Equal(t, want, torrent.FieldKeys(nil), "nil projection expands to AllFields")
+	assert.Equal(t, want, torrent.FieldKeys([]torrent.Field{}), "empty projection expands to AllFields")
+}
+
+// TestFieldKeysProjectsSubset confirms a non-empty projection is translated to
+// its canonical keys in the given order, untouched.
+func TestFieldKeysProjectsSubset(t *testing.T) {
+	got := torrent.FieldKeys([]torrent.Field{
+		torrent.FieldName, torrent.FieldID, torrent.FieldStatus,
+	})
+	assert.Equal(t, []string{"name", "id", "status"}, got)
+}
+
+// TestAllFieldsCoversTorrentJSONContract pins AllFields to exactly the Torrent
+// struct's json tags: every projectable field maps to a real key and no key is
+// missed, so a full projection decodes the whole record.
+func TestAllFieldsCoversTorrentJSONContract(t *testing.T) {
+	raw, err := json.Marshal(torrent.Torrent{})
+	require.NoError(t, err)
+
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(raw, &obj))
+
+	fieldKeys := make(map[string]struct{}, len(torrent.AllFields))
+	for _, f := range torrent.AllFields {
+		key := string(f)
+		assert.Contains(t, obj, key, "Field %q has no matching Torrent json tag", key)
+		fieldKeys[key] = struct{}{}
+	}
+
+	for key := range obj {
+		assert.Contains(t, fieldKeys, key, "Torrent json key %q is not a projectable Field", key)
+	}
+}
+
+// TestPollFieldsAreValidSubset confirms PollFields is a strict, deduplicated
+// subset of AllFields (every poll field is a real, projectable Field), so a poll
+// projection never requests an unknown key.
+func TestPollFieldsAreValidSubset(t *testing.T) {
+	all := make(map[torrent.Field]struct{}, len(torrent.AllFields))
+	for _, f := range torrent.AllFields {
+		all[f] = struct{}{}
+	}
+
+	require.NotEmpty(t, torrent.PollFields)
+	require.Less(t, len(torrent.PollFields), len(torrent.AllFields), "PollFields is a strict subset")
+
+	seen := make(map[torrent.Field]struct{}, len(torrent.PollFields))
+	for _, f := range torrent.PollFields {
+		assert.Contains(t, all, f, "poll field %q is not in AllFields", f)
+		_, dup := seen[f]
+		assert.False(t, dup, "poll field %q is duplicated", f)
+		seen[f] = struct{}{}
+	}
+}

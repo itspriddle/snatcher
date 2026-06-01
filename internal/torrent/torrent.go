@@ -115,11 +115,15 @@ type Backend interface {
 	// Stats returns the server's neutral session statistics.
 	Stats(ctx context.Context) (Stats, error)
 
-	// ListTorrents returns the server's torrents as neutral Torrents. A nil or
-	// empty ids slice returns all torrents; otherwise the server filters to the
-	// given numeric ids. The returned slice is never nil on success (it is empty
-	// when there are no matching torrents).
-	ListTorrents(ctx context.Context, ids []int64) ([]Torrent, error)
+	// ListTorrents returns the torrents matched by sel as neutral Torrents. An
+	// All selector (or one whose RPCIDs is empty) returns every torrent;
+	// otherwise the server filters to the selected ids/hashes. The optional
+	// fields projection limits which Torrent fields the server returns and
+	// snatcher decodes (see PollFields for the cheap polling subset); an empty
+	// projection requests the full record (AllFields). Fields not requested are
+	// left at their zero value. The returned slice is never nil on success (it is
+	// empty when there are no matching torrents).
+	ListTorrents(ctx context.Context, sel Selector, fields ...Field) ([]Torrent, error)
 
 	// StartTorrents resumes the torrents matched by sel (start-now when now is
 	// true, disregarding queue position). An All selector targets every torrent.

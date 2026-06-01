@@ -266,6 +266,84 @@ type Torrent struct {
 	IsStalled bool `json:"is_stalled"`
 }
 
+// Field is a vendor-neutral, projectable Torrent field. Its string value is the
+// canonical snake_case key matching the Torrent struct's json tag, which the
+// backend adapter translates to each wire protocol's spelling. Callers pass a
+// projection of Fields to ListTorrents so a polling client can request only the
+// cheap subset it needs (see PollFields) instead of the full record. An empty
+// projection means the full set (AllFields).
+type Field string
+
+// The full set of projectable Torrent fields, one per Torrent struct field. The
+// string values are the canonical snake_case keys (matching the json tags), so
+// FieldKeys can hand them straight to the adapter.
+const (
+	FieldID                 Field = "id"
+	FieldHash               Field = "hash"
+	FieldName               Field = "name"
+	FieldStatus             Field = "status"
+	FieldPercentDone        Field = "percent_done"
+	FieldTotalSize          Field = "total_size"
+	FieldSizeWhenDone       Field = "size_when_done"
+	FieldLeftUntilDone      Field = "left_until_done"
+	FieldRateDownload       Field = "rate_download"
+	FieldRateUpload         Field = "rate_upload"
+	FieldUploadRatio        Field = "upload_ratio"
+	FieldETA                Field = "eta"
+	FieldPeersConnected     Field = "peers_connected"
+	FieldPeersSendingToUs   Field = "peers_sending_to_us"
+	FieldPeersGettingFromUs Field = "peers_getting_from_us"
+	FieldAddedDate          Field = "added_date"
+	FieldDoneDate           Field = "done_date"
+	FieldActivityDate       Field = "activity_date"
+	FieldDownloadDir        Field = "download_dir"
+	FieldError              Field = "error"
+	FieldLabels             Field = "labels"
+	FieldQueuePosition      Field = "queue_position"
+	FieldIsFinished         Field = "is_finished"
+	FieldIsStalled          Field = "is_stalled"
+)
+
+// AllFields is every projectable Torrent field, in Torrent struct order. It is
+// the default projection used when ListTorrents is called with no fields (an
+// empty projection), so a bare list request still fills every Torrent field.
+var AllFields = []Field{
+	FieldID, FieldHash, FieldName, FieldStatus, FieldPercentDone,
+	FieldTotalSize, FieldSizeWhenDone, FieldLeftUntilDone, FieldRateDownload,
+	FieldRateUpload, FieldUploadRatio, FieldETA, FieldPeersConnected,
+	FieldPeersSendingToUs, FieldPeersGettingFromUs, FieldAddedDate,
+	FieldDoneDate, FieldActivityDate, FieldDownloadDir, FieldError,
+	FieldLabels, FieldQueuePosition, FieldIsFinished, FieldIsStalled,
+}
+
+// PollFields is the cheap field subset a polling client (the TUI list pane)
+// refreshes on every tick: identity, lifecycle state, progress, transfer rates,
+// and the size/left bytes a progress bar needs. It deliberately omits the
+// expensive or rarely-changing fields (peers, dates, labels, download dir) so a
+// frequent poll stays light. Its exact membership is not contract-locked the way
+// the json tags are and may be tuned once the poll loop exists.
+var PollFields = []Field{
+	FieldID, FieldHash, FieldStatus, FieldPercentDone, FieldRateDownload,
+	FieldRateUpload, FieldLeftUntilDone, FieldSizeWhenDone,
+}
+
+// FieldKeys converts a Field projection to the canonical snake_case key slice
+// the backend adapter consumes. An empty projection (nil or len 0) expands to
+// AllFields, so callers can pass no fields to mean "the full record". The result
+// preserves the given order.
+func FieldKeys(fields []Field) []string {
+	if len(fields) == 0 {
+		fields = AllFields
+	}
+
+	keys := make([]string, len(fields))
+	for i, f := range fields {
+		keys[i] = string(f)
+	}
+
+	return keys
+}
+
 // SessionSettings is the vendor-neutral snapshot of a server's configurable
 // session settings, returned by Backend.GetSession. It carries one typed field
 // per setting in the snatcher registry, grouped by category (download, network,
