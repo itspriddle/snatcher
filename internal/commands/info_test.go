@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -41,7 +42,8 @@ const bespokeInfoResponse = `{
 			"uploadRatio": 0.5,
 			"eta": 3600,
 			"downloadDir": "/downloads",
-			"labels": ["linux"]
+			"labels": ["linux"],
+			"magnetLink": "magnet:?xt=urn:btih:` + infoHash1 + `"
 		},
 		{
 			"id": 2,
@@ -100,23 +102,95 @@ func runInfo(t *testing.T, args ...string) (string, string, error) {
 }
 
 // infoConfigPath stands up a transmission stub serving the given torrent-get
-// payload on the bespoke path and writes a config pointing at it.
+// payload on the bespoke path and writes a config pointing at it. Unlike the
+// plain transmissionStub, the handler filters the fixture's torrents by the
+// request's "ids" argument (matching numeric id or hashString), so the server
+// behaves like a real Transmission: info's detail read is keyed by id and trusts
+// the server to return only the selected torrent. An empty/absent ids argument
+// returns every torrent.
 func infoConfigPath(t *testing.T, body string) (string, func()) {
 	t.Helper()
 
 	keyring.MockInit()
 
-	srv := httptest.NewServer(transmissionStub{
-		rpcVersionHeader: "", // bespoke path
-		responses: map[string]string{
-			"torrent-get": body,
-		},
-	}.handler())
+	var fixture struct {
+		Arguments struct {
+			Torrents []json.RawMessage `json:"torrents"`
+		} `json:"arguments"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &fixture))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Transmission-Session-Id") == "" {
+			w.Header().Set("X-Transmission-Session-Id", "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		var req struct {
+			Method    string `json:"method"`
+			Arguments struct {
+				IDs []json.RawMessage `json:"ids"`
+			} `json:"arguments"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		if req.Method != "torrent-get" {
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "id": 1}`))
+			return
+		}
+
+		matched := filterFixtureTorrents(fixture.Arguments.Torrents, req.Arguments.IDs)
+
+		payload, _ := json.Marshal(map[string]any{
+			"result":    "success",
+			"arguments": map[string]any{"torrents": matched},
+			"tag":       1,
+		})
+		_, _ = w.Write(payload)
+	}))
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
 
 	return cfgPath, srv.Close
+}
+
+// filterFixtureTorrents returns the fixture torrents whose id or hashString
+// matches one of the requested ids. An empty ids list returns every torrent,
+// mirroring Transmission's "no ids = all" behavior. It runs inside the stub's
+// HTTP handler, so it decodes best-effort (skipping any undecodable torrent)
+// rather than asserting — the fixtures are controlled test data.
+func filterFixtureTorrents(torrents, ids []json.RawMessage) []json.RawMessage {
+	if len(ids) == 0 {
+		return torrents
+	}
+
+	want := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		want[strings.Trim(string(id), `"`)] = struct{}{}
+	}
+
+	matched := make([]json.RawMessage, 0, len(torrents))
+	for _, raw := range torrents {
+		var ident struct {
+			ID   int64  `json:"id"`
+			Hash string `json:"hashString"`
+		}
+		if err := json.Unmarshal(raw, &ident); err != nil {
+			continue
+		}
+
+		if _, ok := want[fmt.Sprintf("%d", ident.ID)]; ok {
+			matched = append(matched, raw)
+			continue
+		}
+		if _, ok := want[ident.Hash]; ok {
+			matched = append(matched, raw)
+		}
+	}
+
+	return matched
 }
 
 func TestInfoResolvesByID(t *testing.T) {
@@ -188,10 +262,23 @@ func TestInfoJQ(t *testing.T) {
 	assert.Equal(t, `"ubuntu-24.04.iso"`, strings.TrimSpace(out))
 }
 
-// TestInfoSingleRoundTrip asserts info resolves a hash with exactly one
-// torrent-get request — the selector is filtered server-side, not fetched in
-// full and matched in memory. The CSRF handshake (the 409 probe) is excluded
-// from the count; only torrent-get method calls are tallied.
+// TestInfoExposesMagnetLink confirms info now fetches the detail view, so the
+// detail-only magnet_link is present in --json/--jq output.
+func TestInfoExposesMagnetLink(t *testing.T) {
+	cfgPath, closeSrv := infoConfigPath(t, bespokeInfoResponse)
+	defer closeSrv()
+
+	out, _, err := runInfo(t, "--config", cfgPath, "1", "--jq", ".magnet_link")
+	require.NoError(t, err)
+
+	assert.Equal(t, `"magnet:?xt=urn:btih:`+infoHash1+`"`, strings.TrimSpace(out))
+}
+
+// TestInfoSingleRoundTrip asserts info resolves an id with exactly one
+// torrent-get request — the id goes straight to the detail read, server-side
+// filtered, not fetched in full and matched in memory. The CSRF handshake (the
+// 409 probe) is excluded from the count; only torrent-get method calls are
+// tallied. (A hash needs one extra lookup, since TorrentDetail is keyed by id.)
 func TestInfoSingleRoundTrip(t *testing.T) {
 	keyring.MockInit()
 
@@ -220,12 +307,12 @@ func TestInfoSingleRoundTrip(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
 
-	out, _, err := runInfo(t, "--config", cfgPath, infoHash1)
+	out, _, err := runInfo(t, "--config", cfgPath, "1")
 	require.NoError(t, err)
 
 	fields := infoFields(t, out)
-	assert.Equal(t, infoHash1, fields["Hash"])
-	assert.Equal(t, 1, torrentGets, "info issues exactly one torrent-get round-trip")
+	assert.Equal(t, "1", fields["ID"])
+	assert.Equal(t, 1, torrentGets, "info issues exactly one torrent-get round-trip for an id")
 }
 
 func TestInfoNotFoundErrors(t *testing.T) {

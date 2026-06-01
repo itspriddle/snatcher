@@ -168,6 +168,23 @@ func (b *Backend) ListTorrents(ctx context.Context, sel torrent.Selector, fields
 	return torrents, nil
 }
 
+// TorrentDetail performs a single detail TorrentGet round-trip for the torrent
+// with the given numeric id and maps the canonical rpc.TorrentDetail to the
+// neutral torrent.TorrentDetail. An id that matches no torrent returns an error.
+// RPC failures are mapped to the neutral sentinels.
+func (b *Backend) TorrentDetail(ctx context.Context, id int64) (torrent.TorrentDetail, error) {
+	raw, err := b.client.TorrentGetDetail(ctx, []any{id})
+	if err != nil {
+		return torrent.TorrentDetail{}, mapError(err)
+	}
+
+	if len(raw) == 0 {
+		return torrent.TorrentDetail{}, fmt.Errorf("no torrent matched id %d", id)
+	}
+
+	return mapTorrentDetail(raw[0]), nil
+}
+
 // StartTorrents resumes the torrents matched by sel, dispatching to
 // torrent_start_now when now is true (disregarding queue position) and
 // torrent_start otherwise. An All selector omits the ids argument so the server
@@ -387,6 +404,53 @@ func mapTorrent(t rpc.Torrent) torrent.Torrent {
 		QueuePosition:      t.QueuePosition,
 		IsFinished:         t.IsFinished,
 		IsStalled:          t.IsStalled,
+	}
+}
+
+// mapTorrentDetail converts a canonical rpc.TorrentDetail into the neutral
+// torrent.TorrentDetail: the embedded Torrent is mapped via mapTorrent (so the
+// status promotion applies), and the detail collections and scalars are copied
+// across. The rpc and neutral File/Peer/Tracker types share identical layouts,
+// so each slice converts element-wise.
+func mapTorrentDetail(d rpc.TorrentDetail) torrent.TorrentDetail {
+	files := make([]torrent.File, len(d.Files))
+	for i, f := range d.Files {
+		files[i] = torrent.File(f)
+	}
+
+	peers := make([]torrent.Peer, len(d.Peers))
+	for i, p := range d.Peers {
+		peers[i] = torrent.Peer(p)
+	}
+
+	trackers := make([]torrent.Tracker, len(d.Trackers))
+	for i, tr := range d.Trackers {
+		trackers[i] = torrent.Tracker(tr)
+	}
+
+	return torrent.TorrentDetail{
+		Torrent: mapTorrent(d.Torrent),
+
+		Files:    files,
+		Peers:    peers,
+		Trackers: trackers,
+		Pieces:   d.Pieces,
+
+		MagnetLink:              d.MagnetLink,
+		DownloadedEver:          d.DownloadedEver,
+		UploadedEver:            d.UploadedEver,
+		CorruptEver:             d.CorruptEver,
+		HaveValid:               d.HaveValid,
+		PieceCount:              d.PieceCount,
+		PieceSize:               d.PieceSize,
+		Comment:                 d.Comment,
+		Creator:                 d.Creator,
+		DateCreated:             d.DateCreated,
+		IsPrivate:               d.IsPrivate,
+		SecondsDownloading:      d.SecondsDownloading,
+		SecondsSeeding:          d.SecondsSeeding,
+		RecheckProgress:         d.RecheckProgress,
+		MetadataPercentComplete: d.MetadataPercentComplete,
 	}
 }
 

@@ -513,6 +513,90 @@ func TestBackendListTorrentsMapsTransportError(t *testing.T) {
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }
 
+func TestBackendTorrentDetail(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // bespoke path: camelCase detail fields, 0/1 wanted
+		responses: map[string]string{
+			"torrent-get": `{
+				"arguments": {"torrents": [{
+					"id": 7,
+					"hashString": "abc123",
+					"name": "ubuntu.iso",
+					"status": 4,
+					"files": [
+						{"name": "ubuntu.iso", "length": 2048, "bytesCompleted": 1024}
+					],
+					"wanted": [1],
+					"priorities": [1],
+					"peers": [{"address": "10.0.0.1", "port": 51413, "clientName": "T", "isEncrypted": true}],
+					"trackerStats": [{"announce": "http://t/announce", "seederCount": 42}],
+					"pieces": "gA==",
+					"pieceCount": 1,
+					"magnetLink": "magnet:?xt=urn:btih:abc123",
+					"downloadedEver": 4096,
+					"isPrivate": true
+				}]},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	detail, err := b.TorrentDetail(context.Background(), 7)
+	require.NoError(t, err)
+
+	// The embedded Torrent maps through mapTorrent (status promotion applies).
+	assert.Equal(t, int64(7), detail.ID)
+	assert.Equal(t, "abc123", detail.Hash)
+	assert.Equal(t, torrent.StatusDownloading, detail.Status)
+
+	// The detail collections and scalars map across.
+	require.Len(t, detail.Files, 1)
+	assert.Equal(t, "ubuntu.iso", detail.Files[0].Name)
+	assert.True(t, detail.Files[0].Wanted)
+	assert.Equal(t, 1, detail.Files[0].Priority)
+	require.Len(t, detail.Peers, 1)
+	assert.Equal(t, "10.0.0.1", detail.Peers[0].Address)
+	assert.True(t, detail.Peers[0].IsEncrypted)
+	require.Len(t, detail.Trackers, 1)
+	assert.Equal(t, 42, detail.Trackers[0].SeederCount)
+	assert.Equal(t, []bool{true}, detail.Pieces)
+	assert.Equal(t, "magnet:?xt=urn:btih:abc123", detail.MagnetLink)
+	assert.Equal(t, int64(4096), detail.DownloadedEver)
+	assert.True(t, detail.IsPrivate)
+}
+
+func TestBackendTorrentDetailNoMatchErrors(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"torrent-get": `{"arguments": {"torrents": []}, "result": "success", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.TorrentDetail(context.Background(), 99)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "no torrent matched id 99")
+}
+
+func TestBackendTorrentDetailMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.TorrentDetail(context.Background(), 1)
+	require.ErrorIs(t, err, torrent.ErrAuth)
+}
+
 // captureActionServer is a Transmission stub that records the body of the first
 // non-handshake request (the action call) so tests can assert the method and
 // ids. The rpcVersion header drives protocol negotiation.

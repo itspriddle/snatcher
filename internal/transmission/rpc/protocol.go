@@ -17,6 +17,7 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -396,6 +397,153 @@ type Torrent struct {
 	IsStalled bool `json:"is_stalled"`
 }
 
+// File is one file within a torrent, in a canonical TorrentDetail. Wanted and
+// Priority come from the parallel torrent-get arrays (wanted, priorities); each
+// Protocol normalizes the bespoke 0/1 wanted ints and JSON-RPC booleans to a
+// Go bool.
+type File struct {
+	// Name is the file's path relative to the torrent's download directory.
+	Name string `json:"name"`
+
+	// Length is the file's total size, in bytes.
+	Length int64 `json:"length"`
+
+	// BytesCompleted is the number of bytes downloaded for the file so far.
+	BytesCompleted int64 `json:"bytes_completed"`
+
+	// Wanted reports whether the file is selected for download.
+	Wanted bool `json:"wanted"`
+
+	// Priority is the file's download priority (-1 low, 0 normal, 1 high).
+	Priority int `json:"priority"`
+}
+
+// Peer is one connected peer for a torrent, in a canonical TorrentDetail.
+type Peer struct {
+	// Address is the peer's IP address.
+	Address string `json:"address"`
+
+	// Port is the peer's port.
+	Port int `json:"port"`
+
+	// Client is the peer's BitTorrent client name/version.
+	Client string `json:"client"`
+
+	// Progress is the peer's download completion fraction (0–1).
+	Progress float64 `json:"progress"`
+
+	// RateToClient is the rate we download from the peer, in bytes/second.
+	RateToClient int64 `json:"rate_to_client"`
+
+	// RateToPeer is the rate we upload to the peer, in bytes/second.
+	RateToPeer int64 `json:"rate_to_peer"`
+
+	// FlagStr is the compact per-peer status flag string.
+	FlagStr string `json:"flag_str"`
+
+	// IsEncrypted reports whether the peer connection is encrypted.
+	IsEncrypted bool `json:"is_encrypted"`
+}
+
+// Tracker is one tracker for a torrent, in a canonical TorrentDetail. The fields
+// come from Transmission's per-tracker trackerStats objects.
+type Tracker struct {
+	// Announce is the tracker's announce URL.
+	Announce string `json:"announce"`
+
+	// Host is the tracker's host (scheme + authority).
+	Host string `json:"host"`
+
+	// Sitename is the tracker's short site name.
+	Sitename string `json:"sitename"`
+
+	// AnnounceState is the numeric announce state.
+	AnnounceState int `json:"announce_state"`
+
+	// SeederCount is the number of seeders the tracker reports (-1 = unknown).
+	SeederCount int `json:"seeder_count"`
+
+	// LeecherCount is the number of leechers the tracker reports (-1 = unknown).
+	LeecherCount int `json:"leecher_count"`
+
+	// DownloadCount is the completed-download count the tracker reports
+	// (-1 = unknown).
+	DownloadCount int `json:"download_count"`
+
+	// LastAnnounceResult is the result of the last announce.
+	LastAnnounceResult string `json:"last_announce_result"`
+
+	// NextAnnounceTime is the Unix timestamp (seconds) of the next announce.
+	NextAnnounceTime int64 `json:"next_announce_time"`
+}
+
+// TorrentDetail is the canonical, protocol-neutral detail view of a single
+// torrent. It embeds the canonical Torrent (so the list fields are present) and
+// adds the per-torrent collections and overview scalars, decoded identically
+// from both wire protocols. The Transmission adapter maps it to the neutral
+// torrent.TorrentDetail.
+type TorrentDetail struct {
+	Torrent
+
+	// Files are the torrent's files, in torrent order.
+	Files []File `json:"files"`
+
+	// Peers are the torrent's currently connected peers.
+	Peers []Peer `json:"peers"`
+
+	// Trackers are the torrent's trackers and their per-tracker stats.
+	Trackers []Tracker `json:"trackers"`
+
+	// Pieces is the have/have-not bitfield (bit i set means piece i is complete),
+	// decoded from the base64 wire string.
+	Pieces []bool `json:"pieces"`
+
+	// MagnetLink is the torrent's magnet URI.
+	MagnetLink string `json:"magnet_link"`
+
+	// DownloadedEver is the total bytes ever downloaded.
+	DownloadedEver int64 `json:"downloaded_ever"`
+
+	// UploadedEver is the total bytes ever uploaded.
+	UploadedEver int64 `json:"uploaded_ever"`
+
+	// CorruptEver is the total bytes that failed verification.
+	CorruptEver int64 `json:"corrupt_ever"`
+
+	// HaveValid is the number of bytes of verified, complete data.
+	HaveValid int64 `json:"have_valid"`
+
+	// PieceCount is the number of pieces in the torrent.
+	PieceCount int64 `json:"piece_count"`
+
+	// PieceSize is the size of each piece, in bytes.
+	PieceSize int64 `json:"piece_size"`
+
+	// Comment is the torrent's comment field.
+	Comment string `json:"comment"`
+
+	// Creator is the torrent's creator field.
+	Creator string `json:"creator"`
+
+	// DateCreated is the Unix timestamp (seconds) the torrent was created.
+	DateCreated int64 `json:"date_created"`
+
+	// IsPrivate reports whether the torrent is private.
+	IsPrivate bool `json:"is_private"`
+
+	// SecondsDownloading is the total time spent downloading, in seconds.
+	SecondsDownloading int64 `json:"seconds_downloading"`
+
+	// SecondsSeeding is the total time spent seeding, in seconds.
+	SecondsSeeding int64 `json:"seconds_seeding"`
+
+	// RecheckProgress is the verify (recheck) completion fraction (0–1).
+	RecheckProgress float64 `json:"recheck_progress"`
+
+	// MetadataPercentComplete is the metadata-download completion fraction (0–1).
+	MetadataPercentComplete float64 `json:"metadata_percent_complete"`
+}
+
 // AddRequest carries the parameters for a TorrentAdd call. Each field maps to a
 // torrent-add request parameter; empty fields are omitted on the wire
 // (omitempty semantics) so the server applies its defaults. Either Metainfo or
@@ -510,6 +658,15 @@ type Protocol interface {
 	// implementation translates them to its wire scheme, and an empty fields
 	// slice requests the full canonical set.
 	TorrentGet(ctx context.Context, t transport, ids []any, fields []string) ([]Torrent, error)
+
+	// TorrentGetDetail calls the server's torrent-get/torrent_get method
+	// requesting the full detail field set (the list fields plus files, peers,
+	// trackerStats, pieces, magnetLink, and the overview scalars) and returns the
+	// canonical TorrentDetails. ids selects the torrents (mixed id/hash; a nil or
+	// empty slice requests all). Each implementation decodes the per-scheme wire
+	// names and the parity traps (the bespoke 0/1 wanted ints vs JSON-RPC
+	// booleans, the base64 pieces bitfield) into the shared shape.
+	TorrentGetDetail(ctx context.Context, t transport, ids []any) ([]TorrentDetail, error)
 
 	// TorrentAdd calls the server's torrent-add/torrent_add method, sending only
 	// the non-empty parameters in req, and returns the canonical AddResult. A
@@ -764,6 +921,121 @@ type jsonrpcTorrentResult struct {
 	Torrents []jsonrpcTorrent `json:"torrents"`
 }
 
+// wantedFlag decodes a per-file "wanted" entry from either wire scheme: the
+// JSON-RPC 2.0 scheme serializes it as a JSON boolean, while the bespoke scheme
+// (for backwards compatibility) serializes it as a 0/1 integer. Both decode to a
+// Go bool (non-zero / true means the file is wanted).
+type wantedFlag bool
+
+// UnmarshalJSON accepts either a JSON boolean (true/false) or a 0/1 number,
+// normalizing both to a bool so the two protocols decode identically.
+func (w *wantedFlag) UnmarshalJSON(data []byte) error {
+	switch string(bytes.TrimSpace(data)) {
+	case "true", "1":
+		*w = true
+	case "false", "0", "null":
+		*w = false
+	default:
+		return fmt.Errorf("rpc: decoding wanted flag: unexpected value %q", data)
+	}
+
+	return nil
+}
+
+// jsonrpcDetailFields lists the snake_case torrent_get fields the JSON-RPC 2.0
+// detail read requests: the full canonical list (translated to the wire names)
+// plus the detail-only fields (files, peers, tracker_stats, pieces, magnet_link,
+// and the overview scalars). It is computed once from the canonical list so the
+// list and detail reads stay in sync.
+var jsonrpcDetailFields = append(
+	resolveTorrentGetFields(nil, torrentGetFieldsJSONRPCMap),
+	"files", "file_stats", "wanted", "priorities", "peers", "tracker_stats",
+	"pieces", "magnet_link", "downloaded_ever", "uploaded_ever", "corrupt_ever",
+	"have_valid", "piece_count", "piece_size", "comment", "creator",
+	"date_created", "is_private", "seconds_downloading", "seconds_seeding",
+	"recheck_progress", "metadata_percent_complete",
+)
+
+// jsonrpcDetailFile is the snake_case files entry (constant per-file properties).
+type jsonrpcDetailFile struct {
+	Name           string `json:"name"`
+	Length         int64  `json:"length"`
+	BytesCompleted int64  `json:"bytes_completed"`
+}
+
+// jsonrpcDetailPeer is the snake_case peers entry.
+type jsonrpcDetailPeer struct {
+	Address      string  `json:"address"`
+	Port         int     `json:"port"`
+	Client       string  `json:"client_name"`
+	Progress     float64 `json:"progress"`
+	RateToClient int64   `json:"rate_to_client"`
+	RateToPeer   int64   `json:"rate_to_peer"`
+	FlagStr      string  `json:"flag_str"`
+	IsEncrypted  bool    `json:"is_encrypted"`
+}
+
+// jsonrpcDetailTracker is the snake_case tracker_stats entry.
+type jsonrpcDetailTracker struct {
+	Announce           string `json:"announce"`
+	Host               string `json:"host"`
+	Sitename           string `json:"sitename"`
+	AnnounceState      int    `json:"announce_state"`
+	SeederCount        int    `json:"seeder_count"`
+	LeecherCount       int    `json:"leecher_count"`
+	DownloadCount      int    `json:"download_count"`
+	LastAnnounceResult string `json:"last_announce_result"`
+	NextAnnounceTime   int64  `json:"next_announce_time"`
+}
+
+// jsonrpcDetailTorrent is the snake_case torrent_get detail torrent shape: the
+// base list fields plus the detail-only fields. The parallel wanted/priorities
+// arrays are merged into Files by index.
+type jsonrpcDetailTorrent struct {
+	jsonrpcTorrent
+
+	Files      []jsonrpcDetailFile    `json:"files"`
+	FileStats  []jsonrpcDetailFile    `json:"file_stats"`
+	Wanted     []wantedFlag           `json:"wanted"`
+	Priorities []int                  `json:"priorities"`
+	Peers      []jsonrpcDetailPeer    `json:"peers"`
+	Trackers   []jsonrpcDetailTracker `json:"tracker_stats"`
+	Pieces     string                 `json:"pieces"`
+
+	MagnetLink              string  `json:"magnet_link"`
+	DownloadedEver          int64   `json:"downloaded_ever"`
+	UploadedEver            int64   `json:"uploaded_ever"`
+	CorruptEver             int64   `json:"corrupt_ever"`
+	HaveValid               int64   `json:"have_valid"`
+	PieceCount              int64   `json:"piece_count"`
+	PieceSize               int64   `json:"piece_size"`
+	Comment                 string  `json:"comment"`
+	Creator                 string  `json:"creator"`
+	DateCreated             int64   `json:"date_created"`
+	IsPrivate               bool    `json:"is_private"`
+	SecondsDownloading      int64   `json:"seconds_downloading"`
+	SecondsSeeding          int64   `json:"seconds_seeding"`
+	RecheckProgress         float64 `json:"recheck_progress"`
+	MetadataPercentComplete float64 `json:"metadata_percent_complete"`
+}
+
+// jsonrpcDetailResult is the snake_case torrent_get detail result shape.
+type jsonrpcDetailResult struct {
+	Torrents []jsonrpcDetailTorrent `json:"torrents"`
+}
+
+// jsonrpcFilesToCanonical converts the snake_case files/file_stats entries to
+// canonical Files carrying only the constant per-file properties; the
+// wanted/priority state is merged in separately by mergeFiles.
+func jsonrpcFilesToCanonical(in []jsonrpcDetailFile) []File {
+	out := make([]File, len(in))
+	for i, f := range in {
+		out[i] = File{Name: f.Name, Length: f.Length, BytesCompleted: f.BytesCompleted}
+	}
+
+	return out
+}
+
 // jsonrpcAddParams is the snake_case torrent_add request params shape. Empty
 // fields are omitted so the server applies its defaults.
 type jsonrpcAddParams struct {
@@ -859,6 +1131,66 @@ func resolveTorrentGetFields(fields []string, wireMap map[string][]string) []str
 	}
 
 	return wire
+}
+
+// decodePiecesBitfield decodes the base64 "pieces" bitfield into a per-piece
+// have/have-not slice: bit i (counting most-significant-bit first within each
+// byte, matching Transmission's encoding) maps to element i. pieceCount bounds
+// the result, since the final byte may carry padding bits past the last piece.
+// An empty string, or a value that is not valid base64, yields a nil slice
+// rather than an error — a malformed bitfield should not fail the whole detail
+// read.
+func decodePiecesBitfield(encoded string, pieceCount int64) []bool {
+	if encoded == "" || pieceCount <= 0 {
+		return nil
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil
+	}
+
+	bits := make([]bool, 0, pieceCount)
+	for i := int64(0); i < pieceCount; i++ {
+		byteIdx := i / 8
+		if byteIdx >= int64(len(raw)) {
+			break
+		}
+
+		bitMask := byte(1) << (7 - uint(i%8))
+		bits = append(bits, raw[byteIdx]&bitMask != 0)
+	}
+
+	return bits
+}
+
+// mergeFiles combines the parallel torrent-get detail arrays into canonical
+// Files. files holds the constant per-file properties (name, length); the
+// completed-bytes value is taken from fileStats when present (it carries the
+// non-constant properties) and otherwise from files. wanted and priorities are
+// index-aligned with files. Entries are merged up to the length of files; any
+// shorter parallel array leaves the remaining files at their zero wanted/priority.
+func mergeFiles(files, fileStats []File, wanted []bool, priorities []int) []File {
+	if len(files) == 0 {
+		return nil
+	}
+
+	merged := make([]File, len(files))
+	for i, f := range files {
+		merged[i] = File{Name: f.Name, Length: f.Length, BytesCompleted: f.BytesCompleted}
+
+		if i < len(fileStats) {
+			merged[i].BytesCompleted = fileStats[i].BytesCompleted
+		}
+		if i < len(wanted) {
+			merged[i].Wanted = wanted[i]
+		}
+		if i < len(priorities) {
+			merged[i].Priority = priorities[i]
+		}
+	}
+
+	return merged
 }
 
 func (jsonrpcProtocol) Name() string { return ProtocolJSONRPC }
@@ -1070,6 +1402,99 @@ func (p jsonrpcProtocol) TorrentGet(ctx context.Context, t transport, ids []any,
 	}
 
 	return torrents, nil
+}
+
+func (p jsonrpcProtocol) TorrentGetDetail(ctx context.Context, t transport, ids []any) ([]TorrentDetail, error) {
+	params := map[string]any{"fields": jsonrpcDetailFields}
+	if len(ids) > 0 {
+		params["ids"] = ids
+	}
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodTorrentGetJSONRPC,
+		Params:  params,
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse("torrent_get", respBody, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	var result jsonrpcDetailResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return nil, fmt.Errorf("rpc: decoding torrent_get result: %w", err)
+	}
+
+	details := make([]TorrentDetail, len(result.Torrents))
+	for i, raw := range result.Torrents {
+		details[i] = raw.toDetail()
+	}
+
+	return details, nil
+}
+
+// toDetail converts a decoded JSON-RPC detail torrent into the canonical
+// TorrentDetail, merging the parallel file arrays, normalizing the wanted flags,
+// and decoding the base64 pieces bitfield.
+func (d jsonrpcDetailTorrent) toDetail() TorrentDetail {
+	wanted := make([]bool, len(d.Wanted))
+	for i, w := range d.Wanted {
+		wanted[i] = bool(w)
+	}
+
+	files := jsonrpcFilesToCanonical(d.Files)
+	fileStats := jsonrpcFilesToCanonical(d.FileStats)
+
+	peers := make([]Peer, len(d.Peers))
+	for i, p := range d.Peers {
+		peers[i] = Peer(p)
+	}
+
+	trackers := make([]Tracker, len(d.Trackers))
+	for i, tr := range d.Trackers {
+		trackers[i] = Tracker(tr)
+	}
+
+	return TorrentDetail{
+		Torrent: Torrent(d.jsonrpcTorrent),
+
+		Files:    mergeFiles(files, fileStats, wanted, d.Priorities),
+		Peers:    peers,
+		Trackers: trackers,
+		Pieces:   decodePiecesBitfield(d.Pieces, d.PieceCount),
+
+		MagnetLink:              d.MagnetLink,
+		DownloadedEver:          d.DownloadedEver,
+		UploadedEver:            d.UploadedEver,
+		CorruptEver:             d.CorruptEver,
+		HaveValid:               d.HaveValid,
+		PieceCount:              d.PieceCount,
+		PieceSize:               d.PieceSize,
+		Comment:                 d.Comment,
+		Creator:                 d.Creator,
+		DateCreated:             d.DateCreated,
+		IsPrivate:               d.IsPrivate,
+		SecondsDownloading:      d.SecondsDownloading,
+		SecondsSeeding:          d.SecondsSeeding,
+		RecheckProgress:         d.RecheckProgress,
+		MetadataPercentComplete: d.MetadataPercentComplete,
+	}
 }
 
 func (p jsonrpcProtocol) TorrentAdd(ctx context.Context, t transport, addReq AddRequest) (AddResult, error) {
@@ -1574,6 +1999,147 @@ type bespokeTorrentArguments struct {
 	Torrents []bespokeTorrent `json:"torrents"`
 }
 
+// bespokeDetailFields lists the camelCase torrent-get fields the bespoke detail
+// read requests: the full canonical list (translated to the wire names) plus the
+// detail-only fields. It is computed once from the canonical list so the list and
+// detail reads stay in sync.
+var bespokeDetailFields = append(
+	resolveTorrentGetFields(nil, torrentGetFieldsBespokeMap),
+	"files", "fileStats", "wanted", "priorities", "peers", "trackerStats",
+	"pieces", "magnetLink", "downloadedEver", "uploadedEver", "corruptEver",
+	"haveValid", "pieceCount", "pieceSize", "comment", "creator", "dateCreated",
+	"isPrivate", "secondsDownloading", "secondsSeeding", "recheckProgress",
+	"metadataPercentComplete",
+)
+
+// bespokeDetailFile is the camelCase files entry (constant per-file properties).
+type bespokeDetailFile struct {
+	Name           string `json:"name"`
+	Length         int64  `json:"length"`
+	BytesCompleted int64  `json:"bytesCompleted"`
+}
+
+// bespokeDetailPeer is the camelCase peers entry.
+type bespokeDetailPeer struct {
+	Address      string  `json:"address"`
+	Port         int     `json:"port"`
+	Client       string  `json:"clientName"`
+	Progress     float64 `json:"progress"`
+	RateToClient int64   `json:"rateToClient"`
+	RateToPeer   int64   `json:"rateToPeer"`
+	FlagStr      string  `json:"flagStr"`
+	IsEncrypted  bool    `json:"isEncrypted"`
+}
+
+// bespokeDetailTracker is the camelCase trackerStats entry.
+type bespokeDetailTracker struct {
+	Announce           string `json:"announce"`
+	Host               string `json:"host"`
+	Sitename           string `json:"sitename"`
+	AnnounceState      int    `json:"announceState"`
+	SeederCount        int    `json:"seederCount"`
+	LeecherCount       int    `json:"leecherCount"`
+	DownloadCount      int    `json:"downloadCount"`
+	LastAnnounceResult string `json:"lastAnnounceResult"`
+	NextAnnounceTime   int64  `json:"nextAnnounceTime"`
+}
+
+// bespokeDetailTorrent is the camelCase torrent-get detail torrent shape: the
+// base list fields plus the detail-only fields. The parallel wanted/priorities
+// arrays are merged into Files by index.
+type bespokeDetailTorrent struct {
+	bespokeTorrent
+
+	Files      []bespokeDetailFile    `json:"files"`
+	FileStats  []bespokeDetailFile    `json:"fileStats"`
+	Wanted     []wantedFlag           `json:"wanted"`
+	Priorities []int                  `json:"priorities"`
+	Peers      []bespokeDetailPeer    `json:"peers"`
+	Trackers   []bespokeDetailTracker `json:"trackerStats"`
+	Pieces     string                 `json:"pieces"`
+
+	MagnetLink              string  `json:"magnetLink"`
+	DownloadedEver          int64   `json:"downloadedEver"`
+	UploadedEver            int64   `json:"uploadedEver"`
+	CorruptEver             int64   `json:"corruptEver"`
+	HaveValid               int64   `json:"haveValid"`
+	PieceCount              int64   `json:"pieceCount"`
+	PieceSize               int64   `json:"pieceSize"`
+	Comment                 string  `json:"comment"`
+	Creator                 string  `json:"creator"`
+	DateCreated             int64   `json:"dateCreated"`
+	IsPrivate               bool    `json:"isPrivate"`
+	SecondsDownloading      int64   `json:"secondsDownloading"`
+	SecondsSeeding          int64   `json:"secondsSeeding"`
+	RecheckProgress         float64 `json:"recheckProgress"`
+	MetadataPercentComplete float64 `json:"metadataPercentComplete"`
+}
+
+// bespokeDetailArguments is the kebab-case torrent-get detail arguments shape.
+type bespokeDetailArguments struct {
+	Torrents []bespokeDetailTorrent `json:"torrents"`
+}
+
+// bespokeFilesToCanonical converts the camelCase files/fileStats entries to
+// canonical Files carrying only the constant per-file properties; the
+// wanted/priority state is merged in separately by mergeFiles.
+func bespokeFilesToCanonical(in []bespokeDetailFile) []File {
+	out := make([]File, len(in))
+	for i, f := range in {
+		out[i] = File{Name: f.Name, Length: f.Length, BytesCompleted: f.BytesCompleted}
+	}
+
+	return out
+}
+
+// toDetail converts a decoded bespoke detail torrent into the canonical
+// TorrentDetail, merging the parallel file arrays, normalizing the wanted flags
+// (0/1 ints on this scheme), and decoding the base64 pieces bitfield.
+func (d bespokeDetailTorrent) toDetail() TorrentDetail {
+	wanted := make([]bool, len(d.Wanted))
+	for i, w := range d.Wanted {
+		wanted[i] = bool(w)
+	}
+
+	files := bespokeFilesToCanonical(d.Files)
+	fileStats := bespokeFilesToCanonical(d.FileStats)
+
+	peers := make([]Peer, len(d.Peers))
+	for i, p := range d.Peers {
+		peers[i] = Peer(p)
+	}
+
+	trackers := make([]Tracker, len(d.Trackers))
+	for i, tr := range d.Trackers {
+		trackers[i] = Tracker(tr)
+	}
+
+	return TorrentDetail{
+		Torrent: Torrent(d.bespokeTorrent),
+
+		Files:    mergeFiles(files, fileStats, wanted, d.Priorities),
+		Peers:    peers,
+		Trackers: trackers,
+		Pieces:   decodePiecesBitfield(d.Pieces, d.PieceCount),
+
+		MagnetLink:              d.MagnetLink,
+		DownloadedEver:          d.DownloadedEver,
+		UploadedEver:            d.UploadedEver,
+		CorruptEver:             d.CorruptEver,
+		HaveValid:               d.HaveValid,
+		PieceCount:              d.PieceCount,
+		PieceSize:               d.PieceSize,
+		Comment:                 d.Comment,
+		Creator:                 d.Creator,
+		DateCreated:             d.DateCreated,
+		IsPrivate:               d.IsPrivate,
+		SecondsDownloading:      d.SecondsDownloading,
+		SecondsSeeding:          d.SecondsSeeding,
+		RecheckProgress:         d.RecheckProgress,
+		MetadataPercentComplete: d.MetadataPercentComplete,
+	}
+}
+
 // bespokeAddArguments is the torrent-add request arguments shape (kebab-case
 // download-dir, lowercase everything else). Empty fields are omitted so the
 // server applies its defaults.
@@ -1874,6 +2440,50 @@ func (p bespokeProtocol) TorrentGet(ctx context.Context, t transport, ids []any,
 	}
 
 	return torrents, nil
+}
+
+func (p bespokeProtocol) TorrentGetDetail(ctx context.Context, t transport, ids []any) ([]TorrentDetail, error) {
+	arguments := map[string]any{"fields": bespokeDetailFields}
+	if len(ids) > 0 {
+		arguments["ids"] = ids
+	}
+
+	req := bespokeRequest{
+		Method:    methodTorrentGetBespoke,
+		Arguments: arguments,
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse("torrent-get", respBody, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return nil, fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	var args bespokeDetailArguments
+	if err := json.Unmarshal(resp.Arguments, &args); err != nil {
+		return nil, fmt.Errorf("rpc: decoding torrent-get arguments: %w", err)
+	}
+
+	details := make([]TorrentDetail, len(args.Torrents))
+	for i, raw := range args.Torrents {
+		details[i] = raw.toDetail()
+	}
+
+	return details, nil
 }
 
 func (p bespokeProtocol) TorrentAdd(ctx context.Context, t transport, addReq AddRequest) (AddResult, error) {

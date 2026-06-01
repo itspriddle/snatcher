@@ -2282,3 +2282,278 @@ func TestBespokeProtocolPortTestMapsNonSuccessResult(t *testing.T) {
 	require.ErrorIs(t, err, ErrRPC)
 	assert.ErrorContains(t, err, "no such session")
 }
+
+// piecesB64 is a base64 bitfield for a 10-piece torrent: bytes 0xB0 0x40, so
+// pieces 0, 2, 3, and 9 are complete (MSB-first within each byte).
+const piecesB64 = "sEA="
+
+// assertDetail asserts the shared detail expectations both protocols must decode
+// identically, so the two golden tests can't drift apart. It covers the embedded
+// torrent identity, the merged file selection state, the peer/tracker fields, the
+// base64 pieces bitfield, the magnet link, and the overview scalars.
+func assertDetail(t *testing.T, got TorrentDetail) {
+	t.Helper()
+
+	// Embedded Torrent (the list fields) is present.
+	assert.Equal(t, int64(7), got.ID)
+	assert.Equal(t, "abc123", got.Hash)
+	assert.Equal(t, "ubuntu.iso", got.Name)
+
+	// Files merge the parallel files/wanted/priorities arrays by index. The first
+	// file is wanted at high priority; the second is unwanted at low priority.
+	require.Len(t, got.Files, 2)
+	assert.Equal(t, "ubuntu.iso", got.Files[0].Name)
+	assert.Equal(t, int64(2048), got.Files[0].Length)
+	assert.Equal(t, int64(1024), got.Files[0].BytesCompleted)
+	assert.True(t, got.Files[0].Wanted)
+	assert.Equal(t, 1, got.Files[0].Priority)
+	assert.Equal(t, "readme.txt", got.Files[1].Name)
+	assert.False(t, got.Files[1].Wanted)
+	assert.Equal(t, -1, got.Files[1].Priority)
+
+	// Peers.
+	require.Len(t, got.Peers, 1)
+	assert.Equal(t, "10.0.0.1", got.Peers[0].Address)
+	assert.Equal(t, 51413, got.Peers[0].Port)
+	assert.Equal(t, "Transmission 4.0", got.Peers[0].Client)
+	assert.InDelta(t, 0.5, got.Peers[0].Progress, 0.0001)
+	assert.Equal(t, int64(1000), got.Peers[0].RateToClient)
+	assert.Equal(t, int64(200), got.Peers[0].RateToPeer)
+	assert.Equal(t, "TDdEi", got.Peers[0].FlagStr)
+	assert.True(t, got.Peers[0].IsEncrypted)
+
+	// Trackers (from trackerStats).
+	require.Len(t, got.Trackers, 1)
+	assert.Equal(t, "http://tracker.example/announce", got.Trackers[0].Announce)
+	assert.Equal(t, "tracker.example", got.Trackers[0].Host)
+	assert.Equal(t, "example", got.Trackers[0].Sitename)
+	assert.Equal(t, 1, got.Trackers[0].AnnounceState)
+	assert.Equal(t, 42, got.Trackers[0].SeederCount)
+	assert.Equal(t, 7, got.Trackers[0].LeecherCount)
+	assert.Equal(t, 100, got.Trackers[0].DownloadCount)
+	assert.Equal(t, "Success", got.Trackers[0].LastAnnounceResult)
+	assert.Equal(t, int64(1700000200), got.Trackers[0].NextAnnounceTime)
+
+	// Pieces bitfield: pieces 0, 2, 3, and 9 are complete.
+	assert.Equal(t,
+		[]bool{true, false, true, true, false, false, false, false, false, true},
+		got.Pieces,
+	)
+
+	// Overview scalars.
+	assert.Equal(t, "magnet:?xt=urn:btih:abc123", got.MagnetLink)
+	assert.Equal(t, int64(4096), got.DownloadedEver)
+	assert.Equal(t, int64(8192), got.UploadedEver)
+	assert.Equal(t, int64(0), got.CorruptEver)
+	assert.Equal(t, int64(1024), got.HaveValid)
+	assert.Equal(t, int64(10), got.PieceCount)
+	assert.Equal(t, int64(262144), got.PieceSize)
+	assert.Equal(t, "a comment", got.Comment)
+	assert.Equal(t, "mkbt", got.Creator)
+	assert.Equal(t, int64(1690000000), got.DateCreated)
+	assert.True(t, got.IsPrivate)
+	assert.Equal(t, int64(3600), got.SecondsDownloading)
+	assert.Equal(t, int64(7200), got.SecondsSeeding)
+	assert.InDelta(t, 1.0, got.RecheckProgress, 0.0001)
+	assert.InDelta(t, 1.0, got.MetadataPercentComplete, 0.0001)
+}
+
+// TestJSONRPCProtocolTorrentGetDetail decodes a full snake_case detail response,
+// exercising the JSON-RPC parity case: wanted is a JSON boolean array, and pieces
+// is a base64 bitfield.
+func TestJSONRPCProtocolTorrentGetDetail(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"torrents": [{
+				"id": 7,
+				"hash_string": "abc123",
+				"name": "ubuntu.iso",
+				"status": 4,
+				"files": [
+					{"name": "ubuntu.iso", "length": 2048, "bytes_completed": 1024},
+					{"name": "readme.txt", "length": 256, "bytes_completed": 0}
+				],
+				"wanted": [true, false],
+				"priorities": [1, -1],
+				"peers": [{
+					"address": "10.0.0.1",
+					"port": 51413,
+					"client_name": "Transmission 4.0",
+					"progress": 0.5,
+					"rate_to_client": 1000,
+					"rate_to_peer": 200,
+					"flag_str": "TDdEi",
+					"is_encrypted": true
+				}],
+				"tracker_stats": [{
+					"announce": "http://tracker.example/announce",
+					"host": "tracker.example",
+					"sitename": "example",
+					"announce_state": 1,
+					"seeder_count": 42,
+					"leecher_count": 7,
+					"download_count": 100,
+					"last_announce_result": "Success",
+					"next_announce_time": 1700000200
+				}],
+				"pieces": "` + piecesB64 + `",
+				"magnet_link": "magnet:?xt=urn:btih:abc123",
+				"downloaded_ever": 4096,
+				"uploaded_ever": 8192,
+				"corrupt_ever": 0,
+				"have_valid": 1024,
+				"piece_count": 10,
+				"piece_size": 262144,
+				"comment": "a comment",
+				"creator": "mkbt",
+				"date_created": 1690000000,
+				"is_private": true,
+				"seconds_downloading": 3600,
+				"seconds_seeding": 7200,
+				"recheck_progress": 1.0,
+				"metadata_percent_complete": 1.0
+			}]},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	details, err := jsonrpcProtocol{}.TorrentGetDetail(context.Background(), NewTransport(srv.URL), []any{int64(7)})
+	require.NoError(t, err)
+	require.Len(t, details, 1)
+
+	assertDetail(t, details[0])
+
+	// The request asks for the detail field set (including the detail-only fields)
+	// and the selected id.
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+	assert.Equal(t, "torrent_get", gotBody["method"])
+	params, ok := gotBody["params"].(map[string]any)
+	require.True(t, ok)
+	fields := fieldStrings(t, params["fields"])
+	assert.Contains(t, fields, "files")
+	assert.Contains(t, fields, "tracker_stats")
+	assert.Contains(t, fields, "pieces")
+	assert.Contains(t, fields, "magnet_link")
+	assert.Equal(t, []any{float64(7)}, params["ids"])
+}
+
+// TestBespokeProtocolTorrentGetDetail decodes a full camelCase detail response,
+// exercising the bespoke parity case: wanted is a 0/1 integer array (not
+// booleans), and pieces is a base64 bitfield. The decoded shape must match the
+// JSON-RPC golden exactly.
+func TestBespokeProtocolTorrentGetDetail(t *testing.T) {
+	var rawBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"arguments": {"torrents": [{
+				"id": 7,
+				"hashString": "abc123",
+				"name": "ubuntu.iso",
+				"status": 4,
+				"files": [
+					{"name": "ubuntu.iso", "length": 2048, "bytesCompleted": 1024},
+					{"name": "readme.txt", "length": 256, "bytesCompleted": 0}
+				],
+				"wanted": [1, 0],
+				"priorities": [1, -1],
+				"peers": [{
+					"address": "10.0.0.1",
+					"port": 51413,
+					"clientName": "Transmission 4.0",
+					"progress": 0.5,
+					"rateToClient": 1000,
+					"rateToPeer": 200,
+					"flagStr": "TDdEi",
+					"isEncrypted": true
+				}],
+				"trackerStats": [{
+					"announce": "http://tracker.example/announce",
+					"host": "tracker.example",
+					"sitename": "example",
+					"announceState": 1,
+					"seederCount": 42,
+					"leecherCount": 7,
+					"downloadCount": 100,
+					"lastAnnounceResult": "Success",
+					"nextAnnounceTime": 1700000200
+				}],
+				"pieces": "` + piecesB64 + `",
+				"magnetLink": "magnet:?xt=urn:btih:abc123",
+				"downloadedEver": 4096,
+				"uploadedEver": 8192,
+				"corruptEver": 0,
+				"haveValid": 1024,
+				"pieceCount": 10,
+				"pieceSize": 262144,
+				"comment": "a comment",
+				"creator": "mkbt",
+				"dateCreated": 1690000000,
+				"isPrivate": true,
+				"secondsDownloading": 3600,
+				"secondsSeeding": 7200,
+				"recheckProgress": 1.0,
+				"metadataPercentComplete": 1.0
+			}]},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	details, err := bespokeProtocol{}.TorrentGetDetail(context.Background(), NewTransport(srv.URL), []any{int64(7)})
+	require.NoError(t, err)
+	require.Len(t, details, 1)
+
+	assertDetail(t, details[0])
+
+	// The request asks for the camelCase detail field set and the selected id.
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+	assert.Equal(t, "torrent-get", gotBody["method"])
+	args, ok := gotBody["arguments"].(map[string]any)
+	require.True(t, ok)
+	fields := fieldStrings(t, args["fields"])
+	assert.Contains(t, fields, "files")
+	assert.Contains(t, fields, "trackerStats")
+	assert.Contains(t, fields, "pieces")
+	assert.Contains(t, fields, "magnetLink")
+}
+
+// TestDecodePiecesBitfield covers the base64 bitfield decoder's bit order, the
+// pieceCount bound (padding bits past the last piece are dropped), and the
+// graceful handling of empty or malformed input.
+func TestDecodePiecesBitfield(t *testing.T) {
+	t.Run("decodes MSB-first within each byte, bounded by pieceCount", func(t *testing.T) {
+		got := decodePiecesBitfield(piecesB64, 10)
+		assert.Equal(t,
+			[]bool{true, false, true, true, false, false, false, false, false, true},
+			got,
+		)
+	})
+
+	t.Run("drops padding bits past pieceCount", func(t *testing.T) {
+		// Same two bytes, but only 4 pieces: the trailing bits are ignored.
+		got := decodePiecesBitfield(piecesB64, 4)
+		assert.Equal(t, []bool{true, false, true, true}, got)
+	})
+
+	t.Run("empty string yields nil", func(t *testing.T) {
+		assert.Nil(t, decodePiecesBitfield("", 10))
+	})
+
+	t.Run("zero pieceCount yields nil", func(t *testing.T) {
+		assert.Nil(t, decodePiecesBitfield(piecesB64, 0))
+	})
+
+	t.Run("invalid base64 yields nil, not an error", func(t *testing.T) {
+		assert.Nil(t, decodePiecesBitfield("not base64!!", 8))
+	})
+}

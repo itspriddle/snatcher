@@ -266,6 +266,158 @@ type Torrent struct {
 	IsStalled bool `json:"is_stalled"`
 }
 
+// File is one file within a torrent, returned in TorrentDetail.Files. Wanted and
+// Priority are the file's per-file selection state (whether it is downloaded and
+// at what priority), normalized across both wire protocols.
+type File struct {
+	// Name is the file's path relative to the torrent's download directory.
+	Name string `json:"name"`
+
+	// Length is the file's total size, in bytes.
+	Length int64 `json:"length"`
+
+	// BytesCompleted is the number of bytes downloaded for the file so far.
+	BytesCompleted int64 `json:"bytes_completed"`
+
+	// Wanted reports whether the file is selected for download.
+	Wanted bool `json:"wanted"`
+
+	// Priority is the file's download priority (-1 low, 0 normal, 1 high).
+	Priority int `json:"priority"`
+}
+
+// Peer is one connected peer for a torrent, returned in TorrentDetail.Peers.
+type Peer struct {
+	// Address is the peer's IP address.
+	Address string `json:"address"`
+
+	// Port is the peer's port.
+	Port int `json:"port"`
+
+	// Client is the peer's BitTorrent client name/version, when known.
+	Client string `json:"client"`
+
+	// Progress is the peer's download completion fraction, in the range 0–1.
+	Progress float64 `json:"progress"`
+
+	// RateToClient is the rate at which we are downloading from the peer, in
+	// bytes/second.
+	RateToClient int64 `json:"rate_to_client"`
+
+	// RateToPeer is the rate at which we are uploading to the peer, in
+	// bytes/second.
+	RateToPeer int64 `json:"rate_to_peer"`
+
+	// FlagStr is the backend's compact per-peer status flag string.
+	FlagStr string `json:"flag_str"`
+
+	// IsEncrypted reports whether the peer connection is encrypted.
+	IsEncrypted bool `json:"is_encrypted"`
+}
+
+// Tracker is one tracker for a torrent, returned in TorrentDetail.Trackers. The
+// fields mirror Transmission's per-tracker stats so the detail tracker pane can
+// render announce state, swarm counts, and the next scheduled announce.
+type Tracker struct {
+	// Announce is the tracker's announce URL.
+	Announce string `json:"announce"`
+
+	// Host is the tracker's host (scheme + authority).
+	Host string `json:"host"`
+
+	// Sitename is the tracker's short site name, when reported.
+	Sitename string `json:"sitename"`
+
+	// AnnounceState is the backend's numeric announce state for the tracker.
+	AnnounceState int `json:"announce_state"`
+
+	// SeederCount is the number of seeders the tracker reports (-1 = unknown).
+	SeederCount int `json:"seeder_count"`
+
+	// LeecherCount is the number of leechers the tracker reports (-1 = unknown).
+	LeecherCount int `json:"leecher_count"`
+
+	// DownloadCount is the number of completed downloads the tracker reports
+	// (-1 = unknown).
+	DownloadCount int `json:"download_count"`
+
+	// LastAnnounceResult is the human-readable result of the last announce.
+	LastAnnounceResult string `json:"last_announce_result"`
+
+	// NextAnnounceTime is the Unix timestamp (seconds) of the next scheduled
+	// announce, or 0 when none is scheduled.
+	NextAnnounceTime int64 `json:"next_announce_time"`
+}
+
+// TorrentDetail is the vendor-neutral detail view of a single torrent, returned
+// by Backend.TorrentDetail. It embeds the full Torrent record (so every list
+// field is present) and adds the per-torrent collections and overview scalars
+// the detail panes need: files, peers, trackers, the pieces bitfield, the magnet
+// link, and the transfer/info scalars. Its json tags (and the embedded Torrent's)
+// form a stable scripting surface alongside the rest of the neutral types.
+type TorrentDetail struct {
+	Torrent
+
+	// Files are the torrent's files, in torrent order.
+	Files []File `json:"files"`
+
+	// Peers are the torrent's currently connected peers.
+	Peers []Peer `json:"peers"`
+
+	// Trackers are the torrent's trackers and their per-tracker stats.
+	Trackers []Tracker `json:"trackers"`
+
+	// Pieces is the have/have-not bitfield, one bit per piece (bit i set means
+	// piece i is complete), decoded from the backend's base64 string.
+	Pieces []bool `json:"pieces"`
+
+	// MagnetLink is the torrent's magnet URI.
+	MagnetLink string `json:"magnet_link"`
+
+	// DownloadedEver is the total bytes ever downloaded for the torrent.
+	DownloadedEver int64 `json:"downloaded_ever"`
+
+	// UploadedEver is the total bytes ever uploaded for the torrent.
+	UploadedEver int64 `json:"uploaded_ever"`
+
+	// CorruptEver is the total bytes that failed verification and were discarded.
+	CorruptEver int64 `json:"corrupt_ever"`
+
+	// HaveValid is the number of bytes of verified, complete data.
+	HaveValid int64 `json:"have_valid"`
+
+	// PieceCount is the number of pieces in the torrent.
+	PieceCount int64 `json:"piece_count"`
+
+	// PieceSize is the size of each piece, in bytes.
+	PieceSize int64 `json:"piece_size"`
+
+	// Comment is the torrent's comment field.
+	Comment string `json:"comment"`
+
+	// Creator is the torrent's creator field.
+	Creator string `json:"creator"`
+
+	// DateCreated is the Unix timestamp (seconds) the torrent was created.
+	DateCreated int64 `json:"date_created"`
+
+	// IsPrivate reports whether the torrent is private (no DHT/PEX).
+	IsPrivate bool `json:"is_private"`
+
+	// SecondsDownloading is the total time spent downloading, in seconds.
+	SecondsDownloading int64 `json:"seconds_downloading"`
+
+	// SecondsSeeding is the total time spent seeding, in seconds.
+	SecondsSeeding int64 `json:"seconds_seeding"`
+
+	// RecheckProgress is the verify (recheck) completion fraction, 0–1.
+	RecheckProgress float64 `json:"recheck_progress"`
+
+	// MetadataPercentComplete is the metadata-download completion fraction, 0–1
+	// (1 once the full metadata is known; below 1 for a magnet still resolving).
+	MetadataPercentComplete float64 `json:"metadata_percent_complete"`
+}
+
 // Field is a vendor-neutral, projectable Torrent field. Its string value is the
 // canonical snake_case key matching the Torrent struct's json tag, which the
 // backend adapter translates to each wire protocol's spelling. Callers pass a

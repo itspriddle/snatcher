@@ -211,6 +211,70 @@ func TestTorrentJSONContract(t *testing.T) {
 	assert.Equal(t, float64(7), got["id"])
 }
 
+// TestTorrentDetailJSONContract confirms TorrentDetail's json tags are all
+// snake_case (matching the rest of the neutral types) and that the embedded
+// Torrent flattens into the same object — so a single info --json blob carries
+// both the list fields and the detail fields under stable keys.
+func TestTorrentDetailJSONContract(t *testing.T) {
+	detail := torrent.TorrentDetail{
+		Torrent:    torrent.Torrent{ID: 7, Hash: "abc123", Name: "ubuntu.iso"},
+		Files:      []torrent.File{{Name: "ubuntu.iso", Length: 2048, BytesCompleted: 1024, Wanted: true, Priority: 1}},
+		Peers:      []torrent.Peer{{Address: "10.0.0.1", Port: 51413}},
+		Trackers:   []torrent.Tracker{{Announce: "http://t/announce", SeederCount: 42}},
+		Pieces:     []bool{true, false},
+		MagnetLink: "magnet:?xt=urn:btih:abc123",
+	}
+
+	raw, err := json.Marshal(detail)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+
+	// The embedded Torrent's keys flatten into the same object.
+	assert.Equal(t, float64(7), got["id"], "embedded Torrent flattens into the detail object")
+	assert.Equal(t, "abc123", got["hash"])
+
+	// Every detail-only key is present and snake_case.
+	for _, key := range []string{
+		"files", "peers", "trackers", "pieces", "magnet_link", "downloaded_ever",
+		"uploaded_ever", "corrupt_ever", "have_valid", "piece_count", "piece_size",
+		"comment", "creator", "date_created", "is_private", "seconds_downloading",
+		"seconds_seeding", "recheck_progress", "metadata_percent_complete",
+	} {
+		assert.Contains(t, got, key, "missing detail json key %q", key)
+	}
+
+	// The nested File/Peer/Tracker objects use snake_case keys too.
+	files, ok := got["files"].([]any)
+	require.True(t, ok)
+	require.Len(t, files, 1)
+	file, ok := files[0].(map[string]any)
+	require.True(t, ok)
+	for _, key := range []string{"name", "length", "bytes_completed", "wanted", "priority"} {
+		assert.Contains(t, file, key, "missing File json key %q", key)
+	}
+
+	tracker, ok := got["trackers"].([]any)[0].(map[string]any)
+	require.True(t, ok)
+	for _, key := range []string{
+		"announce", "host", "sitename", "announce_state", "seeder_count",
+		"leecher_count", "download_count", "last_announce_result",
+		"next_announce_time",
+	} {
+		assert.Contains(t, tracker, key, "missing Tracker json key %q", key)
+	}
+
+	peer, ok := got["peers"].([]any)[0].(map[string]any)
+	require.True(t, ok)
+	for _, key := range []string{
+		"address", "port", "client", "progress", "rate_to_client", "rate_to_peer",
+		"flag_str", "is_encrypted",
+	} {
+		assert.Contains(t, peer, key, "missing Peer json key %q", key)
+	}
+}
+
 // TestFieldKeysDefaultsToAll confirms an empty projection (nil or len 0) expands
 // to the full AllFields set, in order, so a bare ListTorrents call still fills
 // every Torrent field.

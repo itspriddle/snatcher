@@ -94,6 +94,21 @@ func (c *Client) TorrentGet(ctx context.Context, ids []any, fields []string) ([]
 	return proto.TorrentGet(ctx, c.transport, ids, fields)
 }
 
+// TorrentGetDetail detects the protocol (once) and returns the full detail view
+// (files, peers, trackers, the pieces bitfield, the magnet link, and the overview
+// scalars on top of the embedded torrent) for the selected torrents as canonical
+// TorrentDetails. A nil or empty ids slice requests all torrents; otherwise the
+// mixed id/hash array selects them. The negotiated protocol decodes the
+// per-scheme detail fields and parity traps into the shared shape.
+func (c *Client) TorrentGetDetail(ctx context.Context, ids []any) ([]TorrentDetail, error) {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return proto.TorrentGetDetail(ctx, c.transport, ids)
+}
+
 // TorrentAdd detects the protocol (once) and adds a torrent from the parameters
 // in req, returning the canonical AddResult. A torrent that was already present
 // is reported via AddResult.Duplicate rather than as an error.

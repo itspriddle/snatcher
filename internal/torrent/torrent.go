@@ -125,6 +125,12 @@ type Backend interface {
 	// empty when there are no matching torrents).
 	ListTorrents(ctx context.Context, sel Selector, fields ...Field) ([]Torrent, error)
 
+	// TorrentDetail returns the full detail view (files, peers, trackers, the
+	// pieces bitfield, the magnet link, and the overview scalars, on top of the
+	// embedded Torrent record) for the single torrent with the given numeric id,
+	// in one round-trip. An id that matches no torrent returns an error.
+	TorrentDetail(ctx context.Context, id int64) (TorrentDetail, error)
+
 	// StartTorrents resumes the torrents matched by sel (start-now when now is
 	// true, disregarding queue position). An All selector targets every torrent.
 	// Starting an already-started torrent is a no-op.
