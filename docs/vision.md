@@ -58,7 +58,10 @@ Use "snatcher [command] --help" for more information about a command.
 - [x] `snatcher server port get|set|test` - show or change listening port
 - [ ] `snatcher server free-space ...` - show free space on disk (merge in with stats?)
 - [x] `snatcher torrent info <hash|id> ...` - show torrent info
-- [ ] `snatcher search ...` - search for torrents with Prowlarr
+- [ ] `snatcher search ["query"] ...` - search for torrents with Prowlarr
+    - [ ] `snatcher server add --type=search|prowlarr ...`  /  - set up prowlarr connection
+    - [ ] `snatcher api --search|--prowlarr ...` - raw API access to prowlarr search
+    - [ ] `--pages N` see if we can work needing to 'grab more' from prowlarr
 
 ### Aliases
 
@@ -79,12 +82,13 @@ Use "snatcher [command] --help" for more information about a command.
 - [ ] `snatcher server bandwidth show [download|upload] [--alt]` - show speeds (current and limits)
 - [ ] `snatcher server bandwidth update <download|upload> [--alt]...` - set up/down speed limits
 - [ ] `snatcher server bandwidth alt on|off|toggle` - toggle/set alt-speed
-- [ ] `snatcher torrent label add|rm|set|ls ...` - manage labels for torrent(s)
 - [ ] `snatcher server doctor` - check for common issues with server connection, auth, config, network (server side, port) etc
     - show torrents with errors?
     - show old torrents with low seeding?
     - top X largest torrents?
 - [ ] `snatcher torrent verify --all-with-errors` - verify all torrents with error status
+- [ ] `snatcher torrent label add|rm|set|ls ...` - manage labels for torrent(s)
+- [ ] `snatcher torrent ls --top=N` - list top N torrents by seeding size/etc
 
 ## TUI
 
