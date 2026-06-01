@@ -167,7 +167,7 @@ type uploadOptions struct {
 // records it in the returned result; a duplicate is a success, not an error.
 // With opts.deleteFile, a successful non-duplicate file add deletes the source
 // .torrent; a delete failure warns on stderr but does not fail the add.
-func uploadSource(cmd *cobra.Command, backend transmission.Backend, arg string, opts uploadOptions) uploadResult {
+func uploadSource(cmd *cobra.Command, backend *transmission.Client, arg string, opts uploadOptions) uploadResult {
 	source := transmission.ClassifySource(arg)
 
 	res := uploadResult{Source: source.String(), Input: arg}

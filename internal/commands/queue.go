@@ -13,7 +13,7 @@ import (
 // queueMove applies one of the backend's queue-move operations to a selector.
 // It is the only per-verb difference between the four subcommands, which are
 // otherwise identical in selector parsing, confirmation lookup, and output.
-type queueMove func(context.Context, transmission.Backend, transmission.Selector) error
+type queueMove func(context.Context, *transmission.Client, transmission.Selector) error
 
 // NewQueueCmd builds the "queue" parent command and its top/up/down/bottom
 // subcommands, which reorder the selected torrents within the download/seed
@@ -39,7 +39,7 @@ func NewQueueCmd() *cobra.Command {
 		"top", "Move torrents to the top of the queue",
 		"Move one or more torrents to the top of the download/seed queue.",
 		"queue-top",
-		func(ctx context.Context, b transmission.Backend, sel transmission.Selector) error {
+		func(ctx context.Context, b *transmission.Client, sel transmission.Selector) error {
 			return b.QueueMoveTop(ctx, sel)
 		},
 	))
@@ -47,7 +47,7 @@ func NewQueueCmd() *cobra.Command {
 		"up", "Move torrents up one position in the queue",
 		"Move one or more torrents up one position in the download/seed queue.",
 		"queue-up",
-		func(ctx context.Context, b transmission.Backend, sel transmission.Selector) error {
+		func(ctx context.Context, b *transmission.Client, sel transmission.Selector) error {
 			return b.QueueMoveUp(ctx, sel)
 		},
 	))
@@ -55,7 +55,7 @@ func NewQueueCmd() *cobra.Command {
 		"down", "Move torrents down one position in the queue",
 		"Move one or more torrents down one position in the download/seed queue.",
 		"queue-down",
-		func(ctx context.Context, b transmission.Backend, sel transmission.Selector) error {
+		func(ctx context.Context, b *transmission.Client, sel transmission.Selector) error {
 			return b.QueueMoveDown(ctx, sel)
 		},
 	))
@@ -63,7 +63,7 @@ func NewQueueCmd() *cobra.Command {
 		"bottom", "Move torrents to the bottom of the queue",
 		"Move one or more torrents to the bottom of the download/seed queue.",
 		"queue-bottom",
-		func(ctx context.Context, b transmission.Backend, sel transmission.Selector) error {
+		func(ctx context.Context, b *transmission.Client, sel transmission.Selector) error {
 			return b.QueueMoveBottom(ctx, sel)
 		},
 	))

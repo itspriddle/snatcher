@@ -86,7 +86,7 @@ func NewInfoCmd() *cobra.Command {
 // — TorrentDetail is keyed by id, so a hash costs one extra lookup. It returns an
 // error with a non-zero exit when no torrent matches, naming the original
 // argument (arg).
-func resolveTorrent(cmd *cobra.Command, backend transmission.Backend, serverURL string, sel transmission.Selector, arg string) (transmission.TorrentDetail, error) {
+func resolveTorrent(cmd *cobra.Command, backend *transmission.Client, serverURL string, sel transmission.Selector, arg string) (transmission.TorrentDetail, error) {
 	id, err := resolveTorrentID(cmd, backend, serverURL, sel, arg)
 	if err != nil {
 		return transmission.TorrentDetail{}, err
@@ -105,7 +105,7 @@ func resolveTorrent(cmd *cobra.Command, backend transmission.Backend, serverURL 
 // in one round-trip (PollFields, cheap) and matched in memory so the lookup is
 // correct even if a backend over-returns. It errors, naming arg, when no torrent
 // matches.
-func resolveTorrentID(cmd *cobra.Command, backend transmission.Backend, serverURL string, sel transmission.Selector, arg string) (int64, error) {
+func resolveTorrentID(cmd *cobra.Command, backend *transmission.Client, serverURL string, sel transmission.Selector, arg string) (int64, error) {
 	if len(sel.IDs) == 1 {
 		return sel.IDs[0], nil
 	}

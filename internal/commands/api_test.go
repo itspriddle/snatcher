@@ -15,16 +15,11 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
-	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// notAPICaller is a minimal transmission.Backend that does not implement
-// transmission.APICaller, exercising the missing-capability branch of apiCaller.
-// The embedded interface satisfies transmission.Backend at compile time; the methods
-// are never called because the type assertion fails first.
-type notAPICaller struct {
-	transmission.Backend
-}
+// notAPICaller is a value that does not implement transmission.APICaller,
+// exercising the missing-capability branch of apiCaller.
+type notAPICaller struct{}
 
 // sessionGetResponse is a bespoke session-get payload used as the canned answer
 // for the api command's real call (the CSRF probe is answered separately by the
@@ -162,8 +157,8 @@ func TestAPINotConfigured(t *testing.T) {
 }
 
 func TestAPIMissingCapabilityErrors(t *testing.T) {
-	// notAPICaller is a transmission.Backend but not a transmission.APICaller, so it
-	// exercises the missing-capability branch of apiCaller.
+	// notAPICaller does not implement transmission.APICaller, so it exercises the
+	// missing-capability branch of apiCaller.
 	_, err := apiCaller(&notAPICaller{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "backend does not support raw API calls")

@@ -1,10 +1,10 @@
 // Package transmission is snatcher's Transmission domain layer: it owns the
 // domain model (the torrent/session types, the Selector, the list transforms,
-// the source classification, and the error sentinels), the Backend interface
-// commands depend on, and the concrete Client that implements it. It wraps the
-// typed Transmission RPC client (internal/transmission/rpc), which decodes the
-// wire schemes and owns the canonical response types this package re-exports;
-// this package adds the pure-domain helpers and maps rpc errors to the sentinels.
+// the source classification, and the error sentinels) and the concrete Client
+// commands depend on. It wraps the typed Transmission RPC client
+// (internal/transmission/rpc), which decodes the wire schemes and owns the
+// canonical response types this package re-exports; this package adds the
+// pure-domain helpers and maps rpc errors to the sentinels.
 package transmission
 
 import (
@@ -19,8 +19,8 @@ import (
 )
 
 // Client wraps an rpc.Client, returning the canonical domain types directly and
-// mapping rpc errors to the sentinels. It is the concrete implementation of the
-// Backend interface. A zero Client is not usable; build one with New.
+// mapping rpc errors to the sentinels. It is the concrete Transmission client
+// commands depend on. A zero Client is not usable; build one with New.
 type Client struct {
 	client *rpc.Client
 }
