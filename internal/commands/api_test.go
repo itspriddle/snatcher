@@ -198,6 +198,9 @@ func (noAPIBackend) SetSession(context.Context, map[string]any) error { return n
 func (noAPIBackend) TestPort(context.Context) (torrent.PortTest, error) {
 	return torrent.PortTest{}, nil
 }
+func (noAPIBackend) FreeSpace(context.Context, string) (torrent.FreeSpace, error) {
+	return torrent.FreeSpace{}, nil
+}
 
 func TestAPIMissingCapabilityErrors(t *testing.T) {
 	_, err := apiCaller(noAPIBackend{})

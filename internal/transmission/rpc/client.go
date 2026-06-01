@@ -286,6 +286,19 @@ func (c *Client) PortTest(ctx context.Context) (PortTestResult, error) {
 	return proto.PortTest(ctx, c.transport)
 }
 
+// FreeSpace detects the protocol (once) and queries the free space (and, on a
+// server new enough to report it, the total capacity) on the given download
+// path, returning the canonical FreeSpaceResult. A server too old to report the
+// total capacity leaves FreeSpaceResult.TotalBytes 0.
+func (c *Client) FreeSpace(ctx context.Context, path string) (FreeSpaceResult, error) {
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return FreeSpaceResult{}, err
+	}
+
+	return proto.FreeSpace(ctx, c.transport, path)
+}
+
 // Protocol returns the negotiated protocol name, detecting it if necessary. It
 // is primarily useful for diagnostics; typed calls detect on their own.
 func (c *Client) Protocol(ctx context.Context) (string, error) {

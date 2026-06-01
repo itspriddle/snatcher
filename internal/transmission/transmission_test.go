@@ -1856,3 +1856,78 @@ func TestBackendTestPortMapsTransportError(t *testing.T) {
 	require.ErrorIs(t, err, rpc.ErrTransport)
 	assert.NotErrorIs(t, err, torrent.ErrAuth)
 }
+
+func TestBackendFreeSpaceJSONRPC(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"free_space": `{
+				"jsonrpc": "2.0",
+				"result": {"path": "/downloads", "size_bytes": 1024, "total_size": 4096},
+				"id": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	result, err := b.FreeSpace(context.Background(), "/downloads")
+	require.NoError(t, err)
+	assert.Equal(t, "/downloads", result.Path)
+	assert.Equal(t, int64(1024), result.SizeBytes)
+	// A 4.1+ (JSON-RPC) server reports the total capacity.
+	assert.Equal(t, int64(4096), result.TotalBytes)
+}
+
+func TestBackendFreeSpaceBespoke(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "", // old server: no version header -> bespoke
+		responses: map[string]string{
+			"free-space": `{
+				"arguments": {"path": "/downloads", "size-bytes": 2048},
+				"result": "success",
+				"tag": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	result, err := b.FreeSpace(context.Background(), "/downloads")
+	require.NoError(t, err)
+	assert.Equal(t, "/downloads", result.Path)
+	assert.Equal(t, int64(2048), result.SizeBytes)
+	// A bespoke server too old to report total_size omits it; the neutral field
+	// stays 0 (and its json tag is omitempty).
+	assert.Zero(t, result.TotalBytes)
+}
+
+func TestBackendFreeSpaceMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.FreeSpace(context.Background(), "/downloads")
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, rpc.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+func TestBackendFreeSpaceMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.FreeSpace(context.Background(), "/downloads")
+	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, rpc.ErrTransport)
+	assert.NotErrorIs(t, err, torrent.ErrAuth)
+}

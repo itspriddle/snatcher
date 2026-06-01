@@ -90,6 +90,9 @@ const (
 
 	methodPortTestJSONRPC = "port_test"
 	methodPortTestBespoke = "port-test"
+
+	methodFreeSpaceJSONRPC = "free_space"
+	methodFreeSpaceBespoke = "free-space"
 )
 
 // ErrRPC signals that the server accepted the request at the transport level but
@@ -312,6 +315,22 @@ type PortTestResult struct {
 	// "ipv6"), or empty when the server did not report it (the bespoke scheme
 	// never does, and JSON-RPC 2.0 omits it when it cannot be determined).
 	IPProtocol string `json:"ip_protocol"`
+}
+
+// FreeSpaceResult is the canonical, protocol-neutral result of a FreeSpace call.
+// Each Protocol implementation reads the correct per-scheme field names and
+// fills this shared shape. TotalBytes is only populated when the server reports
+// it (Transmission >= 4.1.0); a server too old to return total_size leaves it 0.
+type FreeSpaceResult struct {
+	// Path is the directory the query ran on, echoed back by the server.
+	Path string `json:"path"`
+
+	// SizeBytes is the free space available in the directory, in bytes.
+	SizeBytes int64 `json:"size_bytes"`
+
+	// TotalBytes is the directory's total capacity, in bytes, or 0 when the
+	// server did not report it.
+	TotalBytes int64 `json:"total_bytes"`
 }
 
 // Torrent is the canonical, protocol-neutral result of one torrent in a
@@ -766,6 +785,12 @@ type Protocol interface {
 	// the canonical PortTestResult. The JSON-RPC 2.0 scheme also reports the IP
 	// protocol the test ran on; the bespoke scheme returns only the open flag.
 	PortTest(ctx context.Context, t transport) (PortTestResult, error)
+
+	// FreeSpace calls the server's free-space/free_space method with the given
+	// path and returns the canonical FreeSpaceResult. A server >= 4.1.0 also
+	// reports the directory's total capacity; an older server returns only the
+	// free size, leaving FreeSpaceResult.TotalBytes 0.
+	FreeSpace(ctx context.Context, t transport, path string) (FreeSpaceResult, error)
 }
 
 // jsonrpcProtocol implements the JSON-RPC 2.0 scheme.
@@ -1853,6 +1878,55 @@ func (jsonrpcProtocol) PortTest(ctx context.Context, t transport) (PortTestResul
 	}, nil
 }
 
+// jsonrpcFreeSpaceResult is the snake_case free_space result shape. total_size is
+// unset on a server too old to report it (TotalBytes then stays 0).
+type jsonrpcFreeSpaceResult struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	TotalSize int64  `json:"total_size"`
+}
+
+// FreeSpace calls free_space with the queried path and decodes the snake_case
+// result, surfacing the free size and (when reported) the total capacity.
+func (jsonrpcProtocol) FreeSpace(ctx context.Context, t transport, path string) (FreeSpaceResult, error) {
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodFreeSpaceJSONRPC,
+		Params:  map[string]any{"path": path},
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return FreeSpaceResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return FreeSpaceResult{}, err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodFreeSpaceJSONRPC, respBody, &resp); err != nil {
+		return FreeSpaceResult{}, err
+	}
+
+	if resp.Error != nil {
+		return FreeSpaceResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	var result jsonrpcFreeSpaceResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return FreeSpaceResult{}, fmt.Errorf("rpc: decoding %s result: %w", methodFreeSpaceJSONRPC, err)
+	}
+
+	return FreeSpaceResult{
+		Path:       result.Path,
+		SizeBytes:  result.SizeBytes,
+		TotalBytes: result.TotalSize,
+	}, nil
+}
+
 // bespokeProtocol implements the legacy bespoke scheme.
 type bespokeProtocol struct{}
 
@@ -2818,6 +2892,58 @@ func (bespokeProtocol) PortTest(ctx context.Context, t transport) (PortTestResul
 	}
 
 	return PortTestResult{Open: args.PortIsOpen}, nil
+}
+
+// bespokeFreeSpaceArguments is the free-space arguments shape. The free size is
+// kebab-case (size-bytes), but the total capacity is spelled total_size on the
+// wire even in the bespoke scheme (see docs/transmission/rpc-spec-406.md); a
+// server too old to return it leaves TotalSize 0.
+type bespokeFreeSpaceArguments struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size-bytes"`
+	TotalSize int64  `json:"total_size"`
+}
+
+// FreeSpace calls free-space with the queried path and decodes the result. The
+// free size is always reported; the total capacity (total_size) is reported only
+// by a server new enough to include it, otherwise FreeSpaceResult.TotalBytes
+// stays 0.
+func (bespokeProtocol) FreeSpace(ctx context.Context, t transport, path string) (FreeSpaceResult, error) {
+	req := bespokeRequest{
+		Method:    methodFreeSpaceBespoke,
+		Arguments: map[string]any{"path": path},
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return FreeSpaceResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return FreeSpaceResult{}, err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodFreeSpaceBespoke, respBody, &resp); err != nil {
+		return FreeSpaceResult{}, err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return FreeSpaceResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	var args bespokeFreeSpaceArguments
+	if err := json.Unmarshal(resp.Arguments, &args); err != nil {
+		return FreeSpaceResult{}, fmt.Errorf("rpc: decoding %s arguments: %w", methodFreeSpaceBespoke, err)
+	}
+
+	return FreeSpaceResult{
+		Path:       args.Path,
+		SizeBytes:  args.SizeBytes,
+		TotalBytes: args.TotalSize,
+	}, nil
 }
 
 // Encryption enum values. The canonical "allowed" is spelled "tolerated" on the

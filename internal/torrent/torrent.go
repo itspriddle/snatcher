@@ -78,6 +78,24 @@ type PortTest struct {
 	IPProtocol string `json:"ip_protocol,omitempty"`
 }
 
+// FreeSpace is the vendor-neutral result of a free-space query on a download
+// path, returned by Backend.FreeSpace. TotalBytes is only populated when the
+// backend reports it (Transmission >= 4.1.0); it is omitted otherwise, mirroring
+// how PortTest.IPProtocol is optional.
+type FreeSpace struct {
+	// Path is the directory the free-space query was carried out on (echoed back
+	// by the server).
+	Path string `json:"path"`
+
+	// SizeBytes is the free space available in the directory, in bytes.
+	SizeBytes int64 `json:"size_bytes"`
+
+	// TotalBytes is the directory's total capacity, in bytes, or 0 (omitted) when
+	// the backend did not report it (the bespoke scheme on a server too old to
+	// return it).
+	TotalBytes int64 `json:"total_bytes,omitempty"`
+}
+
 // Stats is the vendor-neutral session statistics returned by Backend.Stats.
 type Stats struct {
 	// ActiveTorrentCount is the number of active torrents.
@@ -219,4 +237,11 @@ type Backend interface {
 	// (a reachable-but-closed port is not an error); a transport or auth failure
 	// maps to the neutral sentinels (ErrAuth, ErrUnreachable).
 	TestPort(ctx context.Context) (PortTest, error)
+
+	// FreeSpace queries the free space (and, when the server reports it, the total
+	// capacity) on the given download path and returns the neutral FreeSpace. The
+	// result's TotalBytes is omitted when the backend does not report it (a
+	// Transmission server too old to return it); a transport or auth failure maps
+	// to the neutral sentinels (ErrAuth, ErrUnreachable).
+	FreeSpace(ctx context.Context, path string) (FreeSpace, error)
 }

@@ -383,6 +383,24 @@ func (b *Backend) TestPort(ctx context.Context) (torrent.PortTest, error) {
 	}, nil
 }
 
+// FreeSpace performs a FreeSpace round-trip for path and maps the canonical
+// rpc.FreeSpaceResult to the neutral torrent.FreeSpace. TotalBytes is carried
+// through as reported (0 when the server is too old to return total capacity, in
+// which case the neutral json tag omits it). RPC failures are mapped to the
+// neutral sentinels.
+func (b *Backend) FreeSpace(ctx context.Context, path string) (torrent.FreeSpace, error) {
+	result, err := b.client.FreeSpace(ctx, path)
+	if err != nil {
+		return torrent.FreeSpace{}, mapError(err)
+	}
+
+	return torrent.FreeSpace{
+		Path:       result.Path,
+		SizeBytes:  result.SizeBytes,
+		TotalBytes: result.TotalBytes,
+	}, nil
+}
+
 // CallAPI issues an arbitrary RPC method with raw arguments and returns the
 // normalized APIResponse. Transport and auth failures are mapped to the neutral
 // sentinels via mapError; an RPC-level non-success is *not* mapped to a Go error

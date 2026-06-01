@@ -2283,6 +2283,133 @@ func TestBespokeProtocolPortTestMapsNonSuccessResult(t *testing.T) {
 	assert.ErrorContains(t, err, "no such session")
 }
 
+func TestJSONRPCProtocolFreeSpace(t *testing.T) {
+	var rawBody []byte
+
+	// Snake_case result keys matching docs/transmission/rpc-spec-411.md; a 4.1+
+	// server reports total_size.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"result": {"path": "/downloads", "size_bytes": 1024, "total_size": 4096},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := jsonrpcProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/downloads", result.Path)
+	assert.Equal(t, int64(1024), result.SizeBytes)
+	assert.Equal(t, int64(4096), result.TotalBytes)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// JSON-RPC 2.0 envelope: snake_case method, jsonrpc/id present, no tag; the
+	// queried path is sent in params.
+	assert.Equal(t, "2.0", gotBody["jsonrpc"])
+	assert.Equal(t, "free_space", gotBody["method"])
+	assert.Contains(t, gotBody, "id")
+	assert.NotContains(t, gotBody, "tag")
+
+	params, ok := gotBody["params"].(map[string]any)
+	require.True(t, ok, "params is an object")
+	assert.Equal(t, "/downloads", params["path"])
+}
+
+func TestBespokeProtocolFreeSpace(t *testing.T) {
+	var rawBody []byte
+
+	// Kebab-case free size (size-bytes) matching docs/transmission/rpc-spec-406.md;
+	// the total capacity is spelled total_size on the wire even here.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{
+			"arguments": {"path": "/downloads", "size-bytes": 1024, "total_size": 4096},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := bespokeProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/downloads", result.Path)
+	assert.Equal(t, int64(1024), result.SizeBytes)
+	assert.Equal(t, int64(4096), result.TotalBytes)
+
+	var gotBody map[string]any
+	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+	// Bespoke envelope: kebab-case method, tag present, no jsonrpc; the queried
+	// path is sent in arguments.
+	assert.Equal(t, "free-space", gotBody["method"])
+	assert.Contains(t, gotBody, "tag")
+	assert.NotContains(t, gotBody, "jsonrpc")
+
+	args, ok := gotBody["arguments"].(map[string]any)
+	require.True(t, ok, "arguments is an object")
+	assert.Equal(t, "/downloads", args["path"])
+}
+
+func TestBespokeProtocolFreeSpaceOmitsTotalOnOldServer(t *testing.T) {
+	// A bespoke server too old to return total_size omits it; TotalBytes stays 0.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"arguments": {"path": "/downloads", "size-bytes": 2048},
+			"result": "success",
+			"tag": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	result, err := bespokeProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(2048), result.SizeBytes)
+	assert.Zero(t, result.TotalBytes, "an old bespoke server reports no total capacity")
+}
+
+func TestJSONRPCProtocolFreeSpaceMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": 7, "message": "No such directory"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := jsonrpcProtocol{}.FreeSpace(context.Background(), tr, "/nope")
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "No such directory")
+}
+
+func TestBespokeProtocolFreeSpaceMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "no such session", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := bespokeProtocol{}.FreeSpace(context.Background(), tr, "/downloads")
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "no such session")
+}
+
 // piecesB64 is a base64 bitfield for a 10-piece torrent: bytes 0xB0 0x40, so
 // pieces 0, 2, 3, and 9 are complete (MSB-first within each byte).
 const piecesB64 = "sEA="
