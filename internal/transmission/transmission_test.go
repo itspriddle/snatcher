@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -267,11 +268,31 @@ func TestBackendMapsRPCError(t *testing.T) {
 	b := New(srv.URL)
 
 	_, err := b.Stats(context.Background())
-	// A server-side RPC error (bespoke result != "success") maps to
-	// ErrUnreachable while preserving the rpc.ErrRPC sentinel and its message.
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	// A server-side RPC error (bespoke result != "success") maps to ErrServer
+	// while preserving the rpc.ErrRPC sentinel and its message. It is distinct
+	// from a transport failure (ErrUnreachable).
+	require.ErrorIs(t, err, torrent.ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
-	assert.ErrorContains(t, err, "no such session")
+	require.ErrorContains(t, err, "no such session")
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
+// TestMapErrorDistinguishesServerFromTransport verifies that mapError separates a
+// server-side RPC application error (ErrServer) from a transport failure
+// (ErrUnreachable), and that the underlying rpc sentinels survive the wrap so
+// errors.Is against them still matches.
+func TestMapErrorDistinguishesServerFromTransport(t *testing.T) {
+	require.NoError(t, mapError(nil))
+
+	serverErr := mapError(fmt.Errorf("%w: bad argument", rpc.ErrRPC))
+	require.ErrorIs(t, serverErr, torrent.ErrServer)
+	require.ErrorIs(t, serverErr, rpc.ErrRPC)
+	require.NotErrorIs(t, serverErr, torrent.ErrUnreachable)
+
+	transportErr := mapError(fmt.Errorf("%w: connection refused", rpc.ErrTransport))
+	require.ErrorIs(t, transportErr, torrent.ErrUnreachable)
+	require.ErrorIs(t, transportErr, rpc.ErrTransport)
+	assert.NotErrorIs(t, transportErr, torrent.ErrServer)
 }
 
 func TestBackendListTorrents(t *testing.T) {
@@ -554,7 +575,7 @@ func TestBackendStopTorrentsMapsRPCError(t *testing.T) {
 	b := New(srv.URL)
 
 	err := b.StopTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, torrent.ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -615,7 +636,7 @@ func TestBackendVerifyTorrentsMapsRPCError(t *testing.T) {
 	b := New(srv.URL)
 
 	err := b.VerifyTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, torrent.ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -676,7 +697,7 @@ func TestBackendReannounceTorrentsMapsRPCError(t *testing.T) {
 	b := New(srv.URL)
 
 	err := b.ReannounceTorrents(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, torrent.ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -789,7 +810,7 @@ func TestBackendQueueMoveMapsRPCError(t *testing.T) {
 	b := New(srv.URL)
 
 	err := b.QueueMoveUp(context.Background(), torrent.Selector{IDs: []int64{1}})
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, torrent.ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }
@@ -959,7 +980,7 @@ func TestBackendMoveTorrentsMapsRPCError(t *testing.T) {
 	b := New(srv.URL)
 
 	err := b.MoveTorrents(context.Background(), torrent.Selector{IDs: []int64{1}}, "/data/media", true)
-	require.ErrorIs(t, err, torrent.ErrUnreachable)
+	require.ErrorIs(t, err, torrent.ErrServer)
 	require.ErrorIs(t, err, rpc.ErrRPC)
 	assert.ErrorContains(t, err, "invalid argument")
 }

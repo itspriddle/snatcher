@@ -16,7 +16,14 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 )
+
+// defaultTimeout bounds an individual RPC request when the caller supplies no
+// HTTP client of its own. Without it a black-holed connection would hang a
+// long-lived polling client forever; the context still governs per-call
+// deadlines on top of this ceiling.
+const defaultTimeout = 30 * time.Second
 
 // sessionIDHeader is the CSRF header Transmission requires on every request and
 // returns (with the correct value) alongside an HTTP 409 response.
@@ -61,7 +68,7 @@ type Transport struct {
 type Option func(*Transport)
 
 // WithHTTPClient overrides the HTTP client used to perform requests. The default
-// is http.DefaultClient.
+// is a private *http.Client with a defaultTimeout request ceiling.
 func WithHTTPClient(c HTTPDoer) Option {
 	return func(t *Transport) {
 		if c != nil {
@@ -84,7 +91,7 @@ func WithBasicAuth(username, password string) Option {
 func NewTransport(rpcURL string, opts ...Option) *Transport {
 	t := &Transport{
 		url:        rpcURL,
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 
 	for _, opt := range opts {

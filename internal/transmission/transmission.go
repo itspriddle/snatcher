@@ -465,8 +465,9 @@ func rpcSettingKey(key string) string {
 // preserving the original error in the wrap chain (so errors.Is against the rpc
 // sentinels still works and the server message is retained). An rpc.ErrAuth
 // becomes torrent.ErrAuth; rpc.ErrUnsupported becomes torrent.ErrUnsupported;
-// rpc.ErrTransport and rpc.ErrRPC become torrent.ErrUnreachable. A nil error is
-// returned unchanged.
+// rpc.ErrRPC (a server-side application error) becomes torrent.ErrServer; any
+// other failure — including rpc.ErrTransport — becomes torrent.ErrUnreachable.
+// A nil error is returned unchanged.
 func mapError(err error) error {
 	if err == nil {
 		return nil
@@ -478,6 +479,10 @@ func mapError(err error) error {
 
 	if errors.Is(err, rpc.ErrUnsupported) {
 		return fmt.Errorf("%w: %w", torrent.ErrUnsupported, err)
+	}
+
+	if errors.Is(err, rpc.ErrRPC) {
+		return fmt.Errorf("%w: %w", torrent.ErrServer, err)
 	}
 
 	return fmt.Errorf("%w: %w", torrent.ErrUnreachable, err)

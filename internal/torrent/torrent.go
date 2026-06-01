@@ -15,11 +15,18 @@ import (
 // matchable with errors.Is.
 var ErrAuth = errors.New("torrent: authentication failed")
 
-// ErrUnreachable signals that the backend could not be reached or returned an
-// error that is not an authentication failure (a transport problem, an
-// unexpected HTTP status, or a server-side RPC error). It is matchable with
-// errors.Is.
+// ErrUnreachable signals a transport-level failure: the backend could not be
+// reached, the HTTP exchange could not complete, or the server returned an
+// unexpected non-2xx status. A request the server accepted but rejected at the
+// application level is ErrServer, not this. It is matchable with errors.Is.
 var ErrUnreachable = errors.New("torrent: server unreachable")
+
+// ErrServer signals that the backend accepted the request at the transport level
+// but reported a server-side RPC application error (e.g. an invalid argument or
+// a rejected operation). It is distinct from ErrUnreachable so a status bar can
+// tell "can't reach host" from "server rejected the request". It is matchable
+// with errors.Is.
+var ErrServer = errors.New("torrent: server error")
 
 // ErrUnsupported signals that the backend server is older than the minimum
 // version snatcher supports. It is matchable with errors.Is.

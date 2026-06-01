@@ -34,9 +34,8 @@ var ErrUnsupported = errors.New("rpc: unsupported server version")
 type Client struct {
 	transport *Transport
 
-	detectOnce sync.Once
-	detectErr  error
-	protocol   Protocol
+	detectMu sync.Mutex
+	protocol Protocol // non-nil once detection has succeeded
 }
 
 // NewClient returns a Client that talks to rpcURL, forwarding opts to the
@@ -280,48 +279,52 @@ func (c *Client) Protocol(ctx context.Context) (string, error) {
 	return proto.Name(), nil
 }
 
-// detect resolves the protocol exactly once per client. It probes the server to
-// run the CSRF handshake (which surfaces the X-Transmission-Rpc-Version header on
-// the 409), then selects JSON-RPC 2.0 when that header's semver major is >=
-// jsonrpcMajorMin, falling back to the bespoke scheme when the header is absent
-// or older. It also enforces the Transmission 4.0+ floor: a JSON-RPC server is
-// necessarily >= 4.1.0 and clears it for free, while a bespoke server is
-// confirmed against minRPCVersion using the probe's own session-get body — no
-// extra round-trip.
+// detect resolves the protocol, caching only a successful detection so a
+// transient probe failure does not brick a long-lived client: when the probe
+// fails the protocol stays nil and the next call re-probes. It runs the CSRF
+// handshake (which surfaces the X-Transmission-Rpc-Version header on the 409),
+// then selects JSON-RPC 2.0 when that header's semver major is >= jsonrpcMajorMin,
+// falling back to the bespoke scheme when the header is absent or older. It also
+// enforces the Transmission 4.0+ floor: a JSON-RPC server is necessarily >= 4.1.0
+// and clears it for free, while a bespoke server is confirmed against
+// minRPCVersion using the probe's own session-get body — no extra round-trip.
 func (c *Client) detect(ctx context.Context) (Protocol, error) {
-	c.detectOnce.Do(func() {
-		// A minimal session-get probe doubles as the CSRF handshake. Use the
-		// bespoke envelope: a 4.1.x server still answers it, and the captured
-		// header drives the protocol choice. The body is reused only to enforce
-		// the version floor on the bespoke path below.
-		body, err := marshalRequest(bespokeRequest{Method: methodSessionGetBespoke, Tag: 1})
-		if err != nil {
-			c.detectErr = err
-			return
-		}
+	c.detectMu.Lock()
+	defer c.detectMu.Unlock()
 
-		probeBody, _, err := c.transport.Probe(ctx, body)
-		if err != nil {
-			c.detectErr = err
-			return
-		}
-
-		c.protocol = selectProtocol(c.transport.RPCVersion())
-
-		// Only the bespoke path needs verification: a JSON-RPC server is >= 4.1.0
-		// (the CSRF version header starts at semver 6.0.0), so it already clears
-		// the floor.
-		if c.protocol.Name() == ProtocolBespoke {
-			if err := enforceMinVersion(probeBody); err != nil {
-				c.detectErr = err
-				return
-			}
-		}
-	})
-
-	if c.detectErr != nil {
-		return nil, c.detectErr
+	// A previous call already detected the protocol; reuse it.
+	if c.protocol != nil {
+		return c.protocol, nil
 	}
+
+	// A minimal session-get probe doubles as the CSRF handshake. Use the bespoke
+	// envelope: a 4.1.x server still answers it, and the captured header drives
+	// the protocol choice. The body is reused only to enforce the version floor
+	// on the bespoke path below.
+	body, err := marshalRequest(bespokeRequest{Method: methodSessionGetBespoke, Tag: 1})
+	if err != nil {
+		return nil, err
+	}
+
+	probeBody, _, err := c.transport.Probe(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	proto := selectProtocol(c.transport.RPCVersion())
+
+	// Only the bespoke path needs verification: a JSON-RPC server is >= 4.1.0
+	// (the CSRF version header starts at semver 6.0.0), so it already clears the
+	// floor.
+	if proto.Name() == ProtocolBespoke {
+		if err := enforceMinVersion(probeBody); err != nil {
+			return nil, err
+		}
+	}
+
+	// Cache only on success: an errored probe above returns without setting
+	// c.protocol, leaving the client undetected so the next call re-probes.
+	c.protocol = proto
 
 	return c.protocol, nil
 }
