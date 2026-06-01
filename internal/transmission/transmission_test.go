@@ -1205,6 +1205,123 @@ func TestBackendSetTorrentsTranslatesKeys(t *testing.T) {
 	}
 }
 
+func TestBackendSetFilesTranslatesKeys(t *testing.T) {
+	tests := []struct {
+		name       string
+		rpcVersion string
+		// wantWire are wire-key fragments expected in the captured request body:
+		// snake_case for JSON-RPC (sent verbatim), the mechanical kebab spelling for
+		// bespoke. No file-selection key is a bespoke camelCase exception.
+		wantWire []string
+	}{
+		{
+			name:       "jsonrpc",
+			rpcVersion: "6.0.0",
+			wantWire: []string{
+				`"method":"torrent_set"`,
+				`"ids":[3,"deadbeef"]`,
+				`"files_wanted":[0,1]`,
+				`"files_unwanted":[2]`,
+				`"priority_high":[0]`,
+				`"priority_normal":[1]`,
+				`"priority_low":[2]`,
+			},
+		},
+		{
+			name:       "bespoke",
+			rpcVersion: "",
+			wantWire: []string{
+				`"method":"torrent-set"`,
+				`"ids":[3,"deadbeef"]`,
+				`"files-wanted":[0,1]`,
+				`"files-unwanted":[2]`,
+				`"priority-high":[0]`,
+				`"priority-normal":[1]`,
+				`"priority-low":[2]`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := captureActionServer(t, tt.rpcVersion, &captured)
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			sel := torrent.Selector{IDs: []int64{3}, Hashes: []string{"deadbeef"}}
+			err := b.SetFiles(context.Background(), sel, torrent.FileChanges{
+				Wanted:         []int{0, 1},
+				Unwanted:       []int{2},
+				PriorityHigh:   []int{0},
+				PriorityNormal: []int{1},
+				PriorityLow:    []int{2},
+			})
+			require.NoError(t, err)
+
+			for _, want := range tt.wantWire {
+				assert.Contains(t, captured, want)
+			}
+		})
+	}
+}
+
+func TestBackendSetFilesOmitsEmptyFields(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	// Only Wanted is populated; the other four FileChanges fields must not appear
+	// as torrent-set arguments.
+	err := b.SetFiles(context.Background(), torrent.Selector{IDs: []int64{1}}, torrent.FileChanges{
+		Wanted: []int{0},
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"files_wanted":[0]`)
+	assert.NotContains(t, captured, "files_unwanted")
+	assert.NotContains(t, captured, "priority_high")
+	assert.NotContains(t, captured, "priority_normal")
+	assert.NotContains(t, captured, "priority_low")
+}
+
+func TestBackendSetFilesAllOmitsIDs(t *testing.T) {
+	var captured string
+
+	srv := captureActionServer(t, "6.0.0", &captured)
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.SetFiles(context.Background(), torrent.Selector{All: true}, torrent.FileChanges{
+		Wanted: []int{0},
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, captured, `"method":"torrent_set"`)
+	assert.Contains(t, captured, `"files_wanted":[0]`)
+	assert.NotContains(t, captured, `"ids"`)
+}
+
+func TestBackendSetFilesMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	err := b.SetFiles(context.Background(), torrent.Selector{IDs: []int64{1}}, torrent.FileChanges{Wanted: []int{0}})
+	require.ErrorIs(t, err, torrent.ErrAuth)
+	require.ErrorIs(t, err, rpc.ErrAuth)
+	assert.NotErrorIs(t, err, torrent.ErrUnreachable)
+}
+
 func TestBackendSetTorrentsAllOmitsIDs(t *testing.T) {
 	var captured string
 

@@ -286,6 +286,30 @@ type File struct {
 	Priority int `json:"priority"`
 }
 
+// FileChanges is the vendor-neutral set of per-file selection and priority
+// changes applied by Backend.SetFiles. Each field is a list of file indices
+// (matching the order of TorrentDetail.Files); only the non-empty fields are
+// written, and an empty FileChanges is a no-op. Wanted and Unwanted set whether
+// the listed files are downloaded; PriorityHigh, PriorityNormal, and PriorityLow
+// set the listed files' download priority. The indices in different fields are
+// independent (e.g. a file may appear in both Wanted and PriorityHigh).
+type FileChanges struct {
+	// Wanted are the indices of files to mark as wanted (downloaded).
+	Wanted []int
+
+	// Unwanted are the indices of files to mark as unwanted (not downloaded).
+	Unwanted []int
+
+	// PriorityHigh are the indices of files to set to high download priority.
+	PriorityHigh []int
+
+	// PriorityNormal are the indices of files to set to normal download priority.
+	PriorityNormal []int
+
+	// PriorityLow are the indices of files to set to low download priority.
+	PriorityLow []int
+}
+
 // Peer is one connected peer for a torrent, returned in TorrentDetail.Peers.
 type Peer struct {
 	// Address is the peer's IP address.

@@ -189,6 +189,14 @@ type Backend interface {
 	// every torrent. The call confirms success and carries no response payload.
 	SetTorrents(ctx context.Context, sel Selector, changes map[string]any) error
 
+	// SetFiles applies per-file selection and priority changes to the torrents
+	// matched by sel. The changes' index lists select which files within each
+	// torrent to mark wanted/unwanted or set to high/normal/low priority; only the
+	// non-empty FileChanges fields are written, and an empty FileChanges is a
+	// no-op. An All selector targets every torrent. The call confirms success and
+	// carries no response payload.
+	SetFiles(ctx context.Context, sel Selector, changes FileChanges) error
+
 	// AddTorrent adds a single torrent described by req (exactly one of Metainfo,
 	// URL, or Magnet identifies the source) and returns the neutral AddResult. A
 	// torrent that was already present is reported via AddResult.Duplicate rather

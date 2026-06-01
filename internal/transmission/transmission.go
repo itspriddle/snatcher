@@ -276,6 +276,36 @@ func (b *Backend) SetTorrents(ctx context.Context, sel torrent.Selector, changes
 	return mapError(b.client.TorrentSet(ctx, sel.RPCIDs(), settings))
 }
 
+// SetFiles applies per-file selection and priority changes to the torrents
+// matched by sel, routing them through rpc.Client.TorrentSet as the canonical
+// snake_case torrent-set arguments files_wanted / files_unwanted / priority_high
+// / priority_normal / priority_low. The rpc layer translates each to its wire
+// spelling — verbatim snake_case for JSON-RPC 2.0, the mechanical "_"->"-" kebab
+// transform for bespoke (none of these keys is a camelCase exception). Only the
+// non-empty FileChanges fields are sent; an empty FileChanges issues no
+// torrent-set arguments (a no-op). An All selector omits the ids argument so the
+// server targets every torrent. RPC failures are mapped to the neutral sentinels.
+func (b *Backend) SetFiles(ctx context.Context, sel torrent.Selector, changes torrent.FileChanges) error {
+	settings := make(map[string]any, 5)
+	if len(changes.Wanted) > 0 {
+		settings["files_wanted"] = changes.Wanted
+	}
+	if len(changes.Unwanted) > 0 {
+		settings["files_unwanted"] = changes.Unwanted
+	}
+	if len(changes.PriorityHigh) > 0 {
+		settings["priority_high"] = changes.PriorityHigh
+	}
+	if len(changes.PriorityNormal) > 0 {
+		settings["priority_normal"] = changes.PriorityNormal
+	}
+	if len(changes.PriorityLow) > 0 {
+		settings["priority_low"] = changes.PriorityLow
+	}
+
+	return mapError(b.client.TorrentSet(ctx, sel.RPCIDs(), settings))
+}
+
 // AddTorrent adds a single torrent via the rpc client's TorrentAdd. It
 // base64-encodes raw Metainfo into the RPC metainfo field, maps URL/Magnet to
 // the RPC filename field, and passes DownloadDir/Paused/Labels through. The
