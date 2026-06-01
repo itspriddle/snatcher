@@ -33,8 +33,7 @@ installs the dev toolchain from the `Brewfile`. `direnv` (`.envrc`) puts
 cmd/snatcher/             # thin entrypoint: os.Exit(cli.Execute())
 internal/cli/             # root command wiring + Execute()
 internal/commands/        # one cobra command group per file (server, torrent, …)
-internal/torrent/         # vendor-neutral Backend interface + types + transforms
-internal/transmission/    # Transmission adapter (the only importer of rpc)
+internal/transmission/    # domain model (types, Selector, transforms, sentinels) + concrete Client
 internal/transmission/rpc # typed Transmission RPC client (Client→Protocol→Transport)
 internal/config/          # non-secret config (named servers, JSON, XDG path)
 internal/secrets/         # passwords in the OS keyring
@@ -47,30 +46,26 @@ docs/                     # vision, plans, prompts, Transmission RPC specs
 
 ## Architecture
 
-One rule drives the layering: **commands depend only on the vendor-neutral
-`torrent.Backend` interface, never on a concrete client.** That seam is what
-lets a future qbittorrent backend slot in without rewriting commands.
+snatcher commits to **Transmission RPC only**. `internal/transmission` owns the
+domain model and the concrete `Client`; commands talk to that client directly.
 
 Layers, outermost to innermost:
 
 - **`internal/cli`** — builds the root cobra command and wires subcommands.
-- **`internal/commands`** — one command group per file. Depends only on
-  `torrent.Backend` plus `config`/`secrets`/`output`. `commands.dial()` (in
-  `server_registry.go`) is where a command *constructs* the concrete backend: it
-  loads config, reads the keyring password, and returns a `torrent.Backend`. That
+- **`internal/commands`** — one command group per file. Depends on
+  `*transmission.Client` plus `config`/`secrets`/`output`. `commands.dial()` (in
+  `server_registry.go`) is where a command *constructs* the client: it loads
+  config, reads the keyring password, and returns a `*transmission.Client`. That
   same file holds the named-server registry subcommands
-  (`server add`/`list`/`default`/`show`/`ping`/`remove`). The one other place the
-  concrete `transmission` package is touched is `api.go`, which type-asserts the
-  Transmission-specific `APICaller` capability (the power-user `api` escape hatch)
-  rather than constructing a backend — a deliberate, documented assertion, not a
-  second construction seam.
-- **`internal/torrent`** — the neutral seam itself: the `Backend` interface, the
-  `Torrent`/`Stats`/`ServerInfo` types, the `Selector` (id/hash/`--all` parsing
-  for mutation commands), and the in-memory list transforms (filter/search/sort).
-  Backend errors are mapped to neutral sentinels `ErrAuth` / `ErrUnreachable`.
-- **`internal/transmission`** — adapts `rpc` types to neutral `torrent` types
-  and maps rpc errors to the sentinels. It is the **only** package that imports
-  `rpc`.
+  (`server add`/`list`/`default`/`show`/`ping`/`remove`). The power-user `api`
+  escape hatch (`api.go`) calls `client.CallAPI(...)` directly.
+- **`internal/transmission`** — the domain model and the client. It owns the
+  `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
+  `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list
+  transforms (filter/search/sort), the error sentinels (`ErrAuth` /
+  `ErrUnreachable` / `ErrServer` / `ErrUnsupported`), and the concrete `Client`
+  that wraps `*rpc.Client` and maps rpc errors to those sentinels. It is the
+  **only** package that imports `rpc`.
 - **`internal/transmission/rpc`** — typed Transmission client. `Transport` POSTs
   JSON and transparently handles the `X-Transmission-Session-Id` CSRF 409 retry
   and Basic Auth. `Client` probes once, then dispatches through a `Protocol`.
@@ -87,7 +82,7 @@ canonical structs. RPC specs live in `docs/transmission/`.
 ≥ 4.1.0 and clears it for free; a bespoke server is checked against the integer
 `rpc-version` in the probe's own `session-get` body (no extra round-trip). A
 server that positively reports an `rpc-version` below 17 is refused with
-`rpc.ErrUnsupported`, mapped to `torrent.ErrUnsupported`. A server that reports no
+`rpc.ErrUnsupported`, mapped to `transmission.ErrUnsupported`. A server that reports no
 `rpc-version` at all (pre-1.50, or not Transmission) is left to fail naturally
 rather than mislabeled — every real 2.x/3.x server does report it, so the
 realistic "too old" case is still caught.
@@ -98,7 +93,7 @@ since Transmission 1.50) is the gate signal; `rpc-version-semver` only exists fr
 boundary alone.
 
 **Output contract.** Every command renders in one of three modes, fixed
-precedence: **`--jq` → `--json` → plaintext** (`internal/output`). The neutral
+precedence: **`--jq` → `--json` → plaintext** (`internal/output`). The domain
 types' `json` tags are a stable scripting surface — treat them as an API.
 Server-derived strings (names, labels, errors, download dirs) are untrusted and
 MUST pass through `output.SanitizeTerminal` on human/plaintext paths, but NEVER

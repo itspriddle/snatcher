@@ -12,7 +12,7 @@ The snatcher TUI targets the **Charm v2 ecosystem** (Feb 2026 release): vanity i
 **Core deps (all v2-ready, tagged):** bubbletea v2.0.6, lipgloss v2.0.3, bubbles v2.1.0, huh v2.0.3.
 
 **Decisions:**
-- **Torrent list** → core `bubbles/v2/table`, with sort/filter driven by the existing vendor-neutral transforms in `internal/torrent`. NOT Evertras/bubble-table (its v2 is untagged `@main`; avoid the pre-release pin).
+- **Torrent list** → core `bubbles/v2/table`, with sort/filter driven by the existing transforms in `internal/transmission`. NOT Evertras/bubble-table (its v2 is untagged `@main`; avoid the pre-release pin).
 - **Mouse** → deferred for v1. Keyboard-first. `github.com/lrstanley/bubblezone/v2` is v2-ready and is the fast-follow when we add mouse.
 - **Speed graphs** → hand-rolled block-glyph sparkline (`▁▂▃▄▅▆▇█`) from a rolling buffer. NOT ntcharts (v2 branch is untagged AND carries a `replace` directive → heaviest pre-release risk).
 - **Overlays/modals/toasts** → Lip Gloss `Compositor` (`NewCompositor(layers...).Render()`, layers via `.X().Y().Z()`). Replaces bubbleup (v1-only) and bubbletea-overlay (v1-only, maintainer says use v2 compositing). No third-party overlay dep.
