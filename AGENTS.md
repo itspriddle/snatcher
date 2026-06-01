@@ -110,8 +110,8 @@ header-less rows when piped or when `NO_COLOR` is set.
 `$XDG_CONFIG_HOME/snatcher/config.json`, read and written directly by
 `internal/config` (no viper — it lowercases map keys, which would corrupt
 case-sensitive aliases). The file holds a `servers` map of named aliases (each
-with a `url` and `username`) plus a `default_server` alias; legacy single-server
-files are migrated on read. The config package no longer reads env vars. Server
+with a `url` and `username`) plus a `default_server` alias — the only schema the
+config package knows. The config package no longer reads env vars. Server
 selection precedence (`--server` flag > `SNATCHER_SERVER` env > `default_server`)
 is resolved at the command layer by `dial`/`config.Resolve`, not in the config
 package. The password lives only in the OS keyring (`internal/secrets`), keyed by
@@ -119,8 +119,8 @@ server URL — never on disk.
 
 `config.json` is trusted, operator-owned input. The `validateURL` userinfo guard
 (rejecting embedded `user:pass@` credentials) applies only at `server add` time;
-URLs loaded from a legacy or hand-edited config are used as-is, with no
-load-time re-validation.
+URLs loaded from a hand-edited config are used as-is, with no load-time
+re-validation.
 
 Adding a command: create a file in `internal/commands`, register it in
 `internal/cli/root.go`, then regenerate `.surface` (see below).

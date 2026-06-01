@@ -92,7 +92,7 @@ func TestSaveCreatesParentDirsAndEnforcesPermissions(t *testing.T) {
 	assert.Equal(t, os.FileMode(filePerm), fileInfo.Mode().Perm())
 }
 
-func TestSaveWritesNewSchemaAndNoLegacyOrSecretKeys(t *testing.T) {
+func TestSaveWritesNewSchemaAndNoSecretKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 
 	cfg := Config{
@@ -112,11 +112,6 @@ func TestSaveWritesNewSchemaAndNoLegacyOrSecretKeys(t *testing.T) {
 		assert.Falsef(t, exists, "config file must not contain %q", secretKey)
 	}
 
-	for _, legacyKey := range []string{"server_url", "username"} {
-		_, exists := on[legacyKey]
-		assert.Falsef(t, exists, "config file must not contain legacy key %q", legacyKey)
-	}
-
 	assert.Equal(t, "local", on["default_server"])
 
 	servers, ok := on["servers"].(map[string]any)
@@ -127,36 +122,17 @@ func TestSaveWritesNewSchemaAndNoLegacyOrSecretKeys(t *testing.T) {
 	assert.Equal(t, "bob", local["username"])
 }
 
-func TestLoadMigratesLegacyConfigOnRead(t *testing.T) {
+func TestLoadIgnoresUnknownLegacyKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 
-	// A legacy on-disk file written by an older snatcher.
+	// An old flat single-server file (no servers map) is no longer migrated:
+	// its unknown keys are ignored and it loads as a zero-value Config.
 	legacy := `{"server_url":"http://Localhost:9091/transmission/rpc","username":"dave"}`
 	require.NoError(t, os.WriteFile(path, []byte(legacy), filePerm))
 
 	got, err := Load(path)
 	require.NoError(t, err)
-
-	// Keyed by the lowercased URL host (with port), set as the default.
-	assert.Equal(t, "localhost:9091", got.DefaultServer)
-	assert.Equal(t, map[string]Server{
-		"localhost:9091": {URL: "http://Localhost:9091/transmission/rpc", Username: "dave"},
-	}, got.Servers)
-}
-
-func TestLoadPrefersServersOverLegacyFields(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-
-	// A file that has both the new servers map and stray legacy keys: the
-	// servers map wins and migration does not run.
-	mixed := `{"servers":{"a":{"url":"http://a","username":"x"}},"default_server":"a","server_url":"http://legacy","username":"y"}`
-	require.NoError(t, os.WriteFile(path, []byte(mixed), filePerm))
-
-	got, err := Load(path)
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"a"}, got.Names())
-	assert.Equal(t, "a", got.DefaultServer)
+	assert.Equal(t, Config{}, got)
 }
 
 func TestLoadMissingFileReturnsZeroConfigAndNotConfigured(t *testing.T) {
