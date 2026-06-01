@@ -56,10 +56,14 @@ Layers, outermost to innermost:
 - **`internal/cli`** — builds the root cobra command and wires subcommands.
 - **`internal/commands`** — one command group per file. Depends only on
   `torrent.Backend` plus `config`/`secrets`/`output`. `commands.dial()` (in
-  `server_registry.go`) is the *single* seam where a command crosses into the
-  concrete backend: it loads config, reads the keyring password, and returns a
-  `torrent.Backend`. That same file holds the named-server registry subcommands
-  (`server add`/`list`/`default`/`show`/`ping`/`remove`).
+  `server_registry.go`) is where a command *constructs* the concrete backend: it
+  loads config, reads the keyring password, and returns a `torrent.Backend`. That
+  same file holds the named-server registry subcommands
+  (`server add`/`list`/`default`/`show`/`ping`/`remove`). The one other place the
+  concrete `transmission` package is touched is `api.go`, which type-asserts the
+  Transmission-specific `APICaller` capability (the power-user `api` escape hatch)
+  rather than constructing a backend — a deliberate, documented assertion, not a
+  second construction seam.
 - **`internal/torrent`** — the neutral seam itself: the `Backend` interface, the
   `Torrent`/`Stats`/`ServerInfo` types, the `Selector` (id/hash/`--all` parsing
   for mutation commands), and the in-memory list transforms (filter/search/sort).

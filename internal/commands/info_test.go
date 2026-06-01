@@ -151,7 +151,7 @@ func infoConfigPath(t *testing.T, body string) (string, func()) {
 	}))
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
@@ -305,7 +305,7 @@ func TestInfoSingleRoundTrip(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	out, _, err := runInfo(t, "--config", cfgPath, "1")
 	require.NoError(t, err)

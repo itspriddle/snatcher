@@ -68,7 +68,7 @@ func apiConfigPath(t *testing.T, method, body string) (string, func()) {
 	}.handler())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
@@ -333,7 +333,7 @@ func TestAPIFieldsReachTheWire(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	_, _, err := runAPI(t, "--config", cfgPath, "torrent-get",
 		"-F", "ids:=[9007199254740993]",

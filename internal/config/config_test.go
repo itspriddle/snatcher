@@ -127,22 +127,6 @@ func TestSaveWritesNewSchemaAndNoLegacyOrSecretKeys(t *testing.T) {
 	assert.Equal(t, "bob", local["username"])
 }
 
-func TestSaveMigratesLegacyFlatFields(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-
-	// A caller that still builds a Config with only the transitional flat fields.
-	require.NoError(t, Save(Config{ServerURL: "http://host:9091/rpc", Username: "carol"}, path))
-
-	got, err := Load(path)
-	require.NoError(t, err)
-
-	assert.Equal(t, "host:9091", got.DefaultServer)
-	assert.Equal(t, Server{URL: "http://host:9091/rpc", Username: "carol"}, got.Servers["host:9091"])
-	// The transitional shim is populated from the default server.
-	assert.Equal(t, "http://host:9091/rpc", got.ServerURL)
-	assert.Equal(t, "carol", got.Username)
-}
-
 func TestLoadMigratesLegacyConfigOnRead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 

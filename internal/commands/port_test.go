@@ -52,7 +52,7 @@ func portConfigPath(t *testing.T) (string, func()) {
 	}.handler())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
@@ -156,7 +156,7 @@ func capturedPortServer(t *testing.T, captured *[]string) (string, func()) {
 	}())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
@@ -330,7 +330,7 @@ func portTestConfigPath(t *testing.T, rpcVersion, method, body string) (string, 
 	}.handler())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
@@ -426,7 +426,7 @@ func TestPortTestUnreachableRendersNoResult(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	out, _, err := runPort(t, "test", "--config", cfgPath)
 	require.Error(t, err)

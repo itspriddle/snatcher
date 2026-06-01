@@ -88,11 +88,6 @@ func newServerAddCmd() *cobra.Command {
 				cfg.DefaultServer = alias
 			}
 
-			// Clear the transitional shim fields so Save persists Servers verbatim
-			// rather than re-deriving a server from them.
-			cfg.ServerURL = ""
-			cfg.Username = ""
-
 			if err := config.Save(cfg, configPath); err != nil {
 				return err
 			}
@@ -295,11 +290,6 @@ func newServerDefaultCmd() *cobra.Command {
 			}
 
 			cfg.DefaultServer = alias
-
-			// Clear the transitional shim fields so Save persists Servers verbatim
-			// rather than re-deriving a server from them.
-			cfg.ServerURL = ""
-			cfg.Username = ""
 
 			if err := config.Save(cfg, configPath); err != nil {
 				return err
@@ -529,11 +519,6 @@ func newServerRemoveCmd() *cobra.Command {
 					cfg.DefaultServer = remaining[0]
 				}
 			}
-
-			// Clear the transitional shim fields so Save persists Servers verbatim
-			// rather than re-deriving a server from them.
-			cfg.ServerURL = ""
-			cfg.Username = ""
 
 			if err := config.Save(cfg, configPath); err != nil {
 				return err

@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -128,7 +129,7 @@ func resolveMutation(action string, sel torrent.Selector, torrents []torrent.Tor
 	result.Count = len(result.Torrents)
 
 	if result.Count == 0 {
-		return mutationResult{}, fmt.Errorf("no torrents matched: %s", joinTokens(result.Unmatched))
+		return mutationResult{}, fmt.Errorf("no torrents matched: %s", strings.Join(result.Unmatched, ", "))
 	}
 
 	return result, nil
@@ -171,10 +172,10 @@ func writeMutationPlaintext(cmd *cobra.Command, result mutationResult) {
 		names[i] = output.SanitizeTerminal(t.Name)
 	}
 
-	_, _ = fmt.Fprintf(out, "%s %s: %s\n", verb, pluralizeTorrents(result.Count), joinTokens(names))
+	_, _ = fmt.Fprintf(out, "%s %s: %s\n", verb, pluralizeTorrents(result.Count), strings.Join(names, ", "))
 
 	if len(result.Unmatched) > 0 {
-		_, _ = fmt.Fprintf(out, "No torrents matched: %s\n", joinTokens(result.Unmatched))
+		_, _ = fmt.Fprintf(out, "No torrents matched: %s\n", strings.Join(result.Unmatched, ", "))
 	}
 }
 
@@ -214,18 +215,4 @@ func pluralizeTorrents(n int) string {
 	}
 
 	return fmt.Sprintf("%d torrents", n)
-}
-
-// joinTokens joins tokens with ", " for inclusion in a confirmation or error
-// message.
-func joinTokens(tokens []string) string {
-	out := ""
-	for i, tok := range tokens {
-		if i > 0 {
-			out += ", "
-		}
-		out += tok
-	}
-
-	return out
 }

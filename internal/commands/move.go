@@ -126,6 +126,6 @@ func writeMovePlaintext(cmd *cobra.Command, result mutationResult, location stri
 		verb,
 		pluralizeTorrents(result.Count),
 		output.SanitizeTerminal(location),
-		joinTokens(names),
+		strings.Join(names, ", "),
 	)
 }

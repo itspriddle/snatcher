@@ -53,14 +53,6 @@ type Server struct {
 type Config struct {
 	Servers       map[string]Server `json:"servers"`
 	DefaultServer string            `json:"default_server"`
-
-	// ServerURL and Username are transitional convenience fields. They are not
-	// persisted in the new schema (Save migrates them into Servers) and are
-	// populated on Load from the resolved default server so existing callers
-	// keep working until they move to Resolve. New code should use Servers /
-	// Resolve instead.
-	ServerURL string `json:"-"`
-	Username  string `json:"-"`
 }
 
 // onDisk is the persisted JSON shape. It is decoded separately so the legacy
@@ -135,8 +127,6 @@ func Load(path string) (Config, error) {
 		return Config{}, err
 	}
 
-	applyDefaultShim(&cfg)
-
 	return cfg, nil
 }
 
@@ -145,10 +135,6 @@ func Load(path string) (Config, error) {
 // new schema (servers + default_server); the legacy flat server_url/username
 // keys are never written. No secret is ever written; Config holds only
 // non-secret fields.
-//
-// As a transitional convenience, a Config built with only the legacy
-// ServerURL/Username fields (and no Servers) is migrated into a single named
-// server before writing.
 func Save(cfg Config, path string) error {
 	if path == "" {
 		p, err := DefaultPath()
@@ -157,8 +143,6 @@ func Save(cfg Config, path string) error {
 		}
 		path = p
 	}
-
-	normalizeForSave(&cfg)
 
 	if err := validate(cfg); err != nil {
 		return err
@@ -244,38 +228,6 @@ func migrateLegacy(cfg *Config, legacyURL, legacyUser string) {
 		alias: {URL: legacyURL, Username: legacyUser},
 	}
 	cfg.DefaultServer = alias
-}
-
-// normalizeForSave migrates a Config built with only the transitional flat
-// ServerURL/Username fields into the servers map so callers that have not yet
-// moved to the new shape still persist a valid new-schema file.
-func normalizeForSave(cfg *Config) {
-	if len(cfg.Servers) > 0 || cfg.ServerURL == "" {
-		return
-	}
-
-	alias := HostAlias(cfg.ServerURL)
-
-	cfg.Servers = map[string]Server{
-		alias: {URL: cfg.ServerURL, Username: cfg.Username},
-	}
-	if cfg.DefaultServer == "" {
-		cfg.DefaultServer = alias
-	}
-}
-
-// applyDefaultShim populates the transitional ServerURL/Username fields from the
-// default server so existing callers that read them keep working. It is a no-op
-// when no default is set.
-func applyDefaultShim(cfg *Config) {
-	if cfg.DefaultServer == "" {
-		return
-	}
-
-	if srv, ok := cfg.Servers[cfg.DefaultServer]; ok {
-		cfg.ServerURL = srv.URL
-		cfg.Username = srv.Username
-	}
 }
 
 // validate guards against a default_server that names a server which is not

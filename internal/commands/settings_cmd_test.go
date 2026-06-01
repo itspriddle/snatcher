@@ -107,7 +107,7 @@ func settingsConfigPath(t *testing.T) (string, func()) {
 	}.handler())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
@@ -428,7 +428,7 @@ func maliciousEncryptionConfigPath(t *testing.T) (string, func()) {
 	}.handler())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
@@ -510,7 +510,7 @@ func capturedSettingsServer(t *testing.T, captured *[]string) (string, func()) {
 	}())
 
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{ServerURL: srv.URL}, cfgPath))
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	return cfgPath, srv.Close
 }
