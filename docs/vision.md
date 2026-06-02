@@ -1,10 +1,9 @@
 # snatcher - vision
 
-Modern golang based CLI/TUI for BitTorrent clients. Built on Charm Land v2
+Modern golang based CLI/TUI for Transmission. Built on Charm Land v2
 libs.
 
-Prioritize Transmission for v1. Build modularly to support other clients, such
-as qbittorrent, in the future. Support different API versions.
+Transmission only. Support different Transmission RPC API versions.
 
 MacOS/Linux builds only.
 

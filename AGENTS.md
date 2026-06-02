@@ -2,7 +2,7 @@
 
 Guidance for AI agents and humans working in this repo.
 
-`snatcher` is a modern Go CLI/TUI for BitTorrent clients (Transmission first),
+`snatcher` is a modern Go CLI/TUI for the Transmission BitTorrent client,
 built on the Charm Land v2 libraries. See `docs/vision.md` for the product
 vision and the target CLI surface.
 

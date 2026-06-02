@@ -41,12 +41,6 @@ jobs:
       - name: Quality - go vet
         run: make vet
 
-      # Clear any stale lint cache so golangci-lint never reports warnings
-      # against deleted worktrees (e.g. .claude/worktrees/), which would make the
-      # gate's output misleading.
-      - name: Quality - clear lint cache
-        run: golangci-lint cache clean
-
       - name: Quality - linting
         run: make lint
 

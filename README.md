@@ -1,6 +1,6 @@
 # snatcher
 
-A modern, scriptable CLI for BitTorrent clients — Transmission first.
+A modern, scriptable CLI for the Transmission BitTorrent client.
 
 `snatcher` talks to a Transmission server over its RPC interface and exposes
 every operation as a clean, composable command. Output is built for both humans
