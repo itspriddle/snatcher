@@ -17,6 +17,11 @@ build:
 test:
 	go test ./...
 
+# Isolate golangci-lint's cache per checkout. Its cache is keyed by import path
+# + content hash (not file path), so sibling git worktrees of this module at the
+# same commit otherwise share entries and replay each other's (often deleted)
+# paths, failing the gate. .git is unique per worktree and is never tracked.
+lint: export GOLANGCI_LINT_CACHE := $(shell git rev-parse --absolute-git-dir)/golangci-cache
 lint:
 	golangci-lint run
 
