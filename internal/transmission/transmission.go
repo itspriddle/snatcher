@@ -348,9 +348,9 @@ func (b *Client) FreeSpace(ctx context.Context, path string) (FreeSpace, error) 
 	return result, nil
 }
 
-// Close releases any resources held by the backend. The Transmission adapter is
-// stateless (it holds only an rpc.Client over the shared HTTP transport and
-// caches nothing on disk), so Close is a no-op that always returns nil.
+// Close releases any resources held by the client. The client is stateless (it
+// holds only an rpc.Client over the shared HTTP transport and caches nothing on
+// disk), so Close is a no-op that always returns nil.
 func (b *Client) Close() error {
 	return nil
 }
