@@ -75,7 +75,7 @@ snatcher torrent list
 | `torrent add` | Add torrents from files, URLs, or magnet links |
 | `torrent list` (`ls`) | List torrents, with filter/search/sort/columns |
 | `torrent info <id\|hash>` | Show every field for one torrent |
-| `torrent start\|stop\|verify\|reannounce` | Act on torrents by id, hash, or `--all` |
+| `torrent start\|stop\|verify\|reannounce` | Act on torrents by id, hash, or `--all` (`stop` is also `pause`) |
 | `torrent queue top\|up\|down\|bottom` | Reorder torrents in the queue |
 | `torrent move` (`mv`) `<id\|hash> <location>` | Change a torrent's download location |
 | `torrent remove` (`rm`) | Remove torrents (and optionally their data) |

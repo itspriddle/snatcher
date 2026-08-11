@@ -12,7 +12,9 @@ import (
 // positional id/hash arguments (or --all) and confirms by naming the affected
 // torrents. It is the first mutation command and carries the same --config,
 // --json, and --jq flags as the read commands, plus an --all flag. Render
-// precedence mirrors list: --jq → --json → plaintext.
+// precedence mirrors list: --jq → --json → plaintext. The "pause" alias is
+// provided for muscle memory; it does not change the reported action, which
+// stays "stop" on every output path.
 func NewStopCmd() *cobra.Command {
 	var (
 		configPath string
@@ -23,8 +25,9 @@ func NewStopCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "stop [id|hash]...",
-		Short: "Stop (pause) torrents",
+		Use:     "stop [id|hash]...",
+		Aliases: []string{"pause"},
+		Short:   "Stop (pause) torrents",
 		Long: "Stop (pause) the selected torrents.\n\n" +
 			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
 			"At least one selector is required; a bare 'snatcher torrent stop' is an error, " +

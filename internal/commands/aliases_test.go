@@ -20,6 +20,12 @@ func TestMoveCmdHasMvAlias(t *testing.T) {
 	}
 }
 
+func TestStopCmdHasPauseAlias(t *testing.T) {
+	if got := NewStopCmd().Aliases; len(got) != 1 || got[0] != "pause" {
+		t.Fatalf("expected stop command alias [pause], got %v", got)
+	}
+}
+
 func TestServerListCmdHasLsAlias(t *testing.T) {
 	if got := newServerListCmd().Aliases; len(got) != 1 || got[0] != "ls" {
 		t.Fatalf("expected server list command alias [ls], got %v", got)
