@@ -11,7 +11,7 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// NewInfoCmd builds the "info" command, which dials the backend, resolves a
+// NewShowCmd builds the "show" command, which dials the backend, resolves a
 // single torrent by numeric id or 40-character info-hash, and renders its full
 // set of fields. The output honors the same precedence as list: --jq filters
 // the single torrent object, --json emits it as one JSON object (not an array),
@@ -19,8 +19,9 @@ import (
 // header-less "key<TAB>value" lines when piped. --fields selects and orders the
 // plaintext lines (defaulting to the full field set); it has no effect on
 // --json (always the full object) or --jq (which selects fields itself). It
-// carries its own local --config flag, like list and stats.
-func NewInfoCmd() *cobra.Command {
+// carries its own local --config flag, like list and stats. The "info" alias is
+// provided for muscle memory; it is a pure cobra alias and changes no output.
+func NewShowCmd() *cobra.Command {
 	var (
 		configPath string
 		server     string
@@ -30,7 +31,8 @@ func NewInfoCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "info <id|hash>",
+		Use:           "show <id|hash>",
+		Aliases:       []string{"info"},
 		Short:         "Show details for a single torrent",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
@@ -64,7 +66,7 @@ func NewInfoCmd() *cobra.Command {
 				return output.JSON(cmd.OutOrStdout(), match)
 			}
 
-			writeInfoPlaintext(cmd, match.Torrent, columns)
+			writeShowPlaintext(cmd, match.Torrent, columns)
 
 			return nil
 		},
@@ -126,12 +128,12 @@ func resolveTorrentID(cmd *cobra.Command, backend *transmission.Client, serverUR
 	return 0, fmt.Errorf("no torrent matched: %s", arg)
 }
 
-// writeInfoPlaintext renders one torrent's fields as a vertical "key: value"
+// writeShowPlaintext renders one torrent's fields as a vertical "key: value"
 // block. On a TTY the labels are column-aligned via tabwriter; when piped or
 // when NO_COLOR is set, each line is "key<TAB>value" (header-less, scripting-
 // stable). Sanitizable fields pass through cellValue's SanitizeTerminal in both
 // paths; the JSON/jq paths never reach here.
-func writeInfoPlaintext(cmd *cobra.Command, t transmission.Torrent, columns []listColumn) {
+func writeShowPlaintext(cmd *cobra.Command, t transmission.Torrent, columns []listColumn) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {

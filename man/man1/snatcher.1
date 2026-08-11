@@ -468,7 +468,7 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR add ", " info ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
+.BR add ", " show ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
@@ -508,7 +508,8 @@ Suppress per-source confirmation lines (plaintext only; never alters JSON/jq
 output).
 .RE
 .TP
-.B snatcher torrent info \fR[\fIoptions\fR] \fIid | hash\fR
+.B snatcher torrent show \fR[\fIoptions\fR] \fIid | hash\fR
+.RB ( info )
 Show the full set of fields for a single torrent, identified by its numeric id
 or 40-character SHA1 info-hash. Exactly one selector is required. On a terminal
 the output is an aligned

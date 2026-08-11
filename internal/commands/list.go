@@ -93,7 +93,7 @@ var defaultFieldKeys = []string{
 
 // allFieldKeys is every selectable field key in registry order. It is the
 // canonical ordering of listFields, shared by the --fields help text, the man
-// page, and the info command's default (which shows the complete set rather
+// page, and the show command's default (which shows the complete set rather
 // than list's smaller defaultFieldKeys).
 var allFieldKeys = []string{
 	"id", "hash", "name", "status", "done", "size", "down", "up", "ratio",

@@ -56,7 +56,7 @@ Use "snatcher [command] --help" for more information about a command.
 - [x] `snatcher torrent queue top|up|down|bottom ...` - change queue position
 - [x] `snatcher server port get|set|test` - show or change listening port
 - [ ] `snatcher server free-space ...` - show free space on disk (merge in with stats?)
-- [x] `snatcher torrent info <hash|id> ...` - show torrent info
+- [x] `snatcher torrent show <hash|id> ...` - show torrent info
 - [ ] `snatcher search ["query"] ...` - search for torrents with Prowlarr
     - [ ] `snatcher server add --type=search|prowlarr ...`  /  - set up prowlarr connection
     - [ ] `snatcher api --search|--prowlarr ...` - raw API access to prowlarr search
@@ -68,12 +68,13 @@ Use "snatcher [command] --help" for more information about a command.
 - [x] `snatcher torrent rm`
 - [x] `snatcher torrent ls`
 - [x] `snatcher torrent pause` => `snatcher torrent stop`
+- [x] `snatcher torrent info` => `snatcher torrent show`
 
 ### Renames
 
 - [x] `snatcher torrent set` -> `snatcher torrent update` 
 - [x] `snatcher torrent upload` -> `snatcher torrent add`
-- [ ] `snatcher torrent info` -> `snatcher torrent show` 
+- [x] `snatcher torrent info` -> `snatcher torrent show` 
 - [ ] `snatcher server settings set` -> `snatcher server settings update` 
 
 ### Helpers?
