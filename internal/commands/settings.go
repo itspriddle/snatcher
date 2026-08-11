@@ -559,7 +559,7 @@ func newSettingsGetCmd() *cobra.Command {
 
 // newSettingsSetCmd builds "settings set", which writes one or more settings via
 // one typed flag per settable setting (flag name == setting key), mirroring
-// "torrent set". Only the flags explicitly given are written (detected via
+// "torrent update". Only the flags explicitly given are written (detected via
 // cmd.Flags().Changed), so unspecified settings are never sent; a bare invocation
 // with no setting flag is an error, not a no-op. Enum flags are validated
 // case-insensitively before any network write, so an invalid value aborts with no

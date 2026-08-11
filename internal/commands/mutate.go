@@ -48,7 +48,7 @@ type mutationResult struct {
 	// mutation commands.
 	Move *bool `json:"move,omitempty"`
 
-	// Fields is set on the set command to report the neutral kebab-case fields
+	// Fields is set on the update command to report the neutral kebab-case fields
 	// (and their values) that were written. It is omitted for the other mutation
 	// commands.
 	Fields map[string]any `json:"fields,omitempty"`
@@ -192,7 +192,7 @@ func mutationVerb(action string) string {
 		return "Queued verification of"
 	case "reannounce":
 		return "Reannounced"
-	case "set":
+	case "update":
 		return "Updated"
 	case "queue-top":
 		return "Moved to top"

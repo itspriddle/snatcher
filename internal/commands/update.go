@@ -11,34 +11,34 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// NewSetCmd builds the "set" command, which writes mutable per-torrent fields
-// (priority, queue position, peer limit, the session-limit/sequential toggles,
-// the speed and seeding limits, and the labels, tracker list, and bandwidth
-// group) on the torrents selected by positional id/hash arguments (or --all).
-// It maps to the Transmission RPC torrent-set method.
+// NewUpdateCmd builds the "update" command, which writes mutable per-torrent
+// fields (priority, queue position, peer limit, the session-limit/sequential
+// toggles, the speed and seeding limits, and the labels, tracker list, and
+// bandwidth group) on the torrents selected by positional id/hash arguments (or
+// --all). It maps to the Transmission RPC torrent-set method.
 //
 // Only the fields whose flags were explicitly set are written (detected via
 // cmd.Flags().Changed), so unspecified fields are never clobbered. With no field
 // flag the command is an error rather than a no-op. It carries the same --config,
 // --json, --jq, and --all flags as the other mutation commands. Render precedence
 // mirrors list: --jq → --json → plaintext.
-func NewSetCmd() *cobra.Command {
+func NewUpdateCmd() *cobra.Command {
 	var (
 		configPath string
 		server     string
 		asJSON     bool
 		jqExpr     string
 		all        bool
-		flags      setFlags
+		flags      updateFlags
 	)
 
 	cmd := &cobra.Command{
-		Use:   "set [id|hash]...",
+		Use:   "update [id|hash]...",
 		Short: "Change mutable per-torrent fields",
 		Long: "Change mutable per-torrent fields on the selected torrents.\n\n" +
 			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
 			"At least one selector is required, and at least one field flag must " +
-			"be given; a bare 'snatcher torrent set' is an error, not a no-op. " +
+			"be given; a bare 'snatcher torrent update' is an error, not a no-op. " +
 			"Only the fields whose flags are explicitly set are written, so " +
 			"unspecified fields are left unchanged.",
 		SilenceUsage:  true,
@@ -55,7 +55,7 @@ func NewSetCmd() *cobra.Command {
 			}
 
 			if len(changes) == 0 {
-				return fmt.Errorf("nothing to set: provide at least one field flag")
+				return fmt.Errorf("nothing to update: provide at least one field flag")
 			}
 
 			backend, serverURL, err := dial(configPath, server)
@@ -72,7 +72,7 @@ func NewSetCmd() *cobra.Command {
 				return fmt.Errorf("connecting to %s: %w", serverURL, err)
 			}
 
-			result, err := resolveMutation("set", sel, torrents)
+			result, err := resolveMutation("update", sel, torrents)
 			if err != nil {
 				return err
 			}
@@ -87,7 +87,7 @@ func NewSetCmd() *cobra.Command {
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
-	cmd.Flags().BoolVar(&all, "all", false, "set the fields on every torrent")
+	cmd.Flags().BoolVar(&all, "all", false, "update the fields on every torrent")
 	cmd.Flags().StringVar(&flags.priority, "priority", "", "bandwidth priority: low, normal, or high")
 	cmd.Flags().IntVar(&flags.queuePosition, "queue-position", 0, "position in the download/seed queue (0-based)")
 	cmd.Flags().IntVar(&flags.peerLimit, "peer-limit", 0, "maximum number of peers for the torrent")
@@ -106,10 +106,10 @@ func NewSetCmd() *cobra.Command {
 	return cmd
 }
 
-// setFlags holds the per-torrent field flag values for the set command, bound by
-// NewSetCmd. collectChanges reads the values that were explicitly set into a
-// neutral kebab-case changes map.
-type setFlags struct {
+// updateFlags holds the per-torrent field flag values for the update command,
+// bound by NewUpdateCmd. collectChanges reads the values that were explicitly set
+// into a neutral kebab-case changes map.
+type updateFlags struct {
 	priority            string
 	queuePosition       int
 	peerLimit           int
@@ -130,7 +130,7 @@ type setFlags struct {
 // were explicitly set (detected via cmd.Flags().Changed), validating each value
 // and returning a clear error (and no map entry) on bad input. Unset flags are
 // never written, so unspecified fields are left untouched on the server.
-func (f *setFlags) collectChanges(cmd *cobra.Command) (map[string]any, error) {
+func (f *updateFlags) collectChanges(cmd *cobra.Command) (map[string]any, error) {
 	changes := make(map[string]any)
 
 	if cmd.Flags().Changed("priority") {

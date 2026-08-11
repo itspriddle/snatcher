@@ -50,7 +50,7 @@ Use "snatcher [command] --help" for more information about a command.
 
 ## Unscoped Commands
 
-- [x] `snatcher torrent set ...` - set torrent fields (e.g. label, priority, etc)
+- [x] `snatcher torrent update ...` - set torrent fields (e.g. label, priority, etc)
 - [x] `snatcher torrent reannounce ...` - reannounce torrent to trackers
 - [x] `snatcher torrent move ...` - `torrent_set_location`
 - [x] `snatcher torrent queue top|up|down|bottom ...` - change queue position
@@ -71,7 +71,7 @@ Use "snatcher [command] --help" for more information about a command.
 
 ### Renames
 
-- [ ] `snatcher torrent set` -> `snatcher torrent update` 
+- [x] `snatcher torrent set` -> `snatcher torrent update` 
 - [ ] `snatcher torrent upload` -> `snatcher torrent add` / `snatcher add`
 - [ ] `snatcher torrent info` -> `snatcher torrent show` 
 - [ ] `snatcher server settings set` -> `snatcher server settings update` 

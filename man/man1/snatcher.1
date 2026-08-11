@@ -468,7 +468,7 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR info ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " remove ", and " upload .
+.BR info ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", " update ", and " upload .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
@@ -638,7 +638,7 @@ Also delete the downloaded local files.
 Skip the confirmation prompt.
 .RE
 .TP
-.B snatcher torrent set \fR[\fIoptions\fR] [\fIid | hash\fR]...
+.B snatcher torrent update \fR[\fIoptions\fR] [\fIid | hash\fR]...
 Change mutable per-torrent fields on the selected torrents. Select torrents by
 numeric id, 40-character SHA1 hash, or
 .BR \-\-all .
@@ -649,7 +649,7 @@ options:
 .RS
 .TP
 .B \-\-all
-Set the fields on every torrent.
+Update the fields on every torrent.
 .TP
 .BR \-\-priority " " \fIlow | normal | high\fR
 Bandwidth priority for the torrent.

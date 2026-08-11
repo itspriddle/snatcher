@@ -12,13 +12,13 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// runSet executes the set command with args, returning stdout, stderr, and the
+// runUpdate executes the update command with args, returning stdout, stderr, and the
 // Execute error. The command's output is a *bytes.Buffer, so the piped/plaintext
 // path is exercised.
-func runSet(t *testing.T, args ...string) (string, string, error) {
+func runUpdate(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
-	cmd := NewSetCmd()
+	cmd := NewUpdateCmd()
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
@@ -31,140 +31,140 @@ func runSet(t *testing.T, args ...string) (string, string, error) {
 	return out.String(), errOut.String(), err
 }
 
-func TestSetByID(t *testing.T) {
+func TestUpdateByID(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	out, _, err := runSet(t, "--config", cfgPath, "--priority", "high", "1")
+	out, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high", "1")
 	require.NoError(t, err)
 
 	assert.Equal(t, "Updated 1 torrent: ubuntu-24.04.iso\n", out)
 }
 
-func TestSetByHash(t *testing.T) {
+func TestUpdateByHash(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	out, _, err := runSet(t, "--config", cfgPath, "--priority", "normal", fullHashTwo)
+	out, _, err := runUpdate(t, "--config", cfgPath, "--priority", "normal", fullHashTwo)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Updated 1 torrent: debian.iso\n", out)
 }
 
-func TestSetMultipleByID(t *testing.T) {
+func TestUpdateMultipleByID(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	out, _, err := runSet(t, "--config", cfgPath, "--peer-limit", "30", "1", "2")
+	out, _, err := runUpdate(t, "--config", cfgPath, "--peer-limit", "30", "1", "2")
 	require.NoError(t, err)
 
 	assert.Equal(t, "Updated 2 torrents: ubuntu-24.04.iso, debian.iso\n", out)
 }
 
-func TestSetAll(t *testing.T) {
+func TestUpdateAll(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	out, _, err := runSet(t, "--config", cfgPath, "--all", "--honors-session-limits=false")
+	out, _, err := runUpdate(t, "--config", cfgPath, "--all", "--honors-session-limits=false")
 	require.NoError(t, err)
 
 	assert.Equal(t, "Updated all 2 torrents.\n", out)
 }
 
-// TestSetNothingToSetErrors guards that without any field flag the command
+// TestUpdateNothingToUpdateErrors guards that without any field flag the command
 // errors and never contacts the server.
-func TestSetNothingToSetErrors(t *testing.T) {
+func TestUpdateNothingToUpdateErrors(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "1")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "nothing to set: provide at least one field flag")
+	assert.Contains(t, err.Error(), "nothing to update: provide at least one field flag")
 
 	_, ok := stub.request("torrent-set")
-	assert.False(t, ok, "the set method must not be called when no field flag is given")
+	assert.False(t, ok, "the torrent-set RPC must not be called when no field flag is given")
 }
 
-func TestSetNoSelectionErrors(t *testing.T) {
+func TestUpdateNoSelectionErrors(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--priority", "high")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "specify torrent ids or hashes, or use --all")
 }
 
-func TestSetSelectorsAndAllErrors(t *testing.T) {
+func TestUpdateSelectorsAndAllErrors(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--priority", "high", "1", "--all")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high", "1", "--all")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot combine torrent selectors with --all")
 }
 
-func TestSetNoMatchErrors(t *testing.T) {
+func TestUpdateNoMatchErrors(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--priority", "high", "99")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high", "99")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no torrents matched: 99")
 }
 
-func TestSetMalformedSelectorErrors(t *testing.T) {
+func TestUpdateMalformedSelectorErrors(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--priority", "high", "not-a-hash")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high", "not-a-hash")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid torrent selector")
 
 	_, ok := stub.request("torrent-set")
-	assert.False(t, ok, "the set method must not be called for a malformed selector")
+	assert.False(t, ok, "the torrent-set RPC must not be called for a malformed selector")
 }
 
-// TestSetInvalidPriorityErrors guards that an unrecognized --priority value is
+// TestUpdateInvalidPriorityErrors guards that an unrecognized --priority value is
 // rejected before any backend call.
-func TestSetInvalidPriorityErrors(t *testing.T) {
+func TestUpdateInvalidPriorityErrors(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--priority", "urgent", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--priority", "urgent", "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid value for --priority: must be low, normal, or high")
 
 	_, ok := stub.request("torrent-set")
-	assert.False(t, ok, "the set method must not be called for an invalid priority")
+	assert.False(t, ok, "the torrent-set RPC must not be called for an invalid priority")
 }
 
-func TestSetInvalidQueuePositionErrors(t *testing.T) {
+func TestUpdateInvalidQueuePositionErrors(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--queue-position", "-1", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--queue-position", "-1", "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid value for --queue-position: must be 0 or greater")
 
 	_, ok := stub.request("torrent-set")
-	assert.False(t, ok, "the set method must not be called for an invalid queue position")
+	assert.False(t, ok, "the torrent-set RPC must not be called for an invalid queue position")
 }
 
-func TestSetInvalidPeerLimitErrors(t *testing.T) {
+func TestUpdateInvalidPeerLimitErrors(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--peer-limit", "0", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--peer-limit", "0", "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid value for --peer-limit: must be 1 or greater")
 
 	_, ok := stub.request("torrent-set")
-	assert.False(t, ok, "the set method must not be called for an invalid peer limit")
+	assert.False(t, ok, "the torrent-set RPC must not be called for an invalid peer limit")
 }
 
-// TestSetPriorityValues asserts each --priority value maps to the correct
+// TestUpdatePriorityValues asserts each --priority value maps to the correct
 // bandwidth-priority integer on the wire (bespoke camelCase spelling).
-func TestSetPriorityValues(t *testing.T) {
+func TestUpdatePriorityValues(t *testing.T) {
 	cases := []struct {
 		name string
 		want string
@@ -179,7 +179,7 @@ func TestSetPriorityValues(t *testing.T) {
 			cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 			defer closeSrv()
 
-			_, _, err := runSet(t, "--config", cfgPath, "--priority", tc.name, "1")
+			_, _, err := runUpdate(t, "--config", cfgPath, "--priority", tc.name, "1")
 			require.NoError(t, err)
 
 			body, ok := stub.request("torrent-set")
@@ -190,13 +190,13 @@ func TestSetPriorityValues(t *testing.T) {
 	}
 }
 
-// TestSetSendsFieldsBespoke asserts the scalar/bool fields reach the bespoke
+// TestUpdateSendsFieldsBespoke asserts the scalar/bool fields reach the bespoke
 // torrent-set request with the correct camelCase/kebab-case wire spellings.
-func TestSetSendsFieldsBespoke(t *testing.T) {
+func TestUpdateSendsFieldsBespoke(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath,
+	_, _, err := runUpdate(t, "--config", cfgPath,
 		"--queue-position", "3",
 		"--peer-limit", "40",
 		"--honors-session-limits=true",
@@ -212,13 +212,13 @@ func TestSetSendsFieldsBespoke(t *testing.T) {
 	assert.Contains(t, body, `"sequentialDownload":true`)
 }
 
-// TestSetSendsFieldsJSONRPC asserts the scalar/bool fields reach the JSON-RPC
+// TestUpdateSendsFieldsJSONRPC asserts the scalar/bool fields reach the JSON-RPC
 // torrent_set request with canonical snake_case wire spellings.
-func TestSetSendsFieldsJSONRPC(t *testing.T) {
+func TestUpdateSendsFieldsJSONRPC(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath,
+	_, _, err := runUpdate(t, "--config", cfgPath,
 		"--priority", "high",
 		"--queue-position", "3",
 		"--peer-limit", "40",
@@ -236,13 +236,13 @@ func TestSetSendsFieldsJSONRPC(t *testing.T) {
 	assert.Contains(t, body, `"sequential_download":false`)
 }
 
-// TestSetOnlySendsChangedFields guards the Changed() gating: an unset field flag
+// TestUpdateOnlySendsChangedFields guards the Changed() gating: an unset field flag
 // must not reach the wire.
-func TestSetOnlySendsChangedFields(t *testing.T) {
+func TestUpdateOnlySendsChangedFields(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--priority", "high", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent-set")
@@ -254,11 +254,11 @@ func TestSetOnlySendsChangedFields(t *testing.T) {
 	assert.NotContains(t, body, "sequentialDownload", "an unset --sequential-download must not be sent")
 }
 
-func TestSetJSON(t *testing.T) {
+func TestUpdateJSON(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	out, _, err := runSet(t, "--config", cfgPath, "--json", "--priority", "high", "--peer-limit", "40", "1")
+	out, _, err := runUpdate(t, "--config", cfgPath, "--json", "--priority", "high", "--peer-limit", "40", "1")
 	require.NoError(t, err)
 
 	var got struct {
@@ -273,7 +273,7 @@ func TestSetJSON(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &got))
 
-	assert.Equal(t, "set", got.Action)
+	assert.Equal(t, "update", got.Action)
 	assert.Equal(t, 1, got.Count)
 	require.Len(t, got.Torrents, 1)
 	assert.Equal(t, int64(1), got.Torrents[0].ID)
@@ -287,19 +287,19 @@ func TestSetJSON(t *testing.T) {
 	assert.False(t, hasQueue, "an unset field is omitted from the fields map")
 }
 
-func TestSetJQ(t *testing.T) {
+func TestUpdateJQ(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	out, _, err := runSet(t, "--config", cfgPath, "--jq", ".fields[\"bandwidth-priority\"]", "--priority", "high", "1")
+	out, _, err := runUpdate(t, "--config", cfgPath, "--jq", ".fields[\"bandwidth-priority\"]", "--priority", "high", "1")
 	require.NoError(t, err)
 
 	assert.Equal(t, "1", strings.TrimSpace(out))
 }
 
-// TestSetRateLimitsBespoke asserts the --download-limit / --upload-limit
+// TestUpdateRateLimitsBespoke asserts the --download-limit / --upload-limit
 // sentinel branches reach the bespoke wire with the paired camelCase keys.
-func TestSetRateLimitsBespoke(t *testing.T) {
+func TestUpdateRateLimitsBespoke(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
@@ -335,7 +335,7 @@ func TestSetRateLimitsBespoke(t *testing.T) {
 			args := append([]string{"--config", cfgPath}, tc.args...)
 			args = append(args, "1")
 
-			_, _, err := runSet(t, args...)
+			_, _, err := runUpdate(t, args...)
 			require.NoError(t, err)
 
 			body, ok := stub.request("torrent-set")
@@ -347,13 +347,13 @@ func TestSetRateLimitsBespoke(t *testing.T) {
 	}
 }
 
-// TestSetRateLimitOffOmitsLimit guards that disabling a limit with "off" does
+// TestUpdateRateLimitOffOmitsLimit guards that disabling a limit with "off" does
 // not also send a limit value (only the *Limited toggle is written).
-func TestSetRateLimitOffOmitsLimit(t *testing.T) {
+func TestUpdateRateLimitOffOmitsLimit(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--download-limit", "off", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--download-limit", "off", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent-set")
@@ -362,13 +362,13 @@ func TestSetRateLimitOffOmitsLimit(t *testing.T) {
 	assert.NotContains(t, body, "downloadLimit\":", "a disabled limit must not send a limit value")
 }
 
-// TestSetRateLimitsJSONRPC asserts the rate-limit branches reach the JSON-RPC
+// TestUpdateRateLimitsJSONRPC asserts the rate-limit branches reach the JSON-RPC
 // wire with canonical snake_case keys.
-func TestSetRateLimitsJSONRPC(t *testing.T) {
+func TestUpdateRateLimitsJSONRPC(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath,
+	_, _, err := runUpdate(t, "--config", cfgPath,
 		"--download-limit", "500",
 		"--upload-limit", "off",
 		"1")
@@ -381,9 +381,9 @@ func TestSetRateLimitsJSONRPC(t *testing.T) {
 	assert.Contains(t, body, `"upload_limited":false`)
 }
 
-// TestSetSeedRatioBespoke asserts each --seed-ratio sentinel branch maps to the
+// TestUpdateSeedRatioBespoke asserts each --seed-ratio sentinel branch maps to the
 // paired seedRatioLimit / seedRatioMode wire keys.
-func TestSetSeedRatioBespoke(t *testing.T) {
+func TestUpdateSeedRatioBespoke(t *testing.T) {
 	cases := []struct {
 		name string
 		val  string
@@ -400,7 +400,7 @@ func TestSetSeedRatioBespoke(t *testing.T) {
 			cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 			defer closeSrv()
 
-			_, _, err := runSet(t, "--config", cfgPath, "--seed-ratio", tc.val, "1")
+			_, _, err := runUpdate(t, "--config", cfgPath, "--seed-ratio", tc.val, "1")
 			require.NoError(t, err)
 
 			body, ok := stub.request("torrent-set")
@@ -415,13 +415,13 @@ func TestSetSeedRatioBespoke(t *testing.T) {
 	}
 }
 
-// TestSetSeedRatioJSONRPC asserts a fractional ratio reaches the JSON-RPC wire
+// TestUpdateSeedRatioJSONRPC asserts a fractional ratio reaches the JSON-RPC wire
 // with canonical snake_case keys.
-func TestSetSeedRatioJSONRPC(t *testing.T) {
+func TestUpdateSeedRatioJSONRPC(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--seed-ratio", "1.5", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--seed-ratio", "1.5", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent_set")
@@ -430,10 +430,10 @@ func TestSetSeedRatioJSONRPC(t *testing.T) {
 	assert.Contains(t, body, `"seed_ratio_mode":1`)
 }
 
-// TestSetSeedIdleBespoke asserts each --seed-idle sentinel branch maps to the
+// TestUpdateSeedIdleBespoke asserts each --seed-idle sentinel branch maps to the
 // paired seedIdleLimit / seedIdleMode wire keys, including duration parsing to
 // whole minutes.
-func TestSetSeedIdleBespoke(t *testing.T) {
+func TestUpdateSeedIdleBespoke(t *testing.T) {
 	cases := []struct {
 		name string
 		val  string
@@ -452,7 +452,7 @@ func TestSetSeedIdleBespoke(t *testing.T) {
 			cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 			defer closeSrv()
 
-			_, _, err := runSet(t, "--config", cfgPath, "--seed-idle", tc.val, "1")
+			_, _, err := runUpdate(t, "--config", cfgPath, "--seed-idle", tc.val, "1")
 			require.NoError(t, err)
 
 			body, ok := stub.request("torrent-set")
@@ -467,13 +467,13 @@ func TestSetSeedIdleBespoke(t *testing.T) {
 	}
 }
 
-// TestSetSeedIdleJSONRPC asserts a duration reaches the JSON-RPC wire as whole
+// TestUpdateSeedIdleJSONRPC asserts a duration reaches the JSON-RPC wire as whole
 // minutes with canonical snake_case keys.
-func TestSetSeedIdleJSONRPC(t *testing.T) {
+func TestUpdateSeedIdleJSONRPC(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--seed-idle", "2h", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--seed-idle", "2h", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent_set")
@@ -482,9 +482,9 @@ func TestSetSeedIdleJSONRPC(t *testing.T) {
 	assert.Contains(t, body, `"seed_idle_mode":1`)
 }
 
-// TestSetInvalidLimitErrors guards that bad sentinel values are rejected before
+// TestUpdateInvalidLimitErrors guards that bad sentinel values are rejected before
 // any RPC call.
-func TestSetInvalidLimitErrors(t *testing.T) {
+func TestUpdateInvalidLimitErrors(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
@@ -508,23 +508,23 @@ func TestSetInvalidLimitErrors(t *testing.T) {
 			args := append([]string{"--config", cfgPath}, tc.args...)
 			args = append(args, "1")
 
-			_, _, err := runSet(t, args...)
+			_, _, err := runUpdate(t, args...)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.want)
 
 			_, ok := stub.request("torrent-set")
-			assert.False(t, ok, "the set method must not be called for an invalid value")
+			assert.False(t, ok, "the torrent-set RPC must not be called for an invalid value")
 		})
 	}
 }
 
-// TestSetCombinesScalarAndLimitFields guards that scalar (US-003) and limit
+// TestUpdateCombinesScalarAndLimitFields guards that scalar (US-003) and limit
 // (US-004) flags combine into a single torrent-set request.
-func TestSetCombinesScalarAndLimitFields(t *testing.T) {
+func TestUpdateCombinesScalarAndLimitFields(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath,
+	_, _, err := runUpdate(t, "--config", cfgPath,
 		"--priority", "high",
 		"--download-limit", "500",
 		"--seed-ratio", "2.0",
@@ -540,13 +540,13 @@ func TestSetCombinesScalarAndLimitFields(t *testing.T) {
 	assert.Contains(t, body, `"seedRatioMode":1`)
 }
 
-// TestSetLabelsBespoke asserts --label replaces the label set on the bespoke
+// TestUpdateLabelsBespoke asserts --label replaces the label set on the bespoke
 // wire (labels passes through the mechanical transform unchanged).
-func TestSetLabelsBespoke(t *testing.T) {
+func TestUpdateLabelsBespoke(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--label", "linux", "--label", "iso", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--label", "linux", "--label", "iso", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent-set")
@@ -554,12 +554,12 @@ func TestSetLabelsBespoke(t *testing.T) {
 	assert.Contains(t, body, `"labels":["linux","iso"]`)
 }
 
-// TestSetLabelsJSONRPC asserts --label reaches the JSON-RPC wire.
-func TestSetLabelsJSONRPC(t *testing.T) {
+// TestUpdateLabelsJSONRPC asserts --label reaches the JSON-RPC wire.
+func TestUpdateLabelsJSONRPC(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--label", "linux", "--label", "iso", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--label", "linux", "--label", "iso", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent_set")
@@ -567,12 +567,12 @@ func TestSetLabelsJSONRPC(t *testing.T) {
 	assert.Contains(t, body, `"labels":["linux","iso"]`)
 }
 
-// TestSetClearLabels asserts --clear-labels sends an empty label list.
-func TestSetClearLabels(t *testing.T) {
+// TestUpdateClearLabels asserts --clear-labels sends an empty label list.
+func TestUpdateClearLabels(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--clear-labels", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--clear-labels", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent-set")
@@ -580,27 +580,27 @@ func TestSetClearLabels(t *testing.T) {
 	assert.Contains(t, body, `"labels":[]`)
 }
 
-// TestSetLabelMutualExclusion guards that --label and --clear-labels together
+// TestUpdateLabelMutualExclusion guards that --label and --clear-labels together
 // are rejected before any RPC call.
-func TestSetLabelMutualExclusion(t *testing.T) {
+func TestUpdateLabelMutualExclusion(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--label", "linux", "--clear-labels", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--label", "linux", "--clear-labels", "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--label and --clear-labels cannot be used together")
 
 	_, ok := stub.request("torrent-set")
-	assert.False(t, ok, "the set method must not be called for the mutual-exclusion error")
+	assert.False(t, ok, "the torrent-set RPC must not be called for the mutual-exclusion error")
 }
 
-// TestSetTrackersBespoke asserts --tracker replaces the tracker list as a
+// TestUpdateTrackersBespoke asserts --tracker replaces the tracker list as a
 // newline-joined string on the bespoke wire (camelCase trackerList).
-func TestSetTrackersBespoke(t *testing.T) {
+func TestUpdateTrackersBespoke(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath,
+	_, _, err := runUpdate(t, "--config", cfgPath,
 		"--tracker", "https://a.example/announce",
 		"--tracker", "https://b.example/announce",
 		"1")
@@ -611,13 +611,13 @@ func TestSetTrackersBespoke(t *testing.T) {
 	assert.Contains(t, body, `"trackerList":"https://a.example/announce\nhttps://b.example/announce"`)
 }
 
-// TestSetTrackersJSONRPC asserts --tracker reaches the JSON-RPC wire as a
+// TestUpdateTrackersJSONRPC asserts --tracker reaches the JSON-RPC wire as a
 // newline-joined string with the canonical snake_case key.
-func TestSetTrackersJSONRPC(t *testing.T) {
+func TestUpdateTrackersJSONRPC(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "6.0.0", jsonrpcListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath,
+	_, _, err := runUpdate(t, "--config", cfgPath,
 		"--tracker", "https://a.example/announce",
 		"--tracker", "https://b.example/announce",
 		"1")
@@ -628,12 +628,12 @@ func TestSetTrackersJSONRPC(t *testing.T) {
 	assert.Contains(t, body, `"tracker_list":"https://a.example/announce\nhttps://b.example/announce"`)
 }
 
-// TestSetClearTrackers asserts --clear-trackers sends an empty tracker list.
-func TestSetClearTrackers(t *testing.T) {
+// TestUpdateClearTrackers asserts --clear-trackers sends an empty tracker list.
+func TestUpdateClearTrackers(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--clear-trackers", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--clear-trackers", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent-set")
@@ -641,28 +641,28 @@ func TestSetClearTrackers(t *testing.T) {
 	assert.Contains(t, body, `"trackerList":""`)
 }
 
-// TestSetTrackerMutualExclusion guards that --tracker and --clear-trackers
+// TestUpdateTrackerMutualExclusion guards that --tracker and --clear-trackers
 // together are rejected before any RPC call.
-func TestSetTrackerMutualExclusion(t *testing.T) {
+func TestUpdateTrackerMutualExclusion(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath,
+	_, _, err := runUpdate(t, "--config", cfgPath,
 		"--tracker", "https://a.example/announce", "--clear-trackers", "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--tracker and --clear-trackers cannot be used together")
 
 	_, ok := stub.request("torrent-set")
-	assert.False(t, ok, "the set method must not be called for the mutual-exclusion error")
+	assert.False(t, ok, "the torrent-set RPC must not be called for the mutual-exclusion error")
 }
 
-// TestSetGroup asserts --group sends the bandwidth group name verbatim (group
+// TestUpdateGroup asserts --group sends the bandwidth group name verbatim (group
 // passes through the mechanical transform unchanged on both protocols).
-func TestSetGroup(t *testing.T) {
+func TestUpdateGroup(t *testing.T) {
 	cfgPath, stub, closeSrv := removeConfigPath(t, "", mutationListResponse)
 	defer closeSrv()
 
-	_, _, err := runSet(t, "--config", cfgPath, "--group", "throttled", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--group", "throttled", "1")
 	require.NoError(t, err)
 
 	body, ok := stub.request("torrent-set")
@@ -670,19 +670,19 @@ func TestSetGroup(t *testing.T) {
 	assert.Contains(t, body, `"group":"throttled"`)
 }
 
-func TestSetNotConfigured(t *testing.T) {
+func TestUpdateNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runSet(t, "--config", cfgPath, "--priority", "high", "1")
+	_, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high", "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-// TestSetSanitizesNameInHumanButNotJSON guards the security boundary: a torrent
+// TestUpdateSanitizesNameInHumanButNotJSON guards the security boundary: a torrent
 // name carrying an ANSI escape is neutralized in the human confirmation but
 // preserved verbatim in the structured --json contract.
-func TestSetSanitizesNameInHumanButNotJSON(t *testing.T) {
+func TestUpdateSanitizesNameInHumanButNotJSON(t *testing.T) {
 	const body = `{
 		"arguments": {"torrents": [
 			{"id": 1, "hashString": "0123456789abcdef0123456789abcdef01234567", "name": "\u001b[2Jmalicious", "status": 0}
@@ -694,12 +694,12 @@ func TestSetSanitizesNameInHumanButNotJSON(t *testing.T) {
 	cfgPath, _, closeSrv := removeConfigPath(t, "", body)
 	defer closeSrv()
 
-	human, _, err := runSet(t, "--config", cfgPath, "--priority", "high", "1")
+	human, _, err := runUpdate(t, "--config", cfgPath, "--priority", "high", "1")
 	require.NoError(t, err)
 	assert.NotContains(t, human, "\x1b", "raw ESC must not reach the human confirmation")
 	assert.Contains(t, human, "[2Jmalicious", "visible text survives sanitization")
 
-	jsonOut, _, err := runSet(t, "--config", cfgPath, "--json", "--priority", "high", "1")
+	jsonOut, _, err := runUpdate(t, "--config", cfgPath, "--json", "--priority", "high", "1")
 	require.NoError(t, err)
 	assert.Contains(t, jsonOut, "\\u001b", "the raw escape is preserved in the JSON contract")
 }

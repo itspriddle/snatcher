@@ -35,9 +35,9 @@ CMD snatcher torrent queue top
 CMD snatcher torrent queue up
 CMD snatcher torrent reannounce
 CMD snatcher torrent remove
-CMD snatcher torrent set
 CMD snatcher torrent start
 CMD snatcher torrent stop
+CMD snatcher torrent update
 CMD snatcher torrent upload
 CMD snatcher torrent verify
 FLAG snatcher --version type=bool
@@ -188,25 +188,6 @@ FLAG snatcher torrent remove --jq type=string
 FLAG snatcher torrent remove --json type=bool
 FLAG snatcher torrent remove --server type=string
 FLAG snatcher torrent remove --yes type=bool
-FLAG snatcher torrent set --all type=bool
-FLAG snatcher torrent set --clear-labels type=bool
-FLAG snatcher torrent set --clear-trackers type=bool
-FLAG snatcher torrent set --config type=string
-FLAG snatcher torrent set --download-limit type=string
-FLAG snatcher torrent set --group type=string
-FLAG snatcher torrent set --honors-session-limits type=bool
-FLAG snatcher torrent set --jq type=string
-FLAG snatcher torrent set --json type=bool
-FLAG snatcher torrent set --label type=stringArray
-FLAG snatcher torrent set --peer-limit type=int
-FLAG snatcher torrent set --priority type=string
-FLAG snatcher torrent set --queue-position type=int
-FLAG snatcher torrent set --seed-idle type=string
-FLAG snatcher torrent set --seed-ratio type=string
-FLAG snatcher torrent set --sequential-download type=bool
-FLAG snatcher torrent set --server type=string
-FLAG snatcher torrent set --tracker type=stringArray
-FLAG snatcher torrent set --upload-limit type=string
 FLAG snatcher torrent start --all type=bool
 FLAG snatcher torrent start --config type=string
 FLAG snatcher torrent start --jq type=string
@@ -218,6 +199,25 @@ FLAG snatcher torrent stop --config type=string
 FLAG snatcher torrent stop --jq type=string
 FLAG snatcher torrent stop --json type=bool
 FLAG snatcher torrent stop --server type=string
+FLAG snatcher torrent update --all type=bool
+FLAG snatcher torrent update --clear-labels type=bool
+FLAG snatcher torrent update --clear-trackers type=bool
+FLAG snatcher torrent update --config type=string
+FLAG snatcher torrent update --download-limit type=string
+FLAG snatcher torrent update --group type=string
+FLAG snatcher torrent update --honors-session-limits type=bool
+FLAG snatcher torrent update --jq type=string
+FLAG snatcher torrent update --json type=bool
+FLAG snatcher torrent update --label type=stringArray
+FLAG snatcher torrent update --peer-limit type=int
+FLAG snatcher torrent update --priority type=string
+FLAG snatcher torrent update --queue-position type=int
+FLAG snatcher torrent update --seed-idle type=string
+FLAG snatcher torrent update --seed-ratio type=string
+FLAG snatcher torrent update --sequential-download type=bool
+FLAG snatcher torrent update --server type=string
+FLAG snatcher torrent update --tracker type=stringArray
+FLAG snatcher torrent update --upload-limit type=string
 FLAG snatcher torrent upload --config type=string
 FLAG snatcher torrent upload --delete type=bool
 FLAG snatcher torrent upload --download-dir type=string

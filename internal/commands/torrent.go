@@ -19,8 +19,8 @@ func NewTorrentCmd() *cobra.Command {
 		Long: "Manage torrents.\n\n" +
 			"Group of commands for listing, inspecting, adding, controlling, and " +
 			"removing torrents on the server. Run a subcommand (info, list, " +
-			"start, stop, verify, reannounce, move, set, remove, upload) to act " +
-			"on torrents.",
+			"start, stop, verify, reannounce, move, update, remove, upload) to " +
+			"act on torrents.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -35,9 +35,9 @@ func NewTorrentCmd() *cobra.Command {
 	cmd.AddCommand(NewQueueCmd())
 	cmd.AddCommand(NewReannounceCmd())
 	cmd.AddCommand(NewRemoveCmd())
-	cmd.AddCommand(NewSetCmd())
 	cmd.AddCommand(NewStartCmd())
 	cmd.AddCommand(NewStopCmd())
+	cmd.AddCommand(NewUpdateCmd())
 	cmd.AddCommand(NewUploadCmd())
 	cmd.AddCommand(NewVerifyCmd())
 
