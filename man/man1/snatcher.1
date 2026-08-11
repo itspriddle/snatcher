@@ -468,13 +468,45 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR info ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", " update ", and " upload .
+.BR add ", " info ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
 .BR \-\-all ;
 at least one selector is required, so a bare invocation is an error, not a
 no-op. Every subcommand accepts the common options.
+.TP
+.B snatcher torrent add \fR[\fIoptions\fR] [\fIfile | url | magnet\fR]...
+Add torrents to the server from local
+.I .torrent
+files, HTTP(S) URLs, or magnet links. Each argument is auto-detected as a
+file, URL, or magnet link. With no positional arguments, sources are read from
+standard input, one per line; a bare
+.B snatcher torrent add
+with no sources and no piped input is an error. Multiple sources are processed
+continue-on-error: a failure adding one source is reported but does not stop
+the rest, and the command exits non-zero if any source failed. Besides the
+common options:
+.RS
+.TP
+.B \-\-start
+Start torrents immediately instead of adding them paused.
+.TP
+.BR \-\-download\-dir " " \fIpath\fR
+Server-side destination directory.
+.TP
+.BR \-d ", " \-\-delete
+Delete the local
+.I .torrent
+after a successful, non-duplicate file add.
+.TP
+.BR \-\-label " " \fIlabel\fR
+Label to apply to added torrents. May be repeated.
+.TP
+.BR \-q ", " \-\-quiet
+Suppress per-source confirmation lines (plaintext only; never alters JSON/jq
+output).
+.RE
 .TP
 .B snatcher torrent info \fR[\fIoptions\fR] \fIid | hash\fR
 Show the full set of fields for a single torrent, identified by its numeric id
@@ -711,38 +743,6 @@ Remove all trackers from the torrent.
 .BR \-\-group " " \fIname\fR
 Bandwidth group name for the torrent.
 .RE
-.TP
-.B snatcher torrent upload \fR[\fIoptions\fR] [\fIfile | url | magnet\fR]...
-Add torrents to the server from local
-.I .torrent
-files, HTTP(S) URLs, or magnet links. Each argument is auto-detected as a
-file, URL, or magnet link. With no positional arguments, sources are read from
-standard input, one per line; a bare
-.B snatcher torrent upload
-with no sources and no piped input is an error. Multiple sources are processed
-continue-on-error: a failure adding one source is reported but does not stop
-the rest, and the command exits non-zero if any source failed. Besides the
-common options:
-.RS
-.TP
-.B \-\-start
-Start torrents immediately instead of adding them paused.
-.TP
-.BR \-\-download\-dir " " \fIpath\fR
-Server-side destination directory.
-.TP
-.BR \-d ", " \-\-delete
-Delete the local
-.I .torrent
-after a successful, non-duplicate file add.
-.TP
-.BR \-\-label " " \fIlabel\fR
-Label to apply to added torrents. May be repeated.
-.TP
-.BR \-q ", " \-\-quiet
-Suppress per-source confirmation lines (plaintext only; never alters JSON/jq
-output).
-.RE
 .SS "api"
 .B snatcher api
 .RI [ options "] " method
@@ -820,7 +820,7 @@ Success.
 .B non-zero
 An error occurred: the server was unreachable, authentication failed, the
 selectors matched no torrents, a confirmation was refused, or at least one
-.B upload
+.B add
 source failed.
 .SH ENVIRONMENT
 .TP
@@ -903,11 +903,11 @@ $ snatcher torrent remove 5 \-\-delete\-data \-\-yes
 .SS "Add torrents"
 .EX
 # add a file and a magnet link, label them, and start immediately
-$ snatcher torrent upload ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \(rs
+$ snatcher torrent add ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \(rs
     \-\-label linux \-\-label iso \-\-start
 
 # add every source listed in a file (one per line)
-$ snatcher torrent upload < sources.txt
+$ snatcher torrent add < sources.txt
 .EE
 .SS "Session statistics"
 .EX

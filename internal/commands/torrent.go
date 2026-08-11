@@ -5,8 +5,8 @@ import (
 )
 
 // NewTorrentCmd builds the "torrent" command group, the namespace for every
-// torrent-scoped action: info, list, start, stop, verify, reannounce, move,
-// remove, and upload. It owns no behavior of its own — a bare "snatcher
+// torrent-scoped action: add, info, list, start, stop, verify, reannounce,
+// move, remove, and update. It owns no behavior of its own — a bare "snatcher
 // torrent" prints subcommand help — and re-parents the existing per-command
 // constructors so their full paths become "snatcher torrent <cmd>". It mirrors
 // the settings group's structure (parent command plus AddCommand children),
@@ -18,8 +18,8 @@ func NewTorrentCmd() *cobra.Command {
 		Short: "Manage torrents",
 		Long: "Manage torrents.\n\n" +
 			"Group of commands for listing, inspecting, adding, controlling, and " +
-			"removing torrents on the server. Run a subcommand (info, list, " +
-			"start, stop, verify, reannounce, move, update, remove, upload) to " +
+			"removing torrents on the server. Run a subcommand (add, info, list, " +
+			"start, stop, verify, reannounce, move, update, remove) to " +
 			"act on torrents.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
@@ -29,6 +29,7 @@ func NewTorrentCmd() *cobra.Command {
 		},
 	}
 
+	cmd.AddCommand(NewAddCmd())
 	cmd.AddCommand(NewInfoCmd())
 	cmd.AddCommand(NewListCmd())
 	cmd.AddCommand(NewMoveCmd())
@@ -38,7 +39,6 @@ func NewTorrentCmd() *cobra.Command {
 	cmd.AddCommand(NewStartCmd())
 	cmd.AddCommand(NewStopCmd())
 	cmd.AddCommand(NewUpdateCmd())
-	cmd.AddCommand(NewUploadCmd())
 	cmd.AddCommand(NewVerifyCmd())
 
 	return cmd

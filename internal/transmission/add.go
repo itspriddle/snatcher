@@ -6,8 +6,8 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission/rpc"
 )
 
-// Source is the classification of an upload argument: a local .torrent file
-// path, an HTTP(S) URL, or a magnet link. The upload command uses it to decide
+// Source is the classification of an add argument: a local .torrent file
+// path, an HTTP(S) URL, or a magnet link. The add command uses it to decide
 // how to populate an AddRequest and to tag each per-source result. In output it
 // renders as a stable lowercase token ("file"/"url"/"magnet") via String(),
 // mirroring the slug convention used elsewhere in this package.
@@ -42,7 +42,7 @@ func (s Source) String() string {
 	}
 }
 
-// ClassifySource classifies an upload argument into a Source. A "magnet:"
+// ClassifySource classifies an add argument into a Source. A "magnet:"
 // prefix is a magnet link; an "http://" or "https://" prefix is a URL;
 // anything else is treated as a local file path. The match is case-insensitive
 // on the scheme.

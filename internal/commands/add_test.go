@@ -34,21 +34,21 @@ const duplicateResponse = `{
 	"tag": 1
 }`
 
-// runUpload executes the upload command with args, returning stdout, stderr, and
+// runAdd executes the add command with args, returning stdout, stderr, and
 // the Execute error. The command's output is a *bytes.Buffer, so the
 // piped/plaintext path is exercised.
-func runUpload(t *testing.T, args ...string) (string, string, error) {
+func runAdd(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
-	return runUploadStdin(t, "", args...)
+	return runAddStdin(t, "", args...)
 }
 
-// runUploadStdin executes the upload command with the given stdin contents and
+// runAddStdin executes the add command with the given stdin contents and
 // args, returning stdout, stderr, and the Execute error.
-func runUploadStdin(t *testing.T, stdin string, args ...string) (string, string, error) {
+func runAddStdin(t *testing.T, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 
-	cmd := NewUploadCmd()
+	cmd := NewAddCmd()
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
@@ -61,9 +61,9 @@ func runUploadStdin(t *testing.T, stdin string, args ...string) (string, string,
 	return out.String(), errOut.String(), err
 }
 
-// uploadConfigPath stands up a bespoke transmission stub serving the given
+// addConfigPath stands up a bespoke transmission stub serving the given
 // torrent-add payload and writes a config pointing at it.
-func uploadConfigPath(t *testing.T, addBody string) (string, func()) {
+func addConfigPath(t *testing.T, addBody string) (string, func()) {
 	t.Helper()
 
 	keyring.MockInit()
@@ -81,10 +81,10 @@ func uploadConfigPath(t *testing.T, addBody string) (string, func()) {
 	return cfgPath, srv.Close
 }
 
-// captureUploadConfigPath stands up a bespoke transmission stub that records the
+// captureAddConfigPath stands up a bespoke transmission stub that records the
 // add request body and replies with addedResponse, so a test can assert which
 // add parameters the command forwarded.
-func captureUploadConfigPath(t *testing.T, body *string) (string, func()) {
+func captureAddConfigPath(t *testing.T, body *string) (string, func()) {
 	t.Helper()
 
 	keyring.MockInit()
@@ -119,47 +119,47 @@ func writeTorrentFile(t *testing.T, data []byte) string {
 	return path
 }
 
-func TestUploadByFile(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddByFile(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	torrentPath := writeTorrentFile(t, []byte("d8:announce0:e"))
 
-	out, _, err := runUpload(t, "--config", cfgPath, torrentPath)
+	out, _, err := runAdd(t, "--config", cfgPath, torrentPath)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Added [file]: ubuntu-24.04.iso\n", out)
 }
 
-func TestUploadByURL(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddByURL(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "https://example.com/a.torrent")
+	out, _, err := runAdd(t, "--config", cfgPath, "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	assert.Equal(t, "Added [url]: ubuntu-24.04.iso\n", out)
 }
 
-func TestUploadByMagnet(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddByMagnet(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "magnet:?xt=urn:btih:deadbeef")
+	out, _, err := runAdd(t, "--config", cfgPath, "magnet:?xt=urn:btih:deadbeef")
 	require.NoError(t, err)
 
 	assert.Equal(t, "Added [magnet]: ubuntu-24.04.iso\n", out)
 }
 
-func TestUploadFileSendsMetainfoBase64(t *testing.T) {
+func TestAddFileSendsMetainfoBase64(t *testing.T) {
 	var body string
-	cfgPath, closeSrv := captureUploadConfigPath(t, &body)
+	cfgPath, closeSrv := captureAddConfigPath(t, &body)
 	defer closeSrv()
 
 	raw := []byte("d8:announce0:e")
 	torrentPath := writeTorrentFile(t, raw)
 
-	_, _, err := runUpload(t, "--config", cfgPath, torrentPath)
+	_, _, err := runAdd(t, "--config", cfgPath, torrentPath)
 	require.NoError(t, err)
 
 	want := base64.StdEncoding.EncodeToString(raw)
@@ -167,15 +167,15 @@ func TestUploadFileSendsMetainfoBase64(t *testing.T) {
 	assert.NotContains(t, body, `"filename"`)
 }
 
-// TestUploadPausedByDefault confirms torrents are added paused unless --start is
+// TestAddPausedByDefault confirms torrents are added paused unless --start is
 // given, by inspecting the forwarded "paused" parameter.
-func TestUploadPausedByDefault(t *testing.T) {
+func TestAddPausedByDefault(t *testing.T) {
 	t.Run("default adds paused", func(t *testing.T) {
 		var body string
-		cfgPath, closeSrv := captureUploadConfigPath(t, &body)
+		cfgPath, closeSrv := captureAddConfigPath(t, &body)
 		defer closeSrv()
 
-		_, _, err := runUpload(t, "--config", cfgPath, "https://example.com/a.torrent")
+		_, _, err := runAdd(t, "--config", cfgPath, "https://example.com/a.torrent")
 		require.NoError(t, err)
 
 		assert.Contains(t, body, `"paused":true`)
@@ -183,10 +183,10 @@ func TestUploadPausedByDefault(t *testing.T) {
 
 	t.Run("--start adds running", func(t *testing.T) {
 		var body string
-		cfgPath, closeSrv := captureUploadConfigPath(t, &body)
+		cfgPath, closeSrv := captureAddConfigPath(t, &body)
 		defer closeSrv()
 
-		_, _, err := runUpload(t, "--config", cfgPath, "--start", "https://example.com/a.torrent")
+		_, _, err := runAdd(t, "--config", cfgPath, "--start", "https://example.com/a.torrent")
 		require.NoError(t, err)
 
 		// paused is false, so omitempty drops it from the wire entirely.
@@ -194,64 +194,64 @@ func TestUploadPausedByDefault(t *testing.T) {
 	})
 }
 
-func TestUploadDownloadDirForwarded(t *testing.T) {
+func TestAddDownloadDirForwarded(t *testing.T) {
 	var body string
-	cfgPath, closeSrv := captureUploadConfigPath(t, &body)
+	cfgPath, closeSrv := captureAddConfigPath(t, &body)
 	defer closeSrv()
 
-	_, _, err := runUpload(t, "--config", cfgPath, "--download-dir", "/srv/iso", "https://example.com/a.torrent")
+	_, _, err := runAdd(t, "--config", cfgPath, "--download-dir", "/srv/iso", "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	assert.Contains(t, body, `"download-dir":"/srv/iso"`)
 }
 
-func TestUploadDuplicate(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, duplicateResponse)
+func TestAddDuplicate(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, duplicateResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "magnet:?xt=urn:btih:cafebabe")
+	out, _, err := runAdd(t, "--config", cfgPath, "magnet:?xt=urn:btih:cafebabe")
 	require.NoError(t, err, "a duplicate is a success, not an error")
 
 	assert.Equal(t, "Duplicate [magnet]: debian.iso\n", out)
 }
 
-func TestUploadMissingFileErrors(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddMissingFileErrors(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	missing := filepath.Join(t.TempDir(), "nope.torrent")
 
-	out, errOut, err := runUpload(t, "--config", cfgPath, missing)
+	out, errOut, err := runAdd(t, "--config", cfgPath, missing)
 	require.Error(t, err, "a per-source failure exits non-zero")
 	assert.Empty(t, out, "no success line is printed for a failed source")
 	assert.Contains(t, errOut, "reading "+missing)
 }
 
-// TestUploadFailureNotAttributedToServer guards against regressing the batch
+// TestAddFailureNotAttributedToServer guards against regressing the batch
 // sentinel back into a "connecting to <server>" wrap: a purely local failure (a
-// missing .torrent, server reachable) must surface errUploadFailures unwrapped,
+// missing .torrent, server reachable) must surface errAddFailures unwrapped,
 // not as a transport error.
-func TestUploadFailureNotAttributedToServer(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddFailureNotAttributedToServer(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	missing := filepath.Join(t.TempDir(), "nope.torrent")
 
-	_, _, err := runUpload(t, "--config", cfgPath, missing)
-	require.ErrorIs(t, err, errUploadFailures)
+	_, _, err := runAdd(t, "--config", cfgPath, missing)
+	require.ErrorIs(t, err, errAddFailures)
 	assert.NotContains(t, err.Error(), "connecting to",
 		"a local-only failure must not be reported as a connection error")
 }
 
-// TestUploadContinuesOnError confirms that a failure on one source does not abort
+// TestAddContinuesOnError confirms that a failure on one source does not abort
 // the remaining sources, and that the command still exits non-zero.
-func TestUploadContinuesOnError(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddContinuesOnError(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	missing := filepath.Join(t.TempDir(), "nope.torrent")
 
-	out, errOut, err := runUpload(t, "--config", cfgPath, missing, "https://example.com/a.torrent")
+	out, errOut, err := runAdd(t, "--config", cfgPath, missing, "https://example.com/a.torrent")
 	require.Error(t, err, "any source failing exits non-zero")
 
 	// The good source still succeeded after the bad one failed.
@@ -259,20 +259,20 @@ func TestUploadContinuesOnError(t *testing.T) {
 	assert.Contains(t, errOut, "reading "+missing)
 }
 
-func TestUploadNoArgsErrors(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddNoArgsErrors(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	_, _, err := runUpload(t, "--config", cfgPath)
+	_, _, err := runAdd(t, "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "specify at least one file, url, or magnet link")
 }
 
-func TestUploadJSON(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddJSON(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--json", "https://example.com/a.torrent")
+	out, _, err := runAdd(t, "--config", cfgPath, "--json", "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	var got []struct {
@@ -296,16 +296,16 @@ func TestUploadJSON(t *testing.T) {
 	assert.Empty(t, got[0].Error)
 }
 
-// TestUploadJSONReportsErrorPerSource confirms the per-source array carries an
+// TestAddJSONReportsErrorPerSource confirms the per-source array carries an
 // error element for a failed source alongside a success element, and that the
 // command exits non-zero.
-func TestUploadJSONReportsErrorPerSource(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddJSONReportsErrorPerSource(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	missing := filepath.Join(t.TempDir(), "nope.torrent")
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--json", missing, "https://example.com/a.torrent")
+	out, _, err := runAdd(t, "--config", cfgPath, "--json", missing, "https://example.com/a.torrent")
 	require.Error(t, err)
 
 	var got []struct {
@@ -326,11 +326,11 @@ func TestUploadJSONReportsErrorPerSource(t *testing.T) {
 	assert.Equal(t, "ubuntu-24.04.iso", got[1].Name)
 }
 
-func TestUploadJSONReportsDuplicate(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, duplicateResponse)
+func TestAddJSONReportsDuplicate(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, duplicateResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--json", "magnet:?xt=urn:btih:cafebabe")
+	out, _, err := runAdd(t, "--config", cfgPath, "--json", "magnet:?xt=urn:btih:cafebabe")
 	require.NoError(t, err)
 
 	var got []struct {
@@ -344,57 +344,57 @@ func TestUploadJSONReportsDuplicate(t *testing.T) {
 	assert.Empty(t, got[0].Error)
 }
 
-func TestUploadJQ(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddJQ(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--jq", ".[].name", "https://example.com/a.torrent")
+	out, _, err := runAdd(t, "--config", cfgPath, "--jq", ".[].name", "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	assert.Equal(t, `"ubuntu-24.04.iso"`, strings.TrimSpace(out))
 }
 
-func TestUploadNotConfigured(t *testing.T) {
+func TestAddNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
 
-	_, _, err := runUpload(t, "--config", cfgPath, "https://example.com/a.torrent")
+	_, _, err := runAdd(t, "--config", cfgPath, "https://example.com/a.torrent")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-// TestUploadSanitizesNameInHumanButNotJSON guards the security boundary: a
+// TestAddSanitizesNameInHumanButNotJSON guards the security boundary: a
 // torrent name carrying an ANSI escape is neutralized in the human confirmation
 // but preserved verbatim in the structured --json contract.
-func TestUploadSanitizesNameInHumanButNotJSON(t *testing.T) {
+func TestAddSanitizesNameInHumanButNotJSON(t *testing.T) {
 	const body = `{
 		"arguments": {"torrent-added": {"id": 1, "name": "\u001b[2Jmalicious", "hashString": "0123456789abcdef0123456789abcdef01234567"}},
 		"result": "success",
 		"tag": 1
 	}`
 
-	cfgPath, closeSrv := uploadConfigPath(t, body)
+	cfgPath, closeSrv := addConfigPath(t, body)
 	defer closeSrv()
 
-	human, _, err := runUpload(t, "--config", cfgPath, "https://example.com/a.torrent")
+	human, _, err := runAdd(t, "--config", cfgPath, "https://example.com/a.torrent")
 	require.NoError(t, err)
 	assert.NotContains(t, human, "\x1b", "raw ESC must not reach the human confirmation")
 	assert.Contains(t, human, "[2Jmalicious", "visible text survives sanitization")
 
-	jsonOut, _, err := runUpload(t, "--config", cfgPath, "--json", "https://example.com/a.torrent")
+	jsonOut, _, err := runAdd(t, "--config", cfgPath, "--json", "https://example.com/a.torrent")
 	require.NoError(t, err)
 	assert.Contains(t, jsonOut, "\\u001b", "the raw escape is preserved in the JSON contract")
 }
 
-// TestUploadDeleteRemovesFileOnSuccess confirms --delete removes the source
+// TestAddDeleteRemovesFileOnSuccess confirms --delete removes the source
 // .torrent after a successful, non-duplicate file add and reports deleted=true.
-func TestUploadDeleteRemovesFileOnSuccess(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddDeleteRemovesFileOnSuccess(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	torrentPath := writeTorrentFile(t, []byte("d8:announce0:e"))
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--delete", "--json", torrentPath)
+	out, _, err := runAdd(t, "--config", cfgPath, "--delete", "--json", torrentPath)
 	require.NoError(t, err)
 
 	assert.NoFileExists(t, torrentPath, "the consumed .torrent is deleted")
@@ -407,28 +407,28 @@ func TestUploadDeleteRemovesFileOnSuccess(t *testing.T) {
 	assert.True(t, got[0].Deleted, "deleted is reported when removal succeeds")
 }
 
-// TestUploadDeleteShortFlag confirms -d is an alias for --delete.
-func TestUploadDeleteShortFlag(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+// TestAddDeleteShortFlag confirms -d is an alias for --delete.
+func TestAddDeleteShortFlag(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	torrentPath := writeTorrentFile(t, []byte("d8:announce0:e"))
 
-	_, _, err := runUpload(t, "--config", cfgPath, "-d", torrentPath)
+	_, _, err := runAdd(t, "--config", cfgPath, "-d", torrentPath)
 	require.NoError(t, err)
 
 	assert.NoFileExists(t, torrentPath, "-d deletes the consumed .torrent")
 }
 
-// TestUploadDeleteKeepsFileOnDuplicate confirms --delete leaves the source
+// TestAddDeleteKeepsFileOnDuplicate confirms --delete leaves the source
 // .torrent in place when the add was a duplicate (not a fresh add).
-func TestUploadDeleteKeepsFileOnDuplicate(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, duplicateResponse)
+func TestAddDeleteKeepsFileOnDuplicate(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, duplicateResponse)
 	defer closeSrv()
 
 	torrentPath := writeTorrentFile(t, []byte("d8:announce0:e"))
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--delete", "--json", torrentPath)
+	out, _, err := runAdd(t, "--config", cfgPath, "--delete", "--json", torrentPath)
 	require.NoError(t, err)
 
 	assert.FileExists(t, torrentPath, "a duplicate add does not delete the source file")
@@ -443,13 +443,13 @@ func TestUploadDeleteKeepsFileOnDuplicate(t *testing.T) {
 	assert.False(t, got[0].Deleted)
 }
 
-// TestUploadDeleteIgnoresURLAndMagnet confirms --delete has no effect on
+// TestAddDeleteIgnoresURLAndMagnet confirms --delete has no effect on
 // URL/magnet sources (there is no local file to remove).
-func TestUploadDeleteIgnoresURLAndMagnet(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddDeleteIgnoresURLAndMagnet(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--delete", "--json", "https://example.com/a.torrent", "magnet:?xt=urn:btih:deadbeef")
+	out, _, err := runAdd(t, "--config", cfgPath, "--delete", "--json", "https://example.com/a.torrent", "magnet:?xt=urn:btih:deadbeef")
 	require.NoError(t, err)
 
 	var got []struct {
@@ -461,11 +461,11 @@ func TestUploadDeleteIgnoresURLAndMagnet(t *testing.T) {
 	assert.False(t, got[1].Deleted, "deleted is never set for a magnet source")
 }
 
-// TestUploadDeleteToleratesFailure confirms a delete failure (here, the file
+// TestAddDeleteToleratesFailure confirms a delete failure (here, the file
 // was already removed out from under us) warns on stderr without failing the
 // add and leaves deleted=false.
-func TestUploadDeleteToleratesFailure(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddDeleteToleratesFailure(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	// A read-only directory: os.ReadFile succeeds on the file, but os.Remove of
@@ -476,7 +476,7 @@ func TestUploadDeleteToleratesFailure(t *testing.T) {
 	require.NoError(t, os.Chmod(dir, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	out, errOut, err := runUpload(t, "--config", cfgPath, "--delete", "--json", torrentPath)
+	out, errOut, err := runAdd(t, "--config", cfgPath, "--delete", "--json", torrentPath)
 	require.NoError(t, err, "a delete failure does not fail the add")
 
 	assert.Contains(t, errOut, "deleting "+torrentPath, "the delete failure warns on stderr")
@@ -489,52 +489,52 @@ func TestUploadDeleteToleratesFailure(t *testing.T) {
 	assert.False(t, got[0].Deleted, "deleted stays false when removal fails")
 }
 
-// TestUploadLabelsForwarded confirms repeated --label values are sent on the add
+// TestAddLabelsForwarded confirms repeated --label values are sent on the add
 // request.
-func TestUploadLabelsForwarded(t *testing.T) {
+func TestAddLabelsForwarded(t *testing.T) {
 	var body string
-	cfgPath, closeSrv := captureUploadConfigPath(t, &body)
+	cfgPath, closeSrv := captureAddConfigPath(t, &body)
 	defer closeSrv()
 
-	_, _, err := runUpload(t, "--config", cfgPath, "--label", "iso", "--label", "linux", "https://example.com/a.torrent")
+	_, _, err := runAdd(t, "--config", cfgPath, "--label", "iso", "--label", "linux", "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	assert.Contains(t, body, `"labels":["iso","linux"]`)
 }
 
-// TestUploadQuietSuppressesSuccessLines confirms --quiet drops the per-source
+// TestAddQuietSuppressesSuccessLines confirms --quiet drops the per-source
 // confirmation lines on stdout while still surfacing errors on stderr.
-func TestUploadQuietSuppressesSuccessLines(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddQuietSuppressesSuccessLines(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	missing := filepath.Join(t.TempDir(), "nope.torrent")
 
-	out, errOut, err := runUpload(t, "--config", cfgPath, "--quiet", missing, "https://example.com/a.torrent")
+	out, errOut, err := runAdd(t, "--config", cfgPath, "--quiet", missing, "https://example.com/a.torrent")
 	require.Error(t, err, "a failed source still exits non-zero under --quiet")
 
 	assert.Empty(t, out, "--quiet suppresses the success line")
 	assert.Contains(t, errOut, "reading "+missing, "--quiet does not suppress errors")
 }
 
-// TestUploadQuietShortFlag confirms -q is an alias for --quiet.
-func TestUploadQuietShortFlag(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+// TestAddQuietShortFlag confirms -q is an alias for --quiet.
+func TestAddQuietShortFlag(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "-q", "https://example.com/a.torrent")
+	out, _, err := runAdd(t, "--config", cfgPath, "-q", "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	assert.Empty(t, out, "-q suppresses the success line")
 }
 
-// TestUploadQuietDoesNotAlterJSON confirms --quiet leaves the JSON contract
+// TestAddQuietDoesNotAlterJSON confirms --quiet leaves the JSON contract
 // untouched.
-func TestUploadQuietDoesNotAlterJSON(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddQuietDoesNotAlterJSON(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUpload(t, "--config", cfgPath, "--quiet", "--json", "https://example.com/a.torrent")
+	out, _, err := runAdd(t, "--config", cfgPath, "--quiet", "--json", "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	var got []struct {
@@ -545,16 +545,16 @@ func TestUploadQuietDoesNotAlterJSON(t *testing.T) {
 	assert.Equal(t, "ubuntu-24.04.iso", got[0].Name, "--quiet does not change JSON output")
 }
 
-// TestUploadReadsSourcesFromStdin confirms that, with no positional args, sources
+// TestAddReadsSourcesFromStdin confirms that, with no positional args, sources
 // are read one-per-line from stdin (blank lines and surrounding whitespace
 // ignored).
-func TestUploadReadsSourcesFromStdin(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddReadsSourcesFromStdin(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
 	stdin := "  https://example.com/a.torrent  \n\nmagnet:?xt=urn:btih:deadbeef\n"
 
-	out, _, err := runUploadStdin(t, stdin, "--config", cfgPath, "--json")
+	out, _, err := runAddStdin(t, stdin, "--config", cfgPath, "--json")
 	require.NoError(t, err)
 
 	var got []struct {
@@ -570,13 +570,13 @@ func TestUploadReadsSourcesFromStdin(t *testing.T) {
 	assert.Equal(t, "magnet:?xt=urn:btih:deadbeef", got[1].Input)
 }
 
-// TestUploadPositionalArgsTakePrecedenceOverStdin confirms stdin is consulted
+// TestAddPositionalArgsTakePrecedenceOverStdin confirms stdin is consulted
 // only when no positional args are present.
-func TestUploadPositionalArgsTakePrecedenceOverStdin(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddPositionalArgsTakePrecedenceOverStdin(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	out, _, err := runUploadStdin(t, "magnet:?xt=urn:btih:fromstdin\n", "--config", cfgPath, "--json", "https://example.com/a.torrent")
+	out, _, err := runAddStdin(t, "magnet:?xt=urn:btih:fromstdin\n", "--config", cfgPath, "--json", "https://example.com/a.torrent")
 	require.NoError(t, err)
 
 	var got []struct {
@@ -588,13 +588,13 @@ func TestUploadPositionalArgsTakePrecedenceOverStdin(t *testing.T) {
 	assert.Equal(t, "https://example.com/a.torrent", got[0].Input)
 }
 
-// TestUploadNoArgsNoStdinErrors confirms a bare invocation with neither
+// TestAddNoArgsNoStdinErrors confirms a bare invocation with neither
 // positional args nor piped stdin remains an error.
-func TestUploadNoArgsNoStdinErrors(t *testing.T) {
-	cfgPath, closeSrv := uploadConfigPath(t, addedResponse)
+func TestAddNoArgsNoStdinErrors(t *testing.T) {
+	cfgPath, closeSrv := addConfigPath(t, addedResponse)
 	defer closeSrv()
 
-	_, _, err := runUploadStdin(t, "", "--config", cfgPath)
+	_, _, err := runAddStdin(t, "", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "specify at least one file, url, or magnet link")
 }

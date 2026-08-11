@@ -72,13 +72,13 @@ snatcher torrent list
 | `server stats` | Session statistics: counts, speeds, transfer totals |
 | `server settings [get\|set\|reset]` | View and change server (session) settings |
 | `server port get\|set\|test` | View, change, or test the peer/listening port |
+| `torrent add` | Add torrents from files, URLs, or magnet links |
 | `torrent list` (`ls`) | List torrents, with filter/search/sort/columns |
 | `torrent info <id\|hash>` | Show every field for one torrent |
 | `torrent start\|stop\|verify\|reannounce` | Act on torrents by id, hash, or `--all` |
 | `torrent queue top\|up\|down\|bottom` | Reorder torrents in the queue |
 | `torrent move` (`mv`) `<id\|hash> <location>` | Change a torrent's download location |
 | `torrent remove` (`rm`) | Remove torrents (and optionally their data) |
-| `torrent upload` | Add torrents from files, URLs, or magnet links |
 | `api <method>` | Issue an arbitrary Transmission RPC method |
 | `version` | Print version information |
 | `completion` | Generate shell completion (bash, zsh, fish, PowerShell) |
@@ -139,7 +139,7 @@ snatcher torrent start 1 2 3 --now
 snatcher torrent stop --all
 
 # Add a file and a magnet link, label them, and start immediately
-snatcher torrent upload ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \
+snatcher torrent add ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \
     --label linux --start
 
 # Read one setting (bare value, script-friendly)

@@ -14,20 +14,20 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// errUploadFailures is returned when one or more sources fail to add. It carries
+// errAddFailures is returned when one or more sources fail to add. It carries
 // no detail of its own: the per-source errors are already printed to stderr (and
 // recorded in the JSON contract). It exists only so the command exits non-zero
 // after continue-on-error processing.
-var errUploadFailures = errors.New("one or more sources failed")
+var errAddFailures = errors.New("one or more sources failed")
 
-// NewUploadCmd builds the "upload" command, which adds torrents to the
-// configured server from local .torrent files, HTTP(S) URLs, and magnet links.
-// Each positional argument is auto-classified with transmission.ClassifySource;
+// NewAddCmd builds the "add" command, which adds torrents to the configured
+// server from local .torrent files, HTTP(S) URLs, and magnet links. Each
+// positional argument is auto-classified with transmission.ClassifySource;
 // torrents are added paused unless --start is given. Processing is
 // continue-on-error: a per-source failure is reported but does not abort the
 // remaining sources, and the command exits non-zero if any source failed.
 // Render precedence mirrors the other commands: --jq → --json → plaintext.
-func NewUploadCmd() *cobra.Command {
+func NewAddCmd() *cobra.Command {
 	var (
 		configPath  string
 		server      string
@@ -41,8 +41,8 @@ func NewUploadCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "upload [file|url|magnet]...",
-		Short: "Upload torrents from files, URLs, or magnet links",
+		Use:   "add [file|url|magnet]...",
+		Short: "Add torrents from files, URLs, or magnet links",
 		Long: "Add torrents to the server from local .torrent files, HTTP(S) URLs, " +
 			"or magnet links.\n\n" +
 			"Each argument is auto-detected as a file, URL, or magnet link. Torrents " +
@@ -53,11 +53,11 @@ func NewUploadCmd() *cobra.Command {
 			"continue-on-error: a failure adding one source is reported but does not stop " +
 			"the rest, and the command exits non-zero if any source failed. With no " +
 			"positional arguments, sources are read from stdin (one per line); a bare " +
-			"'snatcher torrent upload' with no sources and no piped stdin is an error, not a no-op.",
+			"'snatcher torrent add' with no sources and no piped stdin is an error, not a no-op.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sources, err := uploadSources(cmd, args)
+			sources, err := resolveSources(cmd, args)
 			if err != nil {
 				return err
 			}
@@ -70,25 +70,25 @@ func NewUploadCmd() *cobra.Command {
 				return err
 			}
 
-			opts := uploadOptions{
+			opts := addOptions{
 				start:       start,
 				downloadDir: downloadDir,
 				deleteFile:  deleteFile,
 				labels:      labels,
 			}
 
-			results := make([]uploadResult, 0, len(sources))
+			results := make([]addResult, 0, len(sources))
 			failed := false
 
 			for _, arg := range sources {
-				res := uploadSource(cmd, backend, arg, opts)
+				res := addSource(cmd, backend, arg, opts)
 				if res.Error != "" {
 					failed = true
 				}
 				results = append(results, res)
 			}
 
-			if err := renderUpload(cmd, results, jqExpr, asJSON, quiet); err != nil {
+			if err := renderAdd(cmd, results, jqExpr, asJSON, quiet); err != nil {
 				return err
 			}
 
@@ -98,7 +98,7 @@ func NewUploadCmd() *cobra.Command {
 				// written to stderr, and wrapping in "connecting to <server>" would
 				// misattribute them to a transport failure. This mirrors how the
 				// other commands surface non-transport errors (e.g. resolveMutation).
-				return errUploadFailures
+				return errAddFailures
 			}
 
 			return nil
@@ -118,11 +118,11 @@ func NewUploadCmd() *cobra.Command {
 	return cmd
 }
 
-// uploadSources resolves the sources to process: the positional args when any
+// resolveSources resolves the sources to process: the positional args when any
 // are present, otherwise one whitespace-trimmed, non-blank source per line read
 // from stdin. Positional args and stdin are never mixed — stdin is consulted
 // only when no positional args are given.
-func uploadSources(cmd *cobra.Command, args []string) ([]string, error) {
+func resolveSources(cmd *cobra.Command, args []string) ([]string, error) {
 	if len(args) > 0 {
 		return args, nil
 	}
@@ -144,9 +144,9 @@ func uploadSources(cmd *cobra.Command, args []string) ([]string, error) {
 	return sources, nil
 }
 
-// uploadOptions carries the per-invocation add options shared across every
-// source, sparing uploadSource a long positional argument list.
-type uploadOptions struct {
+// addOptions carries the per-invocation add options shared across every source,
+// sparing addSource a long positional argument list.
+type addOptions struct {
 	// start adds torrents running instead of paused.
 	start bool
 
@@ -160,17 +160,17 @@ type uploadOptions struct {
 	labels []string
 }
 
-// uploadSource classifies arg, builds the neutral AddRequest, adds the torrent,
-// and returns a per-source uploadResult. For a file source it reads the file
-// bytes (surfacing a clear error on a missing/unreadable file) before adding.
-// On a per-source failure it writes the error to stderr (continue-on-error) and
+// addSource classifies arg, builds the neutral AddRequest, adds the torrent, and
+// returns a per-source addResult. For a file source it reads the file bytes
+// (surfacing a clear error on a missing/unreadable file) before adding. On a
+// per-source failure it writes the error to stderr (continue-on-error) and
 // records it in the returned result; a duplicate is a success, not an error.
 // With opts.deleteFile, a successful non-duplicate file add deletes the source
 // .torrent; a delete failure warns on stderr but does not fail the add.
-func uploadSource(cmd *cobra.Command, backend *transmission.Client, arg string, opts uploadOptions) uploadResult {
+func addSource(cmd *cobra.Command, backend *transmission.Client, arg string, opts addOptions) addResult {
 	source := transmission.ClassifySource(arg)
 
-	res := uploadResult{Source: source.String(), Input: arg}
+	res := addResult{Source: source.String(), Input: arg}
 
 	req := transmission.AddRequest{
 		DownloadDir: opts.downloadDir,
@@ -216,13 +216,13 @@ func uploadSource(cmd *cobra.Command, backend *transmission.Client, arg string, 
 	return res
 }
 
-// uploadResult is one element of the per-source results array emitted under
+// addResult is one element of the per-source results array emitted under
 // --json/--jq. Its json tags are a deliberate scripting contract: every element
 // carries source and input; a success additionally carries id/name/hash and the
 // duplicate flag, while a failure carries only an error string. Name is a
 // server-derived, untrusted string — emitted verbatim in JSON, but passed
-// through output.SanitizeTerminal on the human path (see writeUploadPlaintext).
-type uploadResult struct {
+// through output.SanitizeTerminal on the human path (see writeAddPlaintext).
+type addResult struct {
 	// Source is the classified source kind: "file", "url", or "magnet".
 	Source string `json:"source"`
 
@@ -255,19 +255,19 @@ type uploadResult struct {
 // surfaces per-source failures during continue-on-error processing. The error
 // text is sanitized before reaching the terminal since it can embed a
 // server-derived string. It returns the mutated result for one-line use.
-func (r uploadResult) withError(cmd *cobra.Command, err error) uploadResult {
+func (r addResult) withError(cmd *cobra.Command, err error) addResult {
 	r.Error = err.Error()
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %s\n", output.SanitizeTerminal(r.Error))
 
 	return r
 }
 
-// renderUpload writes the per-source results in the appropriate output mode:
-// --jq filters the JSON array, --json emits the structured array, and otherwise
-// a plain human line is printed per source. Render precedence mirrors the other
+// renderAdd writes the per-source results in the appropriate output mode: --jq
+// filters the JSON array, --json emits the structured array, and otherwise a
+// plain human line is printed per source. Render precedence mirrors the other
 // commands: --jq → --json → plaintext. --quiet suppresses only the plaintext
 // confirmation lines; it never alters the JSON/jq contract.
-func renderUpload(cmd *cobra.Command, results []uploadResult, jqExpr string, asJSON, quiet bool) error {
+func renderAdd(cmd *cobra.Command, results []addResult, jqExpr string, asJSON, quiet bool) error {
 	if jqExpr != "" {
 		return output.JQ(cmd.OutOrStdout(), results, jqExpr)
 	}
@@ -277,18 +277,18 @@ func renderUpload(cmd *cobra.Command, results []uploadResult, jqExpr string, asJ
 	}
 
 	if !quiet {
-		writeUploadPlaintext(cmd, results)
+		writeAddPlaintext(cmd, results)
 	}
 
 	return nil
 }
 
-// writeUploadPlaintext prints one line per successful source on stdout, e.g.
+// writeAddPlaintext prints one line per successful source on stdout, e.g.
 // "Added [file]: ubuntu.iso" or "Duplicate [magnet]: ubuntu.iso". Failures are
 // omitted here — they were already written to stderr as they occurred. Every
 // server-derived name is passed through output.SanitizeTerminal, since names are
 // untrusted swarm-supplied strings.
-func writeUploadPlaintext(cmd *cobra.Command, results []uploadResult) {
+func writeAddPlaintext(cmd *cobra.Command, results []addResult) {
 	out := cmd.OutOrStdout()
 
 	for _, r := range results {

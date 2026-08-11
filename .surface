@@ -25,6 +25,7 @@ CMD snatcher server settings set
 CMD snatcher server show
 CMD snatcher server stats
 CMD snatcher torrent
+CMD snatcher torrent add
 CMD snatcher torrent info
 CMD snatcher torrent list
 CMD snatcher torrent move
@@ -38,7 +39,6 @@ CMD snatcher torrent remove
 CMD snatcher torrent start
 CMD snatcher torrent stop
 CMD snatcher torrent update
-CMD snatcher torrent upload
 CMD snatcher torrent verify
 FLAG snatcher --version type=bool
 FLAG snatcher api --config type=string
@@ -141,6 +141,15 @@ FLAG snatcher server stats --config type=string
 FLAG snatcher server stats --jq type=string
 FLAG snatcher server stats --json type=bool
 FLAG snatcher server stats --server type=string
+FLAG snatcher torrent add --config type=string
+FLAG snatcher torrent add --delete type=bool
+FLAG snatcher torrent add --download-dir type=string
+FLAG snatcher torrent add --jq type=string
+FLAG snatcher torrent add --json type=bool
+FLAG snatcher torrent add --label type=stringArray
+FLAG snatcher torrent add --quiet type=bool
+FLAG snatcher torrent add --server type=string
+FLAG snatcher torrent add --start type=bool
 FLAG snatcher torrent info --config type=string
 FLAG snatcher torrent info --fields type=string
 FLAG snatcher torrent info --jq type=string
@@ -218,15 +227,6 @@ FLAG snatcher torrent update --sequential-download type=bool
 FLAG snatcher torrent update --server type=string
 FLAG snatcher torrent update --tracker type=stringArray
 FLAG snatcher torrent update --upload-limit type=string
-FLAG snatcher torrent upload --config type=string
-FLAG snatcher torrent upload --delete type=bool
-FLAG snatcher torrent upload --download-dir type=string
-FLAG snatcher torrent upload --jq type=string
-FLAG snatcher torrent upload --json type=bool
-FLAG snatcher torrent upload --label type=stringArray
-FLAG snatcher torrent upload --quiet type=bool
-FLAG snatcher torrent upload --server type=string
-FLAG snatcher torrent upload --start type=bool
 FLAG snatcher torrent verify --all type=bool
 FLAG snatcher torrent verify --config type=string
 FLAG snatcher torrent verify --jq type=string

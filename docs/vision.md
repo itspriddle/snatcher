@@ -72,7 +72,7 @@ Use "snatcher [command] --help" for more information about a command.
 ### Renames
 
 - [x] `snatcher torrent set` -> `snatcher torrent update` 
-- [ ] `snatcher torrent upload` -> `snatcher torrent add` / `snatcher add`
+- [x] `snatcher torrent upload` -> `snatcher torrent add`
 - [ ] `snatcher torrent info` -> `snatcher torrent show` 
 - [ ] `snatcher server settings set` -> `snatcher server settings update` 
 
