@@ -309,6 +309,20 @@ func (b *Client) GetSession(ctx context.Context) (SessionSettings, error) {
 	return session.Settings(), nil
 }
 
+// Session performs a single SessionGet round-trip and returns both projections
+// of the result: the server's ServerInfo and its flattened SessionSettings. It
+// exists so a caller wanting both (server show) pays one round-trip instead of
+// calling ServerInfo and GetSession back to back. RPC failures are mapped to the
+// sentinels.
+func (b *Client) Session(ctx context.Context) (ServerInfo, SessionSettings, error) {
+	session, err := b.client.SessionGet(ctx)
+	if err != nil {
+		return ServerInfo{}, SessionSettings{}, mapError(err)
+	}
+
+	return session.ServerInfo(), session.Settings(), nil
+}
+
 // SetSession writes session settings. The changes map is keyed by kebab-case
 // setting key with typed values; each key is translated to the snake_case rpc
 // key (a mechanical "-"->"_" replacement) before forwarding to

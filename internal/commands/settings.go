@@ -13,8 +13,9 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// settingType is the value type of a session setting, driving how a raw string
-// argument is parsed and how a typed value is formatted for plaintext output.
+// settingType is the value type of a session setting, driving the type of the
+// per-setting flag on "server update" and how a typed value is formatted for
+// plaintext output.
 type settingType int
 
 const (
@@ -39,7 +40,7 @@ const (
 )
 
 // settingCategory is the grouping a setting belongs to, used by --category
-// filtering and the CATEGORY column of the list output.
+// filtering and the CATEGORY column of the "server show" settings table.
 type settingCategory string
 
 const (
@@ -67,10 +68,10 @@ var settingCategories = []settingCategory{
 }
 
 // settingDef describes a single session setting: the neutral kebab-case key,
-// its category, value type, the Transmission default (used by the reset
-// command), whether it is read-only (set/reset reject it), the allowed values
-// for an enum, and an accessor returning the current typed value from a
-// SessionSettings snapshot.
+// its category, value type, the Transmission default (used by "server reset"),
+// whether it is read-only (update/reset reject it), the allowed values for an
+// enum, and an accessor returning the current typed value from a SessionSettings
+// snapshot.
 type settingDef struct {
 	// key is the neutral, kebab-case setting key (the user-facing identifier and
 	// the JSON contract's "key").
@@ -82,11 +83,12 @@ type settingDef struct {
 	// typ is the value type, driving parsing and formatting.
 	typ settingType
 
-	// def is the Transmission default value, used by reset. It is nil for the
-	// read-only blocklist-size, which has no settable default.
+	// def is the Transmission default value, used by "server reset". It is nil for
+	// the read-only blocklist-size, which has no settable default.
 	def any
 
-	// readOnly marks settings that appear in list/get but that set/reset reject.
+	// readOnly marks settings that "server show" reports but that "server update"
+	// and "server reset" reject.
 	readOnly bool
 
 	// allowed lists the permitted values for a typeEnum setting (lowercase),
@@ -94,9 +96,9 @@ type settingDef struct {
 	allowed []string
 
 	// desc is a concise, one-line human description used as the help text for the
-	// per-setting flag (server settings set --<key>) and the man page. Every
-	// settable setting must have a non-empty desc; the read-only blocklist-size,
-	// which gets no flag, leaves it empty.
+	// per-setting flag (server update --<key>) and the man page. Every settable
+	// setting must have a non-empty desc; the read-only blocklist-size, which gets
+	// no flag, leaves it empty.
 	desc string
 
 	// accessor returns the setting's current typed value from a session snapshot.
@@ -104,10 +106,12 @@ type settingDef struct {
 }
 
 // settingRegistry is the single source of truth for every session setting the
-// snatcher settings commands operate on. It is ordered by category (download,
-// network, bandwidth, queue) so list output and any derived ordering follow it.
-// The defaults are Transmission's documented defaults, baked in because the
-// Transmission RPC has no "reset to default" primitive.
+// server commands operate on: "server show" reads it, "server update" generates
+// one flag per settable entry from it, and "server reset" restores its defaults.
+// It is ordered by category (download, network, bandwidth, queue) so output and
+// any derived ordering follow it. The defaults are Transmission's documented
+// defaults, baked in because the Transmission RPC has no "reset to default"
+// primitive.
 var settingRegistry = []settingDef{
 	// Download.
 	{key: "download-dir", category: categoryDownload, typ: typeString, def: "~/Downloads",
@@ -313,50 +317,6 @@ func filterSettings(category settingCategory, search string) []settingDef {
 	return out
 }
 
-// parseSettingValue parses a raw string argument into the typed value for the
-// setting, per its type. Bools and enums match case-insensitively. Parse
-// failures return a clear, type-specific error.
-func (d settingDef) parseSettingValue(raw string) (any, error) {
-	switch d.typ {
-	case typeBool:
-		switch strings.ToLower(strings.TrimSpace(raw)) {
-		case "true":
-			return true, nil
-		case "false":
-			return false, nil
-		default:
-			return nil, fmt.Errorf("invalid value for %s: must be true or false", d.key)
-		}
-	case typeInt:
-		n, err := strconv.Atoi(strings.TrimSpace(raw))
-		if err != nil {
-			return nil, fmt.Errorf("invalid value for %s: must be an integer", d.key)
-		}
-
-		return n, nil
-	case typeInt64:
-		n, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid value for %s: must be an integer", d.key)
-		}
-
-		return n, nil
-	case typeFloat:
-		f, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid value for %s: must be a number", d.key)
-		}
-
-		return f, nil
-	case typeEnum:
-		return d.validateEnum(raw)
-	case typeString:
-		return raw, nil
-	default:
-		return nil, fmt.Errorf("invalid value for %s: unsupported type", d.key)
-	}
-}
-
 // validateEnum matches a raw enum value case-insensitively (and after trimming)
 // against the setting's allowed list, returning the canonical lowercase value. A
 // value outside the list returns a clear error naming the allowed values.
@@ -416,231 +376,7 @@ type settingRow struct {
 	Value    any    `json:"value"`
 }
 
-// NewSettingsCmd builds the "settings" command. With no subcommand it lists every
-// session setting in a list-style table (CATEGORY KEY VALUE), filterable by
-// --category and --search, in plaintext / --json / --jq modes. It dials the
-// backend via the shared dial helper and carries its own --config flag, like
-// list and the auth subcommands.
-func NewSettingsCmd() *cobra.Command {
-	var (
-		configPath   string
-		server       string
-		asJSON       bool
-		jqExpr       string
-		categoryFlag string
-		searchFlag   string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "settings",
-		Short: "Manage server settings",
-		Long: "Manage server settings.\n\n" +
-			"With no subcommand, lists every session setting (CATEGORY KEY VALUE), " +
-			"filterable by --category and --search. Use the get, set, and reset " +
-			"subcommands to read, write, or restore individual settings.\n\n" +
-			"Units: speed-limit-down, speed-limit-up, alt-speed-down, and " +
-			"alt-speed-up are in KB/s. alt-speed-time-begin and alt-speed-time-end " +
-			"are minutes after midnight (e.g. 540 is 09:00).",
-		Args:          cobra.NoArgs,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			var category settingCategory
-			if categoryFlag != "" {
-				parsed, err := parseCategory(categoryFlag)
-				if err != nil {
-					return err
-				}
-				category = parsed
-			}
-
-			backend, serverURL, err := dial(configPath, server)
-			if err != nil {
-				return err
-			}
-
-			session, err := backend.GetSession(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
-			}
-
-			defs := filterSettings(category, searchFlag)
-
-			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), settingRows(defs, session), jqExpr)
-			}
-
-			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), settingRows(defs, session))
-			}
-
-			writeSettingsPlaintext(cmd, defs, session)
-
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
-	addServerFlag(cmd, &server)
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
-	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
-	cmd.Flags().StringVar(&categoryFlag, "category", "", "filter by category (download, network, bandwidth, queue)")
-	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to keys containing this text (case-insensitive)")
-
-	cmd.AddCommand(newSettingsGetCmd())
-	cmd.AddCommand(newSettingsSetCmd())
-	cmd.AddCommand(newSettingsResetCmd())
-
-	return cmd
-}
-
-// newSettingsGetCmd builds "settings get <key>", which prints one setting's
-// current value. Plaintext emits only the bare value (so it composes in scripts,
-// e.g. PORT=$(snatcher settings get peer-port)); --json emits a single {key,
-// category, value} object and --jq filters that object. An unknown key errors
-// with the list of valid keys.
-func newSettingsGetCmd() *cobra.Command {
-	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-	)
-
-	cmd := &cobra.Command{
-		Use:           "get <key>",
-		Short:         "Show one setting's value",
-		Args:          cobra.ExactArgs(1),
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			def, ok := lookupSetting(args[0])
-			if !ok {
-				return fmt.Errorf("unknown setting %q: valid settings are %s", args[0], strings.Join(allSettingKeys(), ", "))
-			}
-
-			backend, serverURL, err := dial(configPath, server)
-			if err != nil {
-				return err
-			}
-
-			session, err := backend.GetSession(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
-			}
-
-			row := settingRow{
-				Key:      def.key,
-				Category: string(def.category),
-				Value:    def.accessor(session),
-			}
-
-			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), row, jqExpr)
-			}
-
-			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), row)
-			}
-
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), settingCell(def, session))
-
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
-	addServerFlag(cmd, &server)
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
-	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
-
-	return cmd
-}
-
-// newSettingsSetCmd builds "settings set", which writes one or more settings via
-// one typed flag per settable setting (flag name == setting key), mirroring
-// "torrent update". Only the flags explicitly given are written (detected via
-// cmd.Flags().Changed), so unspecified settings are never sent; a bare invocation
-// with no setting flag is an error, not a no-op. Enum flags are validated
-// case-insensitively before any network write, so an invalid value aborts with no
-// partial change. On success it writes via backend.SetSession and, rather than
-// re-fetching, echoes the written values (key: value per line on plaintext in
-// registry order; the {key, category, value} array on --json/--jq).
-func newSettingsSetCmd() *cobra.Command {
-	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "set [options]",
-		Short: "Set one or more settings",
-		Long: "Set one or more settings, each given as a typed flag (e.g. " +
-			"--peer-port 51413 --dht-enabled=false). The flag name is the setting " +
-			"key.\n\n" +
-			"Only the flags you pass are written, so unspecified settings are left " +
-			"unchanged. At least one setting flag is required; a bare invocation is " +
-			"an error, not a no-op. Bool settings are enabled with a bare --key and " +
-			"disabled with --key=false.\n\n" +
-			"After writing, the values you set are echoed back (this is what was " +
-			"written, not a re-read, so server-side normalization is not reflected).\n\n" +
-			"Units: speed-limit-down, speed-limit-up, alt-speed-down, and " +
-			"alt-speed-up are in KB/s (e.g. --speed-limit-down 100 is 100 KB/s). " +
-			"alt-speed-time-begin and alt-speed-time-end are minutes after midnight " +
-			"(e.g. 540 is 09:00).",
-		Args:          cobra.NoArgs,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			defs, changes, err := collectSettingChanges(cmd)
-			if err != nil {
-				return err
-			}
-
-			if len(changes) == 0 {
-				return fmt.Errorf("nothing to set: provide at least one setting flag")
-			}
-
-			backend, serverURL, err := dial(configPath, server)
-			if err != nil {
-				return err
-			}
-
-			if err := backend.SetSession(cmd.Context(), changes); err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
-			}
-
-			rows := writtenSettingRows(defs, changes)
-
-			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), rows, jqExpr)
-			}
-
-			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), rows)
-			}
-
-			out := cmd.OutOrStdout()
-			for _, def := range defs {
-				_, _ = fmt.Fprintf(out, "%s: %s\n", def.key, writtenSettingCell(def, changes[def.key]))
-			}
-
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
-	addServerFlag(cmd, &server)
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
-	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
-	registerSettingFlags(cmd)
-
-	return cmd
-}
-
-// registerSettingFlags adds one flag per settable registry entry to the set
+// registerSettingFlags adds one flag per settable registry entry to the update
 // command. The flag name is the setting key and its type follows the setting's
 // settingType; the help text comes from the setting's desc. The read-only
 // blocklist-size gets no flag (it has no desc and cannot be written).
@@ -736,91 +472,6 @@ func writtenSettingRows(defs []settingDef, changes map[string]any) []settingRow 
 	return rows
 }
 
-// writtenSettingCell renders a just-written value as plaintext, sanitizing
-// terminal control sequences for server-derived string settings so a crafted
-// value cannot inject ANSI escapes into the echoed output. The JSON/jq paths
-// never call it.
-func writtenSettingCell(def settingDef, value any) string {
-	v := formatSettingValue(value)
-	if serverDerivedSettings[def.key] {
-		v = output.SanitizeTerminal(v)
-	}
-
-	return v
-}
-
-// newSettingsResetCmd builds "settings reset <key>", which restores a single
-// setting to its Transmission default (baked into the registry, since the RPC
-// has no reset primitive). An unknown key errors with the valid-keys list and
-// the read-only blocklist-size is rejected before any network write. On success
-// it writes the default via backend.SetSession, re-fetches via GetSession, and
-// reports the server's confirmed value using the same output shape as set
-// (key: value on plaintext; the {key, category, value} array on --json/--jq).
-func newSettingsResetCmd() *cobra.Command {
-	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-	)
-
-	cmd := &cobra.Command{
-		Use:           "reset <key>",
-		Short:         "Reset one setting to its default",
-		Args:          cobra.ExactArgs(1),
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			key := args[0]
-
-			def, ok := lookupSetting(key)
-			if !ok {
-				return fmt.Errorf("unknown setting %q: valid settings are %s", key, strings.Join(allSettingKeys(), ", "))
-			}
-
-			if def.readOnly {
-				return fmt.Errorf("setting %q is read-only", key)
-			}
-
-			backend, serverURL, err := dial(configPath, server)
-			if err != nil {
-				return err
-			}
-
-			changes := map[string]any{def.key: def.def}
-			if err := backend.SetSession(cmd.Context(), changes); err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
-			}
-
-			session, err := backend.GetSession(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
-			}
-
-			defs := []settingDef{def}
-
-			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), settingRows(defs, session), jqExpr)
-			}
-
-			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), settingRows(defs, session))
-			}
-
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", def.key, settingCell(def, session))
-
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
-	addServerFlag(cmd, &server)
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
-	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
-
-	return cmd
-}
-
 // settingRows builds the {key, category, value} JSON rows for the given
 // definitions from a session snapshot, in registry order. Values are the native
 // typed values (never sanitized — JSON/jq is a structured contract). An empty
@@ -838,28 +489,14 @@ func settingRows(defs []settingDef, session transmission.SessionSettings) []sett
 	return rows
 }
 
-// writeSettingsPlaintext renders the settings in the appropriate plaintext mode:
-// an aligned CATEGORY KEY VALUE table with a header on a TTY, or plain
-// tab-separated, header-less rows when piped or when NO_COLOR is set. It mirrors
-// the list command's TTY/piped split (isTTY).
-func writeSettingsPlaintext(cmd *cobra.Command, defs []settingDef, session transmission.SessionSettings) {
-	out := cmd.OutOrStdout()
-
-	if isTTY(out) {
-		writeSettingsTable(out, defs, session)
-		return
-	}
-
-	writeSettingsPiped(out, defs, session)
-}
-
-// settingCell renders a setting's current value as plaintext, neutralizing
-// terminal control sequences for server-derived string settings (sanitize) so a
-// crafted download-dir cannot inject ANSI escapes. The JSON/jq paths never call
-// it.
-func settingCell(def settingDef, session transmission.SessionSettings) string {
-	v := formatSettingValue(def.accessor(session))
-	if serverDerivedSettings[def.key] {
+// settingValueCell renders a setting's value as plaintext, neutralizing terminal
+// control sequences for the server-derived string settings (sanitize) so a
+// crafted download-dir cannot inject ANSI escapes. It serves both the read path
+// (a value from a session snapshot) and the write path (a value just sent), which
+// differ only in where the value came from. The JSON/jq paths never call it.
+func settingValueCell(key string, value any) string {
+	v := formatSettingValue(value)
+	if serverDerivedSettings[key] {
 		v = output.SanitizeTerminal(v)
 	}
 
@@ -868,16 +505,16 @@ func settingCell(def settingDef, session transmission.SessionSettings) string {
 
 // writeSettingsPiped writes plain, tab-separated CATEGORY KEY VALUE rows with no
 // header — the stable scripting contract. An empty set writes nothing.
-func writeSettingsPiped(w io.Writer, defs []settingDef, session transmission.SessionSettings) {
-	for _, def := range defs {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", def.category, def.key, settingCell(def, session))
+func writeSettingsPiped(w io.Writer, rows []settingRow) {
+	for _, row := range rows {
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", row.Category, row.Key, settingValueCell(row.Key, row.Value))
 	}
 }
 
 // writeSettingsTable writes a whitespace-aligned CATEGORY KEY VALUE table with a
 // header row. An empty set writes a friendly "No settings." line.
-func writeSettingsTable(w io.Writer, defs []settingDef, session transmission.SessionSettings) {
-	if len(defs) == 0 {
+func writeSettingsTable(w io.Writer, rows []settingRow) {
+	if len(rows) == 0 {
 		_, _ = fmt.Fprintln(w, "No settings.")
 		return
 	}
@@ -885,8 +522,8 @@ func writeSettingsTable(w io.Writer, defs []settingDef, session transmission.Ses
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 
 	_, _ = fmt.Fprintln(tw, "CATEGORY\tKEY\tVALUE")
-	for _, def := range defs {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", def.category, def.key, settingCell(def, session))
+	for _, row := range rows {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", row.Category, row.Key, settingValueCell(row.Key, row.Value))
 	}
 
 	_ = tw.Flush()

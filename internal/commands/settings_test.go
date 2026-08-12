@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -203,107 +205,23 @@ func TestFilterSettingsPreservesRegistryOrder(t *testing.T) {
 	assert.Equal(t, want, keys)
 }
 
-func TestParseSettingValueBool(t *testing.T) {
+func TestValidateEnum(t *testing.T) {
 	t.Parallel()
 
-	def, _ := lookupSetting("dht-enabled")
+	def, ok := lookupSetting("encryption")
+	require.True(t, ok)
 
-	for _, in := range []string{"true", "TRUE", " True "} {
-		v, err := def.parseSettingValue(in)
-		require.NoError(t, err, in)
-		assert.Equal(t, true, v)
-	}
-	for _, in := range []string{"false", "FALSE", "False"} {
-		v, err := def.parseSettingValue(in)
-		require.NoError(t, err, in)
-		assert.Equal(t, false, v)
-	}
-
-	_, err := def.parseSettingValue("yes")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be true or false")
-}
-
-func TestParseSettingValueInt(t *testing.T) {
-	t.Parallel()
-
-	def, _ := lookupSetting("peer-port")
-
-	v, err := def.parseSettingValue(" 31129 ")
+	v, err := def.validateEnum("REQUIRED")
 	require.NoError(t, err)
-	assert.Equal(t, 31129, v)
+	assert.Equal(t, "required", v, "an enum normalizes to its lowercase allowed value")
 
-	_, err = def.parseSettingValue("notanumber")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be an integer")
-
-	// A float is not a valid int.
-	_, err = def.parseSettingValue("1.5")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be an integer")
-}
-
-func TestParseSettingValueInt64(t *testing.T) {
-	t.Parallel()
-
-	def, _ := lookupSetting("speed-limit-down")
-
-	v, err := def.parseSettingValue("100")
+	v, err = def.validateEnum(" preferred ")
 	require.NoError(t, err)
-	assert.Equal(t, int64(100), v)
+	assert.Equal(t, "preferred", v, "surrounding whitespace is trimmed")
 
-	_, err = def.parseSettingValue("fast")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be an integer")
-}
-
-func TestParseSettingValueFloat(t *testing.T) {
-	t.Parallel()
-
-	def, _ := lookupSetting("seed-ratio-limit")
-
-	v, err := def.parseSettingValue("2.5")
-	require.NoError(t, err)
-	assert.InEpsilon(t, 2.5, v, 1e-9)
-
-	// Integers parse as float.
-	v, err = def.parseSettingValue("3")
-	require.NoError(t, err)
-	assert.InEpsilon(t, 3.0, v, 1e-9)
-
-	_, err = def.parseSettingValue("two")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be a number")
-}
-
-func TestParseSettingValueEnum(t *testing.T) {
-	t.Parallel()
-
-	def, _ := lookupSetting("encryption")
-
-	v, err := def.parseSettingValue("REQUIRED")
-	require.NoError(t, err)
-	assert.Equal(t, "required", v, "enum normalizes to the lowercase allowed value")
-
-	v, err = def.parseSettingValue(" preferred ")
-	require.NoError(t, err)
-	assert.Equal(t, "preferred", v)
-
-	_, err = def.parseSettingValue("tolerated")
+	_, err = def.validateEnum("tolerated")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must be one of: allowed, preferred, required")
-}
-
-func TestParseSettingValueString(t *testing.T) {
-	t.Parallel()
-
-	def, _ := lookupSetting("download-dir")
-
-	// Strings are returned verbatim (no trimming) so paths with surrounding
-	// significance survive.
-	v, err := def.parseSettingValue("/data/Downloads ")
-	require.NoError(t, err)
-	assert.Equal(t, "/data/Downloads ", v)
 }
 
 func TestFormatSettingValue(t *testing.T) {
@@ -346,4 +264,67 @@ func TestAccessorsReadSnapshot(t *testing.T) {
 		require.True(t, ok, key)
 		assert.Equal(t, want, def.accessor(snap), key)
 	}
+}
+
+func TestWriteSettingsTableAligned(t *testing.T) {
+	t.Parallel()
+
+	rows := []settingRow{{Key: "peer-port", Category: "network", Value: 51413}}
+
+	var buf bytes.Buffer
+	writeSettingsTable(&buf, rows)
+
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 2, "header row plus one row per setting")
+
+	// Header row is present and ordered CATEGORY KEY VALUE.
+	assert.True(t, strings.HasPrefix(lines[0], "CATEGORY"))
+	assert.Contains(t, lines[0], "KEY")
+	assert.Contains(t, lines[0], "VALUE")
+
+	// Columns are whitespace-aligned: each column header's start index matches the
+	// start of the corresponding cell on the data row.
+	catIdx := strings.Index(lines[0], "CATEGORY")
+	keyIdx := strings.Index(lines[0], "KEY")
+	valIdx := strings.Index(lines[0], "VALUE")
+	assert.Equal(t, "network", lines[1][catIdx:catIdx+len("network")], "CATEGORY cell aligns under its header")
+	assert.Equal(t, "peer-port", lines[1][keyIdx:keyIdx+len("peer-port")], "KEY cell aligns under its header")
+	assert.Equal(t, "51413", lines[1][valIdx:valIdx+len("51413")], "VALUE cell aligns under its header")
+}
+
+func TestWriteSettingsTableEmpty(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	writeSettingsTable(&buf, nil)
+
+	assert.Equal(t, "No settings.", strings.TrimSpace(buf.String()))
+}
+
+func TestWriteSettingsTableSanitizesControlChars(t *testing.T) {
+	t.Parallel()
+
+	rows := []settingRow{{Key: "download-dir", Category: "download", Value: "\x1b[2Jmalicious"}}
+
+	var buf bytes.Buffer
+	writeSettingsTable(&buf, rows)
+
+	out := buf.String()
+	assert.NotContains(t, out, "\x1b", "raw ESC from a server-derived value must not reach the table output")
+	assert.Contains(t, out, "[2Jmalicious", "visible text survives sanitization")
+}
+
+func TestWriteSettingsPipedTabSeparated(t *testing.T) {
+	t.Parallel()
+
+	rows := []settingRow{
+		{Key: "download-dir", Category: "download", Value: "/data"},
+		{Key: "peer-port", Category: "network", Value: 51413},
+	}
+
+	var buf bytes.Buffer
+	writeSettingsPiped(&buf, rows)
+
+	assert.Equal(t, "download\tdownload-dir\t/data\nnetwork\tpeer-port\t51413\n", buf.String())
 }

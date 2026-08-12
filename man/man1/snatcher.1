@@ -160,12 +160,71 @@ Accepts
 .BR \-\-config .
 .TP
 .B snatcher server show \fR[\fIalias\fR] \fR[\fIoptions\fR]
-Show a server's name, URL, username, resolved config path, whether a keyring
-secret exists, and whether it is the default. Shows the named server
+Show everything about a server: its local connection settings (name, URL,
+username, resolved config path, whether a keyring secret exists, whether it is
+the default), its live identity (version, RPC semver, negotiated protocol), and
+every session setting. Shows the named server
 .IR alias ,
 or the configured default when the alias is omitted. The secret value itself is
-never revealed. Accepts
-.BR \-\-config " and " \-\-json .
+never revealed.
+.IP
+Identity and settings are two projections of one
+.B session\-get
+response, so the whole view costs a single round-trip. A first run with no
+servers configured reports the empty connection block rather than an error, and
+never dials.
+.IP
+Plaintext is an aligned
+.RI Label : " value"
+connection block, a blank line, then the settings as a
+.BR CATEGORY " " KEY " " VALUE
+table (the same terminal/piped contract as
+.BR list ).
+When piped or when
+.B NO_COLOR
+is set, the connection block becomes header-less
+.RI key <TAB> value
+lines using kebab-case keys, followed directly by the tab-separated settings
+rows. Speed limits
+.RB ( speed\-limit\-down ", " speed\-limit\-up ", " alt\-speed\-down ", " alt\-speed\-up )
+are in KB/s; the alt-speed schedule times
+.RB ( alt\-speed\-time\-begin ", " alt\-speed\-time\-end )
+are minutes after midnight (e.g.\& 540 is 09:00). Use
+.B \-\-jq
+to read a single value in a script, e.g.\&
+.BR "port=$(snatcher server show --jq '.settings[]|select(.key==\(dqpeer-port\(dq).value')" .
+Besides
+.BR \-\-config ", " \-\-json ", and " \-\-jq ,
+it accepts:
+.RS
+.TP
+.B \-\-local
+Show only the local connection settings, without contacting the server. Cannot
+be combined with
+.BR \-\-category ", " \-\-search ", or " \-\-fields .
+.TP
+.BR \-\-category " " \fIname\fR
+Show only settings in one category. One of
+.BR download ", " network ", " bandwidth ", " queue .
+Applies to every output mode.
+.TP
+.BR \-\-search " " \fItext\fR
+Show only settings whose key contains
+.I text
+(case-insensitive). Applies to every output mode.
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated keys to show, naming connection fields
+.RB ( name ", " server\-url ", " username ", " config\-path ", " secret\-stored ", "
+.BR is\-default ", " version ", " rpc\-version\-semver ", " protocol ),
+setting keys, or both. It selects without reordering \(em each section keeps
+its canonical order \(em has no effect on
+.B \-\-json
+(always the full object) or
+.B \-\-jq
+(which selects fields itself), and cannot be combined with
+.BR \-\-category " or " \-\-search .
+.RE
 .TP
 .B snatcher server ping \fR[\fIalias\fR] \fR[\fIoptions\fR]
 Dial a server and perform a real round-trip, reporting the connection status,
@@ -189,47 +248,9 @@ Show session statistics: torrent counts, current download and upload speeds,
 and cumulative and current-session transfer totals. Accepts the common options
 only.
 .TP
-.B snatcher server settings \fR[\fIoptions\fR]
-Manage server (session) settings. With no subcommand, list every session
-setting as a
-.BR CATEGORY " " KEY " " VALUE
-table (the same terminal/piped contract as
-.BR list ),
-filterable by category and key. The
-.B settings
-command has three subcommands:
-.BR get ", " set ", and " reset .
-Speed limits
-.RB ( speed\-limit\-down ", " speed\-limit\-up ", " alt\-speed\-down ", " alt\-speed\-up )
-are in KB/s; the alt-speed schedule times
-.RB ( alt\-speed\-time\-begin ", " alt\-speed\-time\-end )
-are minutes after midnight (e.g.\& 540 is 09:00). Besides the common options,
-the bare command accepts:
-.RS
-.TP
-.BR \-\-category " " \fIname\fR
-Show only settings in one category. One of
-.BR download ", " network ", " bandwidth ", " queue .
-.TP
-.BR \-\-search " " \fItext\fR
-Show only settings whose key contains
-.I text
-(case-insensitive).
-.RE
-.TP
-.B snatcher server settings get \fIkey\fR
-Print a single setting's current value. Plaintext emits the bare value so it
-composes in scripts (e.g.\&
-.BR "port=$(snatcher server settings get peer-port)" );
-.B \-\-json
-emits a single
-.RB { key ", " category ", " value }
-object. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
-.TP
-.B snatcher server settings set \fR[\fIoptions\fR]
-Set one or more settings, each given as a typed flag whose name is the setting
-key (e.g.\&
+.B snatcher server update \fR[\fIoptions\fR]
+Change one or more server (session) settings, each given as a typed flag whose
+name is the setting key (e.g.\&
 .BR \-\-peer\-port " " 51413 " " \-\-dht\-enabled = false ).
 Only the flags you pass are written, so unspecified settings are left
 unchanged; at least one setting flag is required (a bare invocation is an error,
@@ -240,10 +261,18 @@ and disabled with
 Enum flags are validated before any network call, so an invalid value aborts
 with no partial change. After writing, the values you set are echoed back \(em
 this is what was written, not a re-read, so server-side normalization (e.g.\&
-clamping an out-of-range port) is not reflected. The read-only
+clamping an out-of-range port) is not reflected. Speed limits
+.RB ( speed\-limit\-down ", " speed\-limit\-up ", " alt\-speed\-down ", " alt\-speed\-up )
+are in KB/s; the alt-speed schedule times
+.RB ( alt\-speed\-time\-begin ", " alt\-speed\-time\-end )
+are minutes after midnight (e.g.\& 540 is 09:00). Read the settings back with
+.BR "snatcher server show" ,
+and restore defaults with
+.BR "snatcher server reset" .
+The read-only
 .B blocklist\-size
 has no flag. Besides the common
-.BR \-\-config ", " \-\-json ", and " \-\-jq
+.BR \-\-config ", " \-\-server ", " \-\-json ", and " \-\-jq
 options, one flag exists per settable setting. Download:
 .RS
 .TP
@@ -380,9 +409,18 @@ Ignore stalled torrents when counting the queue.
 Idle minutes before a transfer counts as stalled.
 .RE
 .TP
-.B snatcher server settings reset \fIkey\fR
-Restore a single setting to its Transmission default. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.B snatcher server reset \fIkey\fR...
+Restore one or more settings to their Transmission defaults. Every key is
+validated before anything is sent, so an unknown or read-only key (the only
+read-only setting is
+.BR blocklist\-size )
+aborts the whole batch with no partial change; passing no key is an error, not
+a no-op. Every default travels in one write, after which the settings are
+re-read and the server's confirmed values are reported \(em the same output
+shape as
+.BR "snatcher server update" ,
+in registry order regardless of the order the keys were named. Accepts
+.BR \-\-config ", " \-\-server ", " \-\-json ", and " \-\-jq .
 .TP
 .B snatcher server port \fR[\fIoptions\fR]
 View, change, and test the BitTorrent peer/listening port \(em a discoverable
@@ -917,17 +955,24 @@ $ snatcher server stats
 .EE
 .SS "Inspect and change settings"
 .EX
-# list the bandwidth settings
-$ snatcher server settings \-\-category bandwidth
+# show the connection, the server version, and every setting
+$ snatcher server show
 
-# read one value (bare value, script-friendly)
-$ snatcher server settings get peer\-port
+# show only the bandwidth settings
+$ snatcher server show \-\-category bandwidth
+
+# show the connection settings without contacting the server
+$ snatcher server show \-\-local
+
+# read one value (script-friendly)
+$ port=$(snatcher server show \-\-jq \(rs
+    '.settings[]|select(.key=="peer\-port").value')
 
 # set the download speed limit to 500 KB/s and enable it
-$ snatcher server settings set \-\-speed\-limit\-down 500 \-\-speed\-limit\-down\-enabled
+$ snatcher server update \-\-speed\-limit\-down 500 \-\-speed\-limit\-down\-enabled
 
-# restore a setting to its default
-$ snatcher server settings reset peer\-port
+# restore settings to their defaults
+$ snatcher server reset peer\-port encryption
 .EE
 .SS "Raw RPC calls"
 .EX

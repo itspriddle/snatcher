@@ -152,22 +152,29 @@ func TestServerNoDefaultErrors(t *testing.T) {
 }
 
 // TestServerFlagOnlyOnDialingCommands guards the FR-8 invariant: --server is
-// registered on dialing commands but never on the named-server registry
-// subcommands (which select a server by positional [alias] instead).
+// registered on commands that select a server by flag, but never on those that
+// take a positional [alias] instead — the local-config registry subcommands plus
+// ping and show, which dial the alias they are given.
 func TestServerFlagOnlyOnDialingCommands(t *testing.T) {
-	// The registry subcommands manage local config; ping takes a positional
-	// [alias]. None of them carry --server.
-	registry := map[string]bool{
-		"add": true, "list": true, "default": true,
-		"show": true, "ping": true, "remove": true,
+	byAlias := map[string]bool{
+		"add": true, "list": true, "default": true, "remove": true,
+		"ping": true, "show": true,
 	}
+	// "port" is omitted: it is a group parent that dials nothing itself, so
+	// --server lives on its get/set/test children.
+	dialing := map[string]bool{
+		"update": true, "reset": true, "stats": true, "free-space": true,
+	}
+
 	for _, c := range NewServerCmd().Commands() {
-		if registry[c.Name()] {
-			assert.Nilf(t, c.Flags().Lookup("server"), "server %s must not have --server", c.Name())
+		switch {
+		case byAlias[c.Name()]:
+			assert.Nilf(t, c.Flags().Lookup("server"), "server %s selects by positional alias and must not have --server", c.Name())
+		case dialing[c.Name()]:
+			assert.NotNilf(t, c.Flags().Lookup("server"), "server %s dials and must have --server", c.Name())
 		}
 	}
 
-	// Spot-check representative dialing commands carry --server.
-	assert.NotNil(t, NewStatsCmd().Flags().Lookup("server"), "stats must have --server")
+	// Spot-check a representative dialing command outside the server group.
 	assert.NotNil(t, NewListCmd().Flags().Lookup("server"), "list must have --server")
 }

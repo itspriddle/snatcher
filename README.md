@@ -68,9 +68,11 @@ snatcher torrent list
 
 | Command | Description |
 | --- | --- |
-| `server add\|list\|default\|show\|ping\|remove` | Register, list, and verify named servers |
+| `server add\|list\|default\|ping\|remove` | Register, list, and verify named servers |
+| `server show` `[alias]` | Connection settings, server version, and every session setting |
+| `server update` | Change session settings, one typed flag per setting |
+| `server reset <key>...` | Restore settings to their Transmission defaults |
 | `server stats` | Session statistics: counts, speeds, transfer totals |
-| `server settings [get\|set\|reset]` | View and change server (session) settings |
 | `server port get\|set\|test` | View, change, or test the peer/listening port |
 | `torrent add` | Add torrents from files, URLs, or magnet links |
 | `torrent list` (`ls`) | List torrents, with filter/search/sort/columns |
@@ -142,11 +144,17 @@ snatcher torrent stop --all
 snatcher torrent add ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \
     --label linux --start
 
-# Read one setting (bare value, script-friendly)
-snatcher server settings get peer-port
+# Show the connection, server version, and every session setting
+snatcher server show
+
+# Read one setting (script-friendly)
+snatcher server show --jq '.settings[]|select(.key=="peer-port").value'
 
 # Set the download speed limit to 500 KB/s and enable it
-snatcher server settings set speed-limit-down 500 speed-limit-down-enabled true
+snatcher server update --speed-limit-down 500 --speed-limit-down-enabled
+
+# Restore settings to their defaults
+snatcher server reset peer-port encryption
 
 # Raw RPC: read the whole session, pick one field with jq
 snatcher api session-get --jq '.arguments.version'

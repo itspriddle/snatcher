@@ -75,7 +75,9 @@ Use "snatcher [command] --help" for more information about a command.
 - [x] `snatcher torrent set` -> `snatcher torrent update` 
 - [x] `snatcher torrent upload` -> `snatcher torrent add`
 - [x] `snatcher torrent info` -> `snatcher torrent show` 
-- [ ] `snatcher server settings set` -> `snatcher server settings update` 
+- [x] `snatcher server settings set` -> `snatcher server update`
+- [x] `snatcher server settings reset <key>` -> `snatcher server reset <key>...`
+- [x] `snatcher server settings` + `settings get` -> merged into `snatcher server show`
 
 ### Helpers?
 
