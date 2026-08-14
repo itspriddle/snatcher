@@ -13,14 +13,13 @@ import (
 // (and, on a new-enough server, total) space is available on a download path.
 // With no positional path it queries the server's default download directory.
 // Plaintext is an aligned "Label: value" block; --json emits the FreeSpace
-// contract and --jq filters that same structure. It carries its own local
-// --config flag and dials the backend through the shared dial seam.
+// contract and --jq filters that same structure. It dials the backend through
+// the shared dial seam.
 func NewFreeSpaceCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
+		server string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -35,7 +34,7 @@ func NewFreeSpaceCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -74,7 +73,6 @@ func NewFreeSpaceCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

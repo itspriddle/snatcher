@@ -19,6 +19,7 @@ func runMove(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewMoveCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

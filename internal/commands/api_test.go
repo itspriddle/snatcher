@@ -40,6 +40,7 @@ func runAPIStdin(t *testing.T, stdin string, args ...string) (string, string, er
 	t.Helper()
 
 	cmd := NewAPICmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

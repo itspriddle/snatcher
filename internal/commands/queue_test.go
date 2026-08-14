@@ -18,6 +18,7 @@ func runQueue(t *testing.T, verb string, args ...string) (string, string, error)
 	t.Helper()
 
 	cmd := NewQueueCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

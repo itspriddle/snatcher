@@ -70,7 +70,6 @@ func secretAbsent(err error) bool {
 // same store without re-passing the flag.
 func newServerAddCmd() *cobra.Command {
 	var (
-		configPath    string
 		name          string
 		serverURL     string
 		username      string
@@ -105,6 +104,8 @@ func newServerAddCmd() *cobra.Command {
 				return err
 			}
 
+			configPath := configFlag(cmd)
+
 			cfg, _, err := loadConfig(configPath)
 			if err != nil {
 				return err
@@ -136,7 +137,6 @@ func newServerAddCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().StringVar(&name, "name", "", "server alias (default: the URL host)")
 	cmd.Flags().StringVar(&serverURL, "url", "", "Transmission RPC URL (e.g. http://host:9091/transmission/rpc)")
 	cmd.Flags().StringVar(&username, "username", "", "username for HTTP Basic Auth")
@@ -338,9 +338,8 @@ type serverListResult struct {
 // Servers are listed sorted by alias.
 func newServerListCmd() *cobra.Command {
 	var (
-		configPath string
-		asJSON     bool
-		jqExpr     string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -351,7 +350,7 @@ func newServerListCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _, err := loadConfig(configPath)
+			cfg, _, err := loadConfig(configFlag(cmd))
 			if err != nil {
 				return err
 			}
@@ -375,7 +374,6 @@ func newServerListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
@@ -473,8 +471,6 @@ func writeServerListTable(w io.Writer, rows [][]string) {
 // default server to an existing alias and persists it. An unknown alias errors
 // clearly, listing the valid names.
 func newServerDefaultCmd() *cobra.Command {
-	var configPath string
-
 	cmd := &cobra.Command{
 		Use:           "default <alias>",
 		Short:         "Set the default server",
@@ -483,6 +479,7 @@ func newServerDefaultCmd() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			alias := args[0]
+			configPath := configFlag(cmd)
 
 			cfg, _, err := loadConfig(configPath)
 			if err != nil {
@@ -506,8 +503,6 @@ func newServerDefaultCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
-
 	return cmd
 }
 
@@ -526,10 +521,7 @@ type serverPingResult struct {
 // the configured default when the alias is omitted. It exits non-zero on
 // failure.
 func newServerPingCmd() *cobra.Command {
-	var (
-		configPath string
-		asJSON     bool
-	)
+	var asJSON bool
 
 	cmd := &cobra.Command{
 		Use:           "ping [alias]",
@@ -538,7 +530,7 @@ func newServerPingCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, serverURL, err := dial(cmd, configPath, firstArg(args))
+			backend, serverURL, err := dial(cmd, firstArg(args))
 			if err != nil {
 				return err
 			}
@@ -570,7 +562,6 @@ func newServerPingCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 
 	return cmd
@@ -586,8 +577,6 @@ func newServerPingCmd() *cobra.Command {
 // SNATCHER_SECRET_STORE selects for this invocation: removal is cleanup, and the
 // only store worth cleaning is the one holding the password.
 func newServerRemoveCmd() *cobra.Command {
-	var configPath string
-
 	cmd := &cobra.Command{
 		Use:           "remove [alias]",
 		Aliases:       []string{"rm"},
@@ -597,6 +586,7 @@ func newServerRemoveCmd() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			alias := firstArg(args)
+			configPath := configFlag(cmd)
 
 			cfg, configured, err := loadConfig(configPath)
 			if err != nil {
@@ -652,8 +642,6 @@ func newServerRemoveCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
-
 	return cmd
 }
 
@@ -668,19 +656,20 @@ func firstArg(args []string) string {
 	return ""
 }
 
-// dial loads config (honoring configPath), resolves which named server to use,
-// reads that server's password from the store the server resolves to, and
-// constructs the concrete *transmission.Client. It returns the client and the
-// resolved server URL. It is the single seam where commands construct the
-// client. cmd supplies the stderr stream for the unavailable-store warning.
+// dial loads config (honoring the persistent --config flag cmd carries),
+// resolves which named server to use, reads that server's password from the
+// store the server resolves to, and constructs the concrete
+// *transmission.Client. It returns the client and the resolved server URL. It is
+// the single seam where commands construct the client. cmd also supplies the
+// stderr stream for the unavailable-store warning.
 //
 // Server selection precedence is: the server argument (the --server flag) >
 // the SNATCHER_SERVER environment variable > the configured default server.
 // Password precedence is SNATCHER_PASSWORD > the resolved store (see
 // serverPassword). Store selection precedence is SNATCHER_SECRET_STORE > the
 // server's secret_store > the keyring (see resolveStoreMode).
-func dial(cmd *cobra.Command, configPath, server string) (*transmission.Client, string, error) {
-	cfg, configured, err := loadConfig(configPath)
+func dial(cmd *cobra.Command, server string) (*transmission.Client, string, error) {
+	cfg, configured, err := loadConfig(configFlag(cmd))
 	if err != nil {
 		return nil, "", err
 	}

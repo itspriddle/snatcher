@@ -17,8 +17,8 @@ import (
 // by positional id/hash arguments (or --all) and confirms by naming the affected
 // torrents. It is the first destructive mutation command, so it adds a
 // confirmation gate: a removal requires an explicit --yes/-y. With --delete-data
-// the downloaded local files are deleted too. It carries the same --config,
-// --json, --jq, and --all flags as the other mutation commands. Render precedence
+// the downloaded local files are deleted too. It carries the same --json, --jq,
+// and --all flags as the other mutation commands. Render precedence
 // mirrors list: --jq → --json → plaintext.
 //
 // Unlike stop, remove lists the torrents *before* removing them so their names
@@ -31,7 +31,6 @@ import (
 // removals must pass --yes deliberately.
 func NewRemoveCmd() *cobra.Command {
 	var (
-		configPath string
 		server     string
 		asJSON     bool
 		jqExpr     string
@@ -57,7 +56,7 @@ func NewRemoveCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -96,7 +95,6 @@ func NewRemoveCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

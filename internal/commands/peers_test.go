@@ -103,6 +103,7 @@ func runPeers(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewPeersCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

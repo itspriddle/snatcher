@@ -19,17 +19,16 @@ import (
 //
 // Only the fields whose flags were explicitly set are written (detected via
 // cmd.Flags().Changed), so unspecified fields are never clobbered. With no field
-// flag the command is an error rather than a no-op. It carries the same --config,
-// --json, --jq, and --all flags as the other mutation commands. Render precedence
+// flag the command is an error rather than a no-op. It carries the same --json,
+// --jq, and --all flags as the other mutation commands. Render precedence
 // mirrors list: --jq → --json → plaintext.
 func NewUpdateCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-		all        bool
-		flags      updateFlags
+		server string
+		asJSON bool
+		jqExpr string
+		all    bool
+		flags  updateFlags
 	)
 
 	cmd := &cobra.Command{
@@ -58,7 +57,7 @@ func NewUpdateCmd() *cobra.Command {
 				return fmt.Errorf("nothing to update: provide at least one field flag")
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -83,7 +82,6 @@ func NewUpdateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

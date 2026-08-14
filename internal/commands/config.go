@@ -546,9 +546,8 @@ func NewConfigCmd() *cobra.Command {
 // source} shape, sorted by key.
 func newConfigListCmd() *cobra.Command {
 	var (
-		configPath string
-		asJSON     bool
-		jqExpr     string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -562,7 +561,7 @@ func newConfigListCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _, err := loadConfig(configPath)
+			cfg, _, err := loadConfig(configFlag(cmd))
 			if err != nil {
 				return err
 			}
@@ -586,7 +585,6 @@ func newConfigListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
@@ -600,9 +598,8 @@ func newConfigListCmd() *cobra.Command {
 // "config list" uses.
 func newConfigGetCmd() *cobra.Command {
 	var (
-		configPath string
-		asJSON     bool
-		jqExpr     string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -621,7 +618,7 @@ func newConfigGetCmd() *cobra.Command {
 				return err
 			}
 
-			cfg, _, err := loadConfig(configPath)
+			cfg, _, err := loadConfig(configFlag(cmd))
 			if err != nil {
 				return err
 			}
@@ -647,7 +644,6 @@ func newConfigGetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
@@ -663,9 +659,8 @@ func newConfigGetCmd() *cobra.Command {
 // the file survives the write, including keys snatcher does not recognize.
 func newConfigSetCmd() *cobra.Command {
 	var (
-		configPath string
-		asJSON     bool
-		jqExpr     string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -692,7 +687,7 @@ func newConfigSetCmd() *cobra.Command {
 				return err
 			}
 
-			entry, err := writeClientKey(def, configPath, value)
+			entry, err := writeClientKey(def, configFlag(cmd), value)
 			if err != nil {
 				return err
 			}
@@ -702,7 +697,6 @@ func newConfigSetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 
@@ -717,9 +711,8 @@ func newConfigSetCmd() *cobra.Command {
 // already true, so re-running it is safe in a script.
 func newConfigUnsetCmd() *cobra.Command {
 	var (
-		configPath string
-		asJSON     bool
-		jqExpr     string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -740,7 +733,7 @@ func newConfigUnsetCmd() *cobra.Command {
 			}
 
 			// A nil value clears the key; see writeClientKey.
-			entry, err := writeClientKey(def, configPath, nil)
+			entry, err := writeClientKey(def, configFlag(cmd), nil)
 			if err != nil {
 				return err
 			}
@@ -750,7 +743,6 @@ func newConfigUnsetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 

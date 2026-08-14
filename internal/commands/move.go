@@ -18,16 +18,15 @@ import (
 // (move=false), e.g. after a manual move on disk.
 //
 // Unlike the bulk mutation commands, move targets exactly one torrent and takes
-// no --all selector. It carries the same --config, --json, and --jq flags. Render
+// no --all selector. It carries the same --json and --jq flags. Render
 // precedence mirrors list: --jq → --json → plaintext. The "mv" alias is provided
 // for muscle memory.
 func NewMoveCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-		inPlace    bool
+		server  string
+		asJSON  bool
+		jqExpr  string
+		inPlace bool
 	)
 
 	cmd := &cobra.Command{
@@ -53,7 +52,7 @@ func NewMoveCmd() *cobra.Command {
 				return fmt.Errorf("location must not be empty")
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -93,7 +92,6 @@ func NewMoveCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

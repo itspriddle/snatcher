@@ -131,12 +131,11 @@ func promote(registry map[string]column[transmission.Torrent]) map[string]column
 // exactly one field, the bare value alone. --fields selects and orders the
 // plaintext lines (defaulting to detailFieldKeys — every field but the opt-in
 // magnet_link); it has no effect on
-// --json (always the full object) or --jq (which selects fields itself). It
-// carries its own local --config flag, like list and stats. The "info" alias is
-// provided for muscle memory; it is a pure cobra alias and changes no output.
+// --json (always the full object) or --jq (which selects fields itself). The
+// "info" alias is provided for muscle memory; it is a pure cobra alias and
+// changes no output.
 func NewShowCmd() *cobra.Command {
 	var (
-		configPath string
 		server     string
 		asJSON     bool
 		jqExpr     string
@@ -161,7 +160,7 @@ func NewShowCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -185,7 +184,6 @@ func NewShowCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

@@ -10,17 +10,16 @@ import (
 
 // NewStartCmd builds the "start" command, which resumes the torrents selected by
 // positional id/hash arguments (or --all) and confirms by naming the affected
-// torrents. It mirrors stop, carrying the same --config, --json, --jq, and --all
-// flags plus a --now flag that bypasses the queue (torrent-start-now). Render
+// torrents. It mirrors stop, carrying the same --json, --jq, and --all flags
+// plus a --now flag that bypasses the queue (torrent-start-now). Render
 // precedence mirrors list: --jq → --json → plaintext.
 func NewStartCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-		all        bool
-		now        bool
+		server string
+		asJSON bool
+		jqExpr string
+		all    bool
+		now    bool
 	)
 
 	cmd := &cobra.Command{
@@ -38,7 +37,7 @@ func NewStartCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -63,7 +62,6 @@ func NewStartCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

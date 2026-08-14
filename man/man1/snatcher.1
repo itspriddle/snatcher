@@ -39,6 +39,22 @@ labels, errors, and paths are untrusted); JSON and jq output is never
 sanitized, since it is a structured contract the consumer handles.
 .SH OPTIONS
 .SS Global options
+These are declared once, on
+.B snatcher
+itself, and are accepted by every command at every depth \(em
+.B snatcher \-\-config
+.I path
+.B torrent list
+and
+.B snatcher torrent list \-\-config
+.I path
+are the same invocation.
+.TP
+.BR \-\-config " " \fIpath\fR
+Read configuration from
+.I path
+instead of the default location (see
+.BR FILES ).
 .TP
 .B \-\-version
 Print version information and exit. Valid on
@@ -59,33 +75,23 @@ subcommands. They do not all apply everywhere: the named-server registry
 subcommands
 .RB ( server\ add ", " server\ list ", " server\ default ", " server\ show ", " server\ ping ", " server\ remove )
 read or write local config and pick a server by positional alias, so they take
-.B \-\-config
-(and
 .BR \-\-json / \-\-jq
-where they emit data) but never
+where they emit data but never
 .BR \-\-server .
 The
 .B config
 subcommands never contact a server at all, so they take
-.BR \-\-config ", " \-\-json ", and " \-\-jq
+.BR \-\-json " and " \-\-jq
 but never
 .BR \-\-server .
 The
 .B api
-command also accepts
-.B \-\-config
-and
+command accepts
 .B \-\-jq
 but uses
 .B \-\-raw
 in place of
 .BR \-\-json .
-.TP
-.BR \-\-config " " \fIpath\fR
-Read configuration from
-.I path
-instead of the default location (see
-.BR FILES ).
 .TP
 .BR \-\-server " " \fIalias\fR
 Target the configured server named
@@ -189,7 +195,7 @@ when
 is set (the same contract as
 .BR list ).
 Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher server default \fIalias\fR \fR[\fIoptions\fR]
 Set the default server to the existing alias
@@ -199,8 +205,7 @@ The default is used by every command that connects to a server when
 and
 .B SNATCHER_SERVER
 are not given. An unknown alias is rejected, listing the configured names.
-Accepts
-.BR \-\-config .
+It takes no options of its own.
 .TP
 .B snatcher server show \fR[\fIalias\fR] \fR[\fIoptions\fR]
 Show everything about a server: its local connection settings (name, URL,
@@ -239,7 +244,7 @@ are minutes after midnight (e.g.\& 540 is 09:00). Use
 to read a single value in a script, e.g.\&
 .BR "port=$(snatcher server show --jq '.settings[]|select(.key==\(dqpeer-port\(dq).value')" .
 Besides
-.BR \-\-config ", " \-\-json ", and " \-\-jq ,
+.BR \-\-json " and " \-\-jq ,
 it accepts:
 .RS
 .TP
@@ -277,7 +282,7 @@ server version, negotiated protocol, and RPC semver. Pings the named server
 .IR alias ,
 or the configured default when the alias is omitted. Exits non-zero on failure.
 Accepts
-.BR \-\-config " and " \-\-json .
+.B \-\-json .
 .TP
 .B snatcher server remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
 Remove a configured server: delete its stored secret, drop its entry from the
@@ -291,8 +296,8 @@ not the one
 selects for this invocation, so an exported override cannot leave a password
 behind in a store nothing points at any more. When the removed server was
 the default, the default is repointed to the sole remaining server if exactly
-one remains, otherwise it is cleared. An unknown alias is rejected. Accepts
-.BR \-\-config .
+one remains, otherwise it is cleared. An unknown alias is rejected. It takes no
+options of its own.
 .TP
 .B snatcher server stats \fR[\fIoptions\fR]
 Show session statistics: torrent counts, current download and upload speeds,
@@ -323,7 +328,7 @@ and restore defaults with
 The read-only
 .B blocklist\-size
 has no flag. Besides the common
-.BR \-\-config ", " \-\-server ", " \-\-json ", and " \-\-jq
+.BR \-\-server ", " \-\-json ", and " \-\-jq
 options, one flag exists per settable setting. Download:
 .RS
 .TP
@@ -471,7 +476,7 @@ re-read and the server's confirmed values are reported \(em the same output
 shape as
 .BR "snatcher server update" ,
 in registry order regardless of the order the keys were named. Accepts
-.BR \-\-config ", " \-\-server ", " \-\-json ", and " \-\-jq .
+.BR \-\-server ", " \-\-json ", and " \-\-jq .
 .TP
 .B snatcher server port \fR[\fIoptions\fR]
 View, change, and test the BitTorrent peer/listening port \(em a discoverable
@@ -486,7 +491,7 @@ block;
 emits a stable
 .RB { port ", " random_on_start ", " forwarding_enabled }
 object. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher server port set \fR[\fIport\fR] [\fIoptions\fR]
 Set the peer port and/or related flags, then re-read the session and report the
@@ -517,7 +522,7 @@ Enable or disable port forwarding (UPnP/NAT-PMP).
 With neither a
 .I port
 nor any flag, it returns a "nothing to set" error. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher server port test \fR[\fIoptions\fR]
 Test whether the currently configured peer port is reachable from outside (it
@@ -537,7 +542,7 @@ is reported only by Transmission's JSON-RPC 2.0 scheme and omitted otherwise).
 Exits 0 when the port is open and non-zero when it is closed, while still
 writing the structured result to stdout; a connection or authentication failure
 is a distinct non-zero exit that renders no result. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher server free-space \fR[\fIpath\fR] [\fIoptions\fR]
 Show the free space on a download path. With no
@@ -552,7 +557,7 @@ object. The
 .B total_bytes
 total capacity is reported only by Transmission 4.1+ and omitted otherwise (both
 in the object and the plaintext block). Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .SS "torrent"
 Manage individual torrents. All torrent operations live under the
 .B torrent
@@ -1108,7 +1113,7 @@ tab-separated, header-less rows when piped or when
 is set (the same contract as
 .BR list ).
 Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher config get \fIkey\fR \fR[\fIoptions\fR]
 Print the effective value of one setting. The plaintext output is the bare value
@@ -1127,7 +1132,7 @@ emits per row, with the value in its natural JSON type. An unknown key is an
 error listing the valid keys. A value in the config file that is not valid for
 its key is an error naming the key, the offending value, and what is accepted;
 it is never silently replaced by the default. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher config set \fIkey\fR \fIvalue\fR \fR[\fIoptions\fR]
 Store one setting in the config file. The value is parsed and checked before
@@ -1152,7 +1157,7 @@ and
 emit the same
 .IR key ", " value ", " source
 object the read commands emit. Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher config unset \fIkey\fR \fR[\fIoptions\fR]
 Remove one setting from the config file, so the key reverts to its default.
@@ -1160,7 +1165,7 @@ Unsetting a key that is not set succeeds and changes nothing, so it is safe to
 re-run. The reported value is the default the key falls back to, with source
 .BR default .
 Accepts
-.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.BR \-\-json " and " \-\-jq .
 .PP
 .B set
 and
@@ -1262,8 +1267,6 @@ exclusive with
 The
 .B api
 command also accepts
-.B \-\-config
-and
 .BR \-\-jq ;
 it has no
 .B \-\-json

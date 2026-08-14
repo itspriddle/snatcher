@@ -19,6 +19,7 @@ func runUpdate(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewUpdateCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

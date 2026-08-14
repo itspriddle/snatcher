@@ -10,18 +10,17 @@ import (
 
 // NewStopCmd builds the "stop" command, which pauses the torrents selected by
 // positional id/hash arguments (or --all) and confirms by naming the affected
-// torrents. It is the first mutation command and carries the same --config,
-// --json, and --jq flags as the read commands, plus an --all flag. Render
+// torrents. It is the first mutation command and carries the same --json and
+// --jq flags as the read commands, plus an --all flag. Render
 // precedence mirrors list: --jq → --json → plaintext. The "pause" alias is
 // provided for muscle memory; it does not change the reported action, which
 // stays "stop" on every output path.
 func NewStopCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-		all        bool
+		server string
+		asJSON bool
+		jqExpr string
+		all    bool
 	)
 
 	cmd := &cobra.Command{
@@ -40,7 +39,7 @@ func NewStopCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -63,7 +62,6 @@ func NewStopCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

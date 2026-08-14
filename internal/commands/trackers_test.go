@@ -113,6 +113,7 @@ func runTrackers(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewTrackersCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

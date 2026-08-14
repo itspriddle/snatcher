@@ -30,6 +30,10 @@ func NewRootCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&showVersion, "version", false, "Print version information and exit")
 
+	// The tree-wide flags are declared once, here, and inherited by every
+	// subcommand at every depth. See commands.AddGlobalFlags.
+	commands.AddGlobalFlags(cmd)
+
 	cmd.AddCommand(commands.NewAPICmd())
 	cmd.AddCommand(commands.NewConfigCmd())
 	cmd.AddCommand(commands.NewServerCmd())

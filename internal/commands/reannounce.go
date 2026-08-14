@@ -12,15 +12,14 @@ import (
 // selected by positional id/hash arguments (or --all) to re-announce to their
 // trackers immediately, rather than waiting for the next scheduled announce
 // interval, and confirms by naming the affected torrents. It mirrors stop's
-// mutation pattern and carries the same --config, --json, and --jq flags, plus
-// an --all flag. Render precedence mirrors list: --jq → --json → plaintext.
+// mutation pattern and carries the same --json and --jq flags, plus an --all
+// flag. Render precedence mirrors list: --jq → --json → plaintext.
 func NewReannounceCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-		all        bool
+		server string
+		asJSON bool
+		jqExpr string
+		all    bool
 	)
 
 	cmd := &cobra.Command{
@@ -39,7 +38,7 @@ func NewReannounceCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -62,7 +61,6 @@ func NewReannounceCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

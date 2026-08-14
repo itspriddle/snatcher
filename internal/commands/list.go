@@ -171,11 +171,9 @@ func parseFields[T any](registry map[string]column[T], defaults []string, spec s
 // NewListCmd builds the "list" command, which dials the backend, fetches all
 // torrents, and renders them as an aligned plaintext table on a TTY, as plain
 // tab-separated full-value rows when piped, as JSON (--json), or filtered through
-// jq (--jq). It carries its own local --config flag, like stats and the auth
-// subcommands.
+// jq (--jq).
 func NewListCmd() *cobra.Command {
 	var (
-		configPath string
 		server     string
 		asJSON     bool
 		jqExpr     string
@@ -209,7 +207,7 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -240,7 +238,6 @@ func NewListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

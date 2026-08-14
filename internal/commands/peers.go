@@ -63,7 +63,6 @@ var peerFieldKeys = []string{
 // set).
 func NewPeersCmd() *cobra.Command {
 	var (
-		configPath string
 		server     string
 		asJSON     bool
 		jqExpr     string
@@ -87,7 +86,7 @@ func NewPeersCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -111,7 +110,6 @@ func NewPeersCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

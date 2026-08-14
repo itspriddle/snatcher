@@ -19,7 +19,7 @@ type queueMove func(context.Context, *transmission.Client, transmission.Selector
 // subcommands, which reorder the selected torrents within the download/seed
 // queue. With no subcommand it prints help (consistent with port). Each
 // subcommand mirrors the other mutation commands (start, stop, reannounce) in
-// selectors, output, and the --config/--json/--jq flags, but offers no --all
+// selectors, output, and the --json/--jq flags, but offers no --all
 // flag — moving "all" torrents to the top/bottom is meaningless and up/down
 // would be a near no-op. Render precedence mirrors list: --jq → --json →
 // plaintext.
@@ -78,10 +78,9 @@ func NewQueueCmd() *cobra.Command {
 // error, not a no-op), dial, apply the move, re-fetch to resolve names, render.
 func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
+		server string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -105,7 +104,7 @@ func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Co
 				return err
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -128,7 +127,6 @@ func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Co
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

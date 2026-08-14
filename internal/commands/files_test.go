@@ -112,6 +112,7 @@ func runFiles(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewFilesCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
@@ -544,6 +545,7 @@ func runTorrent(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewTorrentCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

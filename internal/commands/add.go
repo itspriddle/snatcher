@@ -29,7 +29,6 @@ var errAddFailures = errors.New("one or more sources failed")
 // Render precedence mirrors the other commands: --jq → --json → plaintext.
 func NewAddCmd() *cobra.Command {
 	var (
-		configPath  string
 		server      string
 		asJSON      bool
 		jqExpr      string
@@ -65,7 +64,7 @@ func NewAddCmd() *cobra.Command {
 				return errors.New("specify at least one file, url, or magnet link")
 			}
 
-			backend, _, err := dial(cmd, configPath, server)
+			backend, _, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -105,7 +104,6 @@ func NewAddCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

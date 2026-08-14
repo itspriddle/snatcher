@@ -11,14 +11,12 @@ import (
 
 // NewStatsCmd builds the "stats" command, which dials the backend, fetches
 // session statistics, and renders them as an aligned plaintext summary (the
-// default), as JSON (--json), or filtered through jq (--jq). It carries its own
-// local --config flag, like the auth subcommands.
+// default), as JSON (--json), or filtered through jq (--jq).
 func NewStatsCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
+		server string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -28,7 +26,7 @@ func NewStatsCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -52,7 +50,6 @@ func NewStatsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

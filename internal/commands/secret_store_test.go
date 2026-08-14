@@ -1496,11 +1496,11 @@ func TestDialEnvPasswordSkipsUnavailableStoreWarning(t *testing.T) {
 	mockStoreUnavailable(t)
 	resetStoreUnavailableWarning(t)
 
-	cmd := NewServerCmd()
+	cmd := dialCmd(t, cfgPath)
 	var errOut bytes.Buffer
 	cmd.SetErr(&errOut)
 
-	backend, dialedURL, err := dial(cmd, cfgPath, "")
+	backend, dialedURL, err := dial(cmd, "")
 	require.NoError(t, err)
 	require.NotNil(t, backend)
 	assert.Equal(t, url, dialedURL)

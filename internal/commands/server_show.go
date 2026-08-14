@@ -89,7 +89,6 @@ var serverShowFields = []serverShowField{
 // precedence is the usual --jq → --json → plaintext.
 func newServerShowCmd() *cobra.Command {
 	var (
-		configPath   string
 		asJSON       bool
 		jqExpr       string
 		local        bool
@@ -148,7 +147,7 @@ func newServerShowCmd() *cobra.Command {
 				return err
 			}
 
-			result, configured, err := loadServerShowResult(cmd, configPath, firstArg(args))
+			result, configured, err := loadServerShowResult(cmd, firstArg(args))
 			if err != nil {
 				return err
 			}
@@ -157,7 +156,7 @@ func newServerShowCmd() *cobra.Command {
 			// connection block rather than a resolve error.
 			live := configured && !local
 			if live {
-				backend, serverURL, err := dial(cmd, configPath, firstArg(args))
+				backend, serverURL, err := dial(cmd, firstArg(args))
 				if err != nil {
 					return err
 				}
@@ -187,7 +186,6 @@ func newServerShowCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().BoolVar(&local, "local", false, "show only the local connection settings, without contacting the server")
@@ -206,7 +204,9 @@ func newServerShowCmd() *cobra.Command {
 // Whether a secret is stored is asked of the store the server itself names (see
 // serverSecretStored). An unreachable one does not fail the read: secret_stored
 // is reported false with a single stderr note, matching "server list".
-func loadServerShowResult(cmd *cobra.Command, configPath, alias string) (serverShowResult, bool, error) {
+func loadServerShowResult(cmd *cobra.Command, alias string) (serverShowResult, bool, error) {
+	configPath := configFlag(cmd)
+
 	resolvedPath, err := resolveConfigPath(configPath)
 	if err != nil {
 		return serverShowResult{}, false, err

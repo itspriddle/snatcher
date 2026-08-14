@@ -67,6 +67,7 @@ func runList(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewListCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

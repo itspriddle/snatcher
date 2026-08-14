@@ -20,6 +20,7 @@ func runConfig(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	root := NewConfigCmd()
+	AddGlobalFlags(root)
 
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)

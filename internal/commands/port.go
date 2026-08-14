@@ -40,8 +40,7 @@ func portStateFromSession(s transmission.SessionSettings) portState {
 // NewPortCmd builds the "port" parent command and its subcommands. With no
 // subcommand it prints help (consistent with auth). The port group is a
 // discoverable wrapper over the peer/listening-port session settings; each
-// subcommand carries its own --config flag and dials the backend through the
-// shared dial seam.
+// subcommand dials the backend through the shared dial seam.
 func NewPortCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "port",
@@ -64,10 +63,9 @@ func NewPortCmd() *cobra.Command {
 // contract and --jq filters that same structure.
 func newPortGetCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
+		server string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -77,7 +75,7 @@ func newPortGetCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -103,7 +101,6 @@ func newPortGetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
@@ -122,7 +119,6 @@ func newPortGetCmd() *cobra.Command {
 // any flag, it returns a "nothing to set" error.
 func newPortSetCmd() *cobra.Command {
 	var (
-		configPath string
 		server     string
 		asJSON     bool
 		jqExpr     string
@@ -174,7 +170,7 @@ func newPortSetCmd() *cobra.Command {
 				changes["port-forwarding-enabled"] = forwarding
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -204,7 +200,6 @@ func newPortSetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
@@ -222,10 +217,9 @@ func newPortSetCmd() *cobra.Command {
 // the dial/transport error.
 func newPortTestCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
+		server string
+		asJSON bool
+		jqExpr string
 	)
 
 	cmd := &cobra.Command{
@@ -240,7 +234,7 @@ func newPortTestCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -273,7 +267,6 @@ func newPortTestCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

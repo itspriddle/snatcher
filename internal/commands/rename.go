@@ -57,11 +57,10 @@ type renameResult struct {
 // precedence mirrors list: --jq → --json → plaintext.
 func NewRenameCmd() *cobra.Command {
 	var (
-		configPath string
-		server     string
-		asJSON     bool
-		jqExpr     string
-		yes        bool
+		server string
+		asJSON bool
+		jqExpr string
+		yes    bool
 	)
 
 	cmd := &cobra.Command{
@@ -99,7 +98,7 @@ func NewRenameCmd() *cobra.Command {
 				return fmt.Errorf("new name must not be empty")
 			}
 
-			backend, serverURL, err := dial(cmd, configPath, server)
+			backend, serverURL, err := dial(cmd, server)
 			if err != nil {
 				return err
 			}
@@ -165,7 +164,6 @@ func NewRenameCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")

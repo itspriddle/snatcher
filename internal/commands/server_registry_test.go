@@ -91,6 +91,7 @@ func runServer(t *testing.T, stdin string, args ...string) (string, string, erro
 	t.Helper()
 
 	root := NewServerCmd()
+	AddGlobalFlags(root)
 
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
@@ -1065,14 +1066,14 @@ func TestDialToleratesUnavailableStore(t *testing.T) {
 	mockStoreUnavailable(t)
 	resetStoreUnavailableWarning(t)
 
-	cmd := NewServerCmd()
+	cmd := dialCmd(t, cfgPath)
 	var errOut bytes.Buffer
 	cmd.SetErr(&errOut)
 
 	// dial must hand back a usable client rather than aborting: the server may
 	// not require auth at all, and if it does the request fails later with the
 	// existing auth error.
-	backend, dialedURL, err := dial(cmd, cfgPath, "")
+	backend, dialedURL, err := dial(cmd, "")
 	require.NoError(t, err)
 	require.NotNil(t, backend)
 	assert.Equal(t, url, dialedURL)
@@ -1096,12 +1097,12 @@ func TestDialWarnsOnceWhenStoreUnavailable(t *testing.T) {
 	mockStoreUnavailable(t)
 	resetStoreUnavailableWarning(t)
 
-	cmd := NewServerCmd()
+	cmd := dialCmd(t, cfgPath)
 	var errOut bytes.Buffer
 	cmd.SetErr(&errOut)
 
 	for range 3 {
-		_, _, err := dial(cmd, cfgPath, "")
+		_, _, err := dial(cmd, "")
 		require.NoError(t, err)
 	}
 
@@ -1150,6 +1151,7 @@ func TestServerPingReachesTransportWhenStoreUnavailable(t *testing.T) {
 // the documented registry subcommands and each accepts --config.
 func TestServerRegistrySubcommands(t *testing.T) {
 	cmd := NewServerCmd()
+	AddGlobalFlags(cmd)
 
 	found := map[string]bool{
 		"add": false, "list": false, "default": false,
@@ -1158,8 +1160,10 @@ func TestServerRegistrySubcommands(t *testing.T) {
 	for _, c := range cmd.Commands() {
 		if _, ok := found[c.Name()]; ok {
 			found[c.Name()] = true
-			// Every registry subcommand reads or writes local config.
-			assert.NotNilf(t, c.Flags().Lookup("config"), "%s missing --config", c.Name())
+			// Every registry subcommand reads or writes local config. --config is
+			// a persistent root flag, so Flag climbs the tree to find it rather
+			// than each subcommand declaring its own.
+			assert.NotNilf(t, c.Flag("config"), "%s missing --config", c.Name())
 		}
 	}
 

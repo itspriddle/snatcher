@@ -49,6 +49,7 @@ func runAddStdin(t *testing.T, stdin string, args ...string) (string, string, er
 	t.Helper()
 
 	cmd := NewAddCmd()
+	AddGlobalFlags(cmd)
 
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)

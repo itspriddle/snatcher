@@ -5,8 +5,25 @@ import (
 	"os"
 	"testing"
 
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
+
+// dialCmd builds a command carrying the persistent root flags with --config set
+// to path, so a test can call dial directly the way an executed command does.
+// dial reads --config off the command it is handed rather than taking a path, so
+// a standalone command needs the flag registered on it — internal/cli does that
+// once on the real root.
+func dialCmd(t *testing.T, path string) *cobra.Command {
+	t.Helper()
+
+	cmd := NewServerCmd()
+	AddGlobalFlags(cmd)
+	require.NoError(t, cmd.PersistentFlags().Set(flagConfig, path))
+
+	return cmd
+}
 
 // TestMain isolates this package from the environment the suite happens to run
 // in, before any test observes it.
