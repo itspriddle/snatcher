@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,7 +109,7 @@ func formatIEC(n int64) string {
 
 	const unit = 1024
 	if abs < unit {
-		return fmt.Sprintf("%d", n)
+		return strconv.FormatInt(n, 10)
 	}
 
 	value := float64(n)
