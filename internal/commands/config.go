@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,6 +69,12 @@ type clientKeyDef struct {
 	// key is distinct from one explicitly set to its zero value.
 	accessor func(config.Client) (any, bool)
 
+	// apply writes value into the client section, or clears the key when value
+	// is nil. The nil convention mirrors the storage exactly — every client field
+	// is a pointer whose nil means "unset" — so "config set" and "config unset"
+	// share one write path rather than two that can drift.
+	apply func(*config.Client, any) error
+
 	// validate reports whether a value means anything for this key. It is never
 	// nil — a key whose JSON type is its only constraint names alwaysValid, so
 	// that "nothing to check here" is a decision on the record rather than an
@@ -84,36 +91,42 @@ var clientKeyRegistry = []clientKeyDef{
 		key:      "client.theme",
 		def:      "default",
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.Theme) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.Theme, v) },
 		validate: validateTheme,
 	},
 	{
 		key:      "client.nerd_font",
 		def:      true,
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.NerdFont) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.NerdFont, v) },
 		validate: alwaysValid,
 	},
 	{
 		key:      "client.poll_interval",
 		def:      "5s",
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.PollInterval) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.PollInterval, v) },
 		validate: validatePollInterval,
 	},
 	{
 		key:      "client.list_columns",
 		def:      defaultFieldKeys,
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.ListColumns) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ListColumns, v) },
 		validate: validateListColumns,
 	},
 	{
 		key:      "client.list_sort",
 		def:      string(transmission.SortQueue),
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.ListSort) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ListSort, v) },
 		validate: validateListSort,
 	},
 	{
 		key:      "client.list_reverse",
 		def:      false,
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.ListReverse) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ListReverse, v) },
 		validate: alwaysValid,
 	},
 }
@@ -147,6 +160,26 @@ func clientValue[T any](p *T) (any, bool) {
 	}
 
 	return *p, true
+}
+
+// applyClientValue is the inverse of clientValue: it points field at a copy of
+// value, or clears it when value is nil. Clearing writes the key out of the file
+// entirely (see config.Client's MarshalJSON), which is what makes an unset key
+// revert to its default rather than persist as a null.
+func applyClientValue[T any](field **T, value any) error {
+	if value == nil {
+		*field = nil
+
+		return nil
+	}
+
+	typed, err := typedClientValue[T](value)
+	if err != nil {
+		return err
+	}
+	*field = &typed
+
+	return nil
 }
 
 // allClientKeys returns every config key sorted, for the valid-keys list in
@@ -281,6 +314,72 @@ func validateClientValue(def clientKeyDef, value any) error {
 	return nil
 }
 
+// parseClientValue turns a command-line string into the value "config set"
+// stores, converting it to the key's natural type and then running it through
+// the same validator a stored value faces. There is deliberately one definition
+// of valid: a value typed on the command line and one hand-edited into the file
+// are accepted or rejected identically.
+//
+// Both failures name the key, the offending value, and what is accepted, so a
+// typo is a message an operator can act on.
+func parseClientValue(def clientKeyDef, raw string) (any, error) {
+	value, err := parseClientLiteral(def, raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config value for %s: %w", def.key, err)
+	}
+
+	if err := validateClientValue(def, value); err != nil {
+		return nil, err
+	}
+
+	return value, nil
+}
+
+// parseClientLiteral converts raw to the natural Go type of the key's default —
+// the exact inverse of formatClientValue. Like formatting, parsing is one shared
+// type switch rather than a per-key registry field: the value's type settles it,
+// and a per-key function would be six more places for the two to drift apart.
+//
+// Only whitespace is normalized. Which spellings are acceptable — a theme's
+// case, a column's case — is the validator's decision alone, so the command line
+// cannot accept a spelling the file rejects.
+func parseClientLiteral(def clientKeyDef, raw string) (any, error) {
+	switch def.def.(type) {
+	case bool:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a boolean: use true or false", raw)
+		}
+
+		return parsed, nil
+	case []string:
+		return splitClientList(raw), nil
+	case string:
+		return strings.TrimSpace(raw), nil
+	default:
+		// Unreachable through the registry as it stands; a key added with a
+		// default of some other type is a build-time mistake, reported rather
+		// than silently stored as the wrong type.
+		return nil, fmt.Errorf("values of type %T cannot be set from the command line", def.def)
+	}
+}
+
+// splitClientList splits a comma-separated value into its trimmed elements,
+// dropping empty ones exactly as --fields does, so "id,name" and "id, name"
+// mean the same thing. An input with no elements at all yields an empty slice
+// for the validator to reject by name.
+func splitClientList(raw string) []string {
+	parts := strings.Split(raw, ",")
+	list := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			list = append(list, trimmed)
+		}
+	}
+
+	return list
+}
+
 // configEntry is the JSON shape emitted per key by "config list" and "config
 // get": the dotted key, its effective value in its natural JSON type (a bool
 // stays a bool, list_columns stays an array), and where that value came from. It
@@ -351,6 +450,58 @@ func clientEntries(cfg config.Config) ([]configEntry, error) {
 	return entries, nil
 }
 
+// writeClientKey applies one key's new value to the config file and reports what
+// that key resolves to afterwards. A nil value clears the key, so "config set"
+// and "config unset" share a single write path.
+//
+// Only the key being written is resolved. A nonsense value hand-edited into some
+// *other* key must never make the file unrepairable from the CLI — repairing it
+// is exactly what "config set" is for — so nothing here reads a key it was not
+// asked to change.
+//
+// A missing config file is created rather than refused (config.Save creates the
+// parent at 0700 and the file at 0600), so settings can be configured on a first
+// run, before any server is added. Everything else in the file — servers, the
+// default server, and any key snatcher does not recognize — is carried through
+// untouched by the load/save round trip.
+func writeClientKey(def clientKeyDef, configPath string, value any) (configEntry, error) {
+	cfg, _, err := loadConfig(configPath)
+	if err != nil {
+		return configEntry{}, err
+	}
+
+	if err := def.apply(&cfg.Client, value); err != nil {
+		return configEntry{}, err
+	}
+
+	if err := config.Save(cfg, configPath); err != nil {
+		return configEntry{}, err
+	}
+
+	return resolveClientKey(def, cfg)
+}
+
+// reportClientKey renders one written key in the mode the flags ask for, with
+// the group's fixed --jq -> --json -> plaintext precedence. The structured paths
+// emit the same {key, value, source} object "config get" emits, so a script that
+// reads a setting and a script that writes one parse the same shape; plaintext
+// gets the caller's sentence.
+func reportClientKey(cmd *cobra.Command, entry configEntry, jqExpr string, asJSON bool, line string) error {
+	if jqExpr != "" {
+		return output.JQ(cmd.OutOrStdout(), entry, jqExpr)
+	}
+
+	if asJSON {
+		return output.JSON(cmd.OutOrStdout(), entry)
+	}
+
+	// Unsanitized: see configListColumns for why config values are not treated
+	// as hostile input.
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), line)
+
+	return nil
+}
+
 // NewConfigCmd builds the "config" command group, the namespace for snatcher's
 // own settings — how the CLI and TUI behave, as opposed to which server they
 // talk to. Those settings live in the client section of config.json and are
@@ -369,7 +520,8 @@ func NewConfigCmd() *cobra.Command {
 			"'torrent list' — as opposed to the servers it talks to, which are managed " +
 			"with 'snatcher server'. They live in the client section of the config " +
 			"file and are addressed by dotted keys such as client.theme.\n\n" +
-			"Run a subcommand (list, get) to read them.",
+			"Run a subcommand (list, get) to read them, or (set, unset) to change " +
+			"them.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -380,6 +532,8 @@ func NewConfigCmd() *cobra.Command {
 
 	cmd.AddCommand(newConfigListCmd())
 	cmd.AddCommand(newConfigGetCmd())
+	cmd.AddCommand(newConfigSetCmd())
+	cmd.AddCommand(newConfigUnsetCmd())
 
 	return cmd
 }
@@ -490,6 +644,109 @@ func newConfigGetCmd() *cobra.Command {
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), formatClientValue(entry.Value))
 
 			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
+	return cmd
+}
+
+// newConfigSetCmd builds "config set <key> <value>", which stores one client
+// setting in the config file.
+//
+// The value is parsed and validated before the file is opened, so a typo is an
+// error rather than a config to hand-repair later: an unknown key or an
+// unacceptable value leaves config.json exactly as it was. Everything else in
+// the file survives the write, including keys snatcher does not recognize.
+func newConfigSetCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "set <key> <value>",
+		Short: "Change one client setting",
+		Long: "Change one client setting and persist it to the config file.\n\n" +
+			"The value is checked before anything is written, so an unknown key or " +
+			"an invalid value is an error that leaves the config file untouched. " +
+			"A list-valued key such as client.list_columns takes its elements " +
+			"comma-separated, in order.\n\n" +
+			"Use 'snatcher config unset' to drop a setting back to its default, and " +
+			"'snatcher config list' to see every key with its current value.",
+		Args:          cobra.ExactArgs(2),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			def, err := lookupClientKey(args[0])
+			if err != nil {
+				return err
+			}
+
+			value, err := parseClientValue(def, args[1])
+			if err != nil {
+				return err
+			}
+
+			entry, err := writeClientKey(def, configPath, value)
+			if err != nil {
+				return err
+			}
+
+			return reportClientKey(cmd, entry, jqExpr, asJSON,
+				fmt.Sprintf("Set %s to %s", entry.Key, formatClientValue(entry.Value)))
+		},
+	}
+
+	cmd.Flags().StringVar(&configPath, "config", "", "config file path")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
+	return cmd
+}
+
+// newConfigUnsetCmd builds "config unset <key>", which removes one client
+// setting from the config file so the key reverts to its default.
+//
+// Unsetting a key that is not set is a success, not an error: the command
+// describes the state it leaves behind ("this key uses its default"), which is
+// already true, so re-running it is safe in a script.
+func newConfigUnsetCmd() *cobra.Command {
+	var (
+		configPath string
+		asJSON     bool
+		jqExpr     string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "unset <key>",
+		Short: "Remove one client setting, reverting it to its default",
+		Long: "Remove one client setting from the config file, so the key reverts to " +
+			"its built-in default.\n\n" +
+			"Unsetting a key that is not set succeeds and changes nothing, so it is " +
+			"safe to re-run. The reported value is the default the key falls back " +
+			"to.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			def, err := lookupClientKey(args[0])
+			if err != nil {
+				return err
+			}
+
+			// A nil value clears the key; see writeClientKey.
+			entry, err := writeClientKey(def, configPath, nil)
+			if err != nil {
+				return err
+			}
+
+			return reportClientKey(cmd, entry, jqExpr, asJSON,
+				fmt.Sprintf("Unset %s, now %s (its default)", entry.Key, formatClientValue(entry.Value)))
 		},
 	}
 

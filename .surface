@@ -1,5 +1,8 @@
 ARG snatcher api 0 method
 ARG snatcher config get 0 key
+ARG snatcher config set 0 key
+ARG snatcher config set 1 value
+ARG snatcher config unset 0 key
 ARG snatcher server default 0 alias
 ARG snatcher torrent files 0 id|hash
 ARG snatcher torrent files update 0 id|hash
@@ -16,6 +19,8 @@ CMD snatcher api
 CMD snatcher config
 CMD snatcher config get
 CMD snatcher config list
+CMD snatcher config set
+CMD snatcher config unset
 CMD snatcher server
 CMD snatcher server add
 CMD snatcher server default
@@ -66,6 +71,12 @@ FLAG snatcher config get --json type=bool
 FLAG snatcher config list --config type=string
 FLAG snatcher config list --jq type=string
 FLAG snatcher config list --json type=bool
+FLAG snatcher config set --config type=string
+FLAG snatcher config set --jq type=string
+FLAG snatcher config set --json type=bool
+FLAG snatcher config unset --config type=string
+FLAG snatcher config unset --jq type=string
+FLAG snatcher config unset --json type=bool
 FLAG snatcher server add --config type=string
 FLAG snatcher server add --name type=string
 FLAG snatcher server add --password-stdin type=bool

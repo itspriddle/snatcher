@@ -94,12 +94,14 @@ func TestClientKeyRegistryMatchesDocumentedKeys(t *testing.T) {
 }
 
 // TestClientKeyRegistryEntriesAreComplete requires every entry to name a
-// default, an accessor, and a validator. A nil validator would be a key that
-// accepts anything without anyone deciding it should.
+// default, an accessor, a writer, and a validator. A nil validator would be a
+// key that accepts anything without anyone deciding it should; a nil apply would
+// be a key that reads but cannot be written.
 func TestClientKeyRegistryEntriesAreComplete(t *testing.T) {
 	for _, def := range clientKeyRegistry {
 		assert.NotNil(t, def.def, "%s has no default", def.key)
 		assert.NotNil(t, def.accessor, "%s has no accessor", def.key)
+		assert.NotNil(t, def.apply, "%s has no writer", def.key)
 		assert.NotNil(t, def.validate, "%s has no validator", def.key)
 	}
 }
@@ -392,4 +394,361 @@ func TestConfigListCmdHasLsAlias(t *testing.T) {
 	if got := newConfigListCmd().Aliases; len(got) != 1 || got[0] != "ls" {
 		t.Fatalf("expected config list command alias [ls], got %v", got)
 	}
+}
+
+// readConfigObject decodes the config file at path as a generic JSON object, so
+// a test can assert on exactly what landed on disk rather than on what a
+// round trip through config.Config reports.
+func readConfigObject(t *testing.T, path string) map[string]any {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(raw, &obj))
+
+	return obj
+}
+
+// readClientObject decodes the client section of the config file at path. A
+// missing section decodes as nil, which is what an entirely unset client section
+// looks like on disk.
+func readClientObject(t *testing.T, path string) map[string]any {
+	t.Helper()
+
+	client, ok := readConfigObject(t, path)["client"]
+	if !ok {
+		return nil
+	}
+
+	obj, ok := client.(map[string]any)
+	require.True(t, ok, "client section is not an object")
+
+	return obj
+}
+
+// TestConfigSetPersistsValue checks the happy path end to end: the value lands
+// in the client section on disk, and "config get" reads it back.
+func TestConfigSetPersistsValue(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	out, _, err := runConfig(t, "set", "client.theme", "dracula", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Set client.theme to dracula\n", out)
+	assert.Equal(t, "dracula", readClientObject(t, cfgPath)["theme"])
+
+	out, _, err = runConfig(t, "get", "client.theme", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "dracula\n", out)
+}
+
+// TestConfigSetStoresExplicitFalse checks the distinction the pointer fields
+// exist for: setting a bool to its zero value is stored, not treated as unset.
+func TestConfigSetStoresExplicitFalse(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	_, _, err := runConfig(t, "set", "client.nerd_font", "false", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, false, readClientObject(t, cfgPath)["nerd_font"])
+
+	out, _, err := runConfig(t, "get", "client.nerd_font", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var entry configEntry
+	require.NoError(t, json.Unmarshal([]byte(out), &entry))
+	assert.Equal(t, false, entry.Value)
+	assert.Equal(t, "config", entry.Source)
+}
+
+// TestConfigSetSplitsListColumns checks the comma-separated spelling, including
+// the whitespace an operator is likely to type.
+func TestConfigSetSplitsListColumns(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	out, _, err := runConfig(t, "set", "client.list_columns", "id, name ,ratio", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Set client.list_columns to id,name,ratio\n", out)
+	assert.Equal(t, []any{"id", "name", "ratio"}, readClientObject(t, cfgPath)["list_columns"])
+}
+
+// TestConfigSetJSONReportsWrittenEntry pins the structured contract for a write:
+// the same {key, value, source} object the read commands emit, with the value in
+// its natural JSON type and the source now "config".
+func TestConfigSetJSONReportsWrittenEntry(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	out, _, err := runConfig(t, "set", "client.list_columns", "id,name", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var entry configEntry
+	require.NoError(t, json.Unmarshal([]byte(out), &entry))
+
+	assert.Equal(t, "client.list_columns", entry.Key)
+	assert.Equal(t, []any{"id", "name"}, entry.Value)
+	assert.Equal(t, "config", entry.Source)
+}
+
+// TestConfigSetJQOutranksJSON pins the fixed precedence on the write path too.
+func TestConfigSetJQOutranksJSON(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	out, _, err := runConfig(t, "set", "client.list_sort", "added", "--config", cfgPath, "--json", "--jq", ".value")
+	require.NoError(t, err)
+
+	assert.Equal(t, "\"added\"\n", out)
+}
+
+// TestConfigSetRejectsUnknownKey checks an unknown key is an error naming every
+// valid key, and never a silent write of a key the registry does not know.
+func TestConfigSetRejectsUnknownKey(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+	before := configBytes(t, cfgPath)
+
+	out, _, err := runConfig(t, "set", "client.bogus", "1", "--config", cfgPath)
+	require.Error(t, err)
+
+	assert.Empty(t, out)
+	assert.Contains(t, err.Error(), `unknown config key "client.bogus"`)
+	for _, key := range allClientKeys() {
+		assert.Contains(t, err.Error(), key)
+	}
+	assert.Equal(t, before, configBytes(t, cfgPath))
+}
+
+// TestConfigUnsetRejectsUnknownKey checks unset refuses the same way, so neither
+// write path can invent a key.
+func TestConfigUnsetRejectsUnknownKey(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+	before := configBytes(t, cfgPath)
+
+	_, _, err := runConfig(t, "unset", "client.bogus", "--config", cfgPath)
+	require.Error(t, err)
+
+	assert.Contains(t, err.Error(), `unknown config key "client.bogus"`)
+	assert.Equal(t, before, configBytes(t, cfgPath))
+}
+
+// configBytes reads the config file verbatim, for the "left untouched" checks: a
+// rejected write must not rewrite the file at all, not even to an equivalent
+// encoding.
+func configBytes(t *testing.T, path string) []byte {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return raw
+}
+
+// TestConfigSetRejectsInvalidValues covers every rejection the registry can
+// produce through "config set", and pins that the file's bytes are unchanged
+// after each one — a typo must never be half-applied.
+//
+// Every case is passed after a "--" terminator: a value that starts with a dash
+// (a negative duration) is otherwise read as a flag by pflag, which is the shell
+// convention rather than anything specific to this command.
+func TestConfigSetRejectsInvalidValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     string
+		value   string
+		wantErr string
+	}{
+		{name: "theme", key: "client.theme", value: "solarized", wantErr: "not a known theme"},
+		{name: "bool", key: "client.nerd_font", value: "yes-please", wantErr: "not a boolean"},
+		{name: "duration unparseable", key: "client.poll_interval", value: "soon", wantErr: "not a duration"},
+		{name: "duration zero", key: "client.poll_interval", value: "0s", wantErr: "out of range"},
+		{name: "duration negative", key: "client.poll_interval", value: "-5s", wantErr: "out of range"},
+		{name: "duration too short", key: "client.poll_interval", value: "999ms", wantErr: "out of range"},
+		{name: "duration too long", key: "client.poll_interval", value: "1h1s", wantErr: "out of range"},
+		{name: "columns unknown", key: "client.list_columns", value: "id,tint", wantErr: `"tint" is not a column`},
+		{name: "columns empty", key: "client.list_columns", value: "", wantErr: "no columns selected"},
+		{name: "columns duplicated", key: "client.list_columns", value: "id,name,id", wantErr: "listed more than once"},
+		{name: "sort", key: "client.list_sort", value: "sideways", wantErr: "invalid sort field"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfgPath := writeConfigFile(t, `{"servers": {}, "default_server": ""}`)
+			before := configBytes(t, cfgPath)
+
+			out, _, err := runConfig(t, "set", "--config", cfgPath, "--", tt.key, tt.value)
+			require.Error(t, err)
+
+			assert.Empty(t, out)
+			assert.Contains(t, err.Error(), tt.key)
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.Equal(t, before, configBytes(t, cfgPath), "a rejected set rewrote the config file")
+		})
+	}
+}
+
+// TestConfigSetAcceptsPollIntervalBounds checks the accepted end of the duration
+// rules, which the rejection table above only bounds from outside.
+func TestConfigSetAcceptsPollIntervalBounds(t *testing.T) {
+	for _, value := range []string{"1s", "1m30s", "1h"} {
+		t.Run(value, func(t *testing.T) {
+			cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+			_, _, err := runConfig(t, "set", "client.poll_interval", value, "--config", cfgPath)
+			require.NoError(t, err)
+
+			assert.Equal(t, value, readClientObject(t, cfgPath)["poll_interval"])
+		})
+	}
+}
+
+// TestConfigUnsetRemovesKey checks the key leaves the file entirely — reverting
+// to its default rather than persisting as a null — and that its neighbors stay.
+func TestConfigUnsetRemovesKey(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{
+		"servers": {},
+		"client": {"theme": "nord", "list_sort": "added"}
+	}`)
+
+	out, _, err := runConfig(t, "unset", "client.theme", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Unset client.theme, now default (its default)\n", out)
+
+	client := readClientObject(t, cfgPath)
+	assert.NotContains(t, client, "theme")
+	assert.Equal(t, "added", client["list_sort"])
+}
+
+// TestConfigUnsetIsIdempotent checks unsetting a key that was never set succeeds
+// and changes nothing, so the command is safe to re-run in a script.
+func TestConfigUnsetIsIdempotent(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord"}}`)
+
+	_, _, err := runConfig(t, "unset", "client.list_sort", "--config", cfgPath)
+	require.NoError(t, err)
+
+	first := configBytes(t, cfgPath)
+
+	_, _, err = runConfig(t, "unset", "client.list_sort", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, first, configBytes(t, cfgPath))
+	assert.Equal(t, "nord", readClientObject(t, cfgPath)["theme"])
+}
+
+// TestConfigUnsetJSONReportsTheDefault checks the reported entry describes the
+// state unset leaves behind: the default value, sourced from the default.
+func TestConfigUnsetJSONReportsTheDefault(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"list_reverse": true}}`)
+
+	out, _, err := runConfig(t, "unset", "client.list_reverse", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var entry configEntry
+	require.NoError(t, json.Unmarshal([]byte(out), &entry))
+
+	assert.Equal(t, "client.list_reverse", entry.Key)
+	assert.Equal(t, false, entry.Value)
+	assert.Equal(t, "default", entry.Source)
+}
+
+// TestConfigWritesRepairAnotherKeysBadHandEdit is the repairability guarantee: a
+// nonsense value hand-edited into one key must not block writing or clearing
+// another, or the CLI could not fix the file it wrote about.
+func TestConfigWritesRepairAnotherKeysBadHandEdit(t *testing.T) {
+	body := `{"servers": {}, "client": {"theme": "bogus", "list_sort": "sideways"}}`
+
+	t.Run("set", func(t *testing.T) {
+		cfgPath := writeConfigFile(t, body)
+
+		_, _, err := runConfig(t, "set", "client.theme", "nord", "--config", cfgPath)
+		require.NoError(t, err)
+
+		client := readClientObject(t, cfgPath)
+		assert.Equal(t, "nord", client["theme"])
+		assert.Equal(t, "sideways", client["list_sort"], "an untouched key was rewritten")
+	})
+
+	t.Run("unset", func(t *testing.T) {
+		cfgPath := writeConfigFile(t, body)
+
+		_, _, err := runConfig(t, "unset", "client.list_sort", "--config", cfgPath)
+		require.NoError(t, err)
+
+		client := readClientObject(t, cfgPath)
+		assert.NotContains(t, client, "list_sort")
+		assert.Equal(t, "bogus", client["theme"], "an untouched key was rewritten")
+	})
+}
+
+// TestConfigSetPreservesTheRestOfTheFile checks a write leaves the servers map,
+// the default server, and the unknown keys US-001 preserves exactly as they were.
+func TestConfigSetPreservesTheRestOfTheFile(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{
+		"servers": {"home": {"url": "https://example.test/transmission/rpc", "username": "josh"}},
+		"default_server": "home",
+		"future_key": {"kept": true},
+		"client": {"nerd_font": false, "future_client_key": 7}
+	}`)
+
+	_, _, err := runConfig(t, "set", "client.theme", "nord", "--config", cfgPath)
+	require.NoError(t, err)
+
+	obj := readConfigObject(t, cfgPath)
+	assert.Equal(t, "home", obj["default_server"])
+	assert.Equal(t, map[string]any{"kept": true}, obj["future_key"])
+	assert.Equal(t, map[string]any{
+		"home": map[string]any{
+			"url":      "https://example.test/transmission/rpc",
+			"username": "josh",
+		},
+	}, obj["servers"])
+
+	client := readClientObject(t, cfgPath)
+	assert.Equal(t, "nord", client["theme"])
+	assert.Equal(t, false, client["nerd_font"])
+	assert.Equal(t, float64(7), client["future_client_key"])
+}
+
+// TestConfigWritesCreateAMissingConfigFile checks a first run configures snatcher
+// rather than being refused for not being configured yet, and that the file it
+// creates is as private as one "server add" would have written.
+func TestConfigWritesCreateAMissingConfigFile(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "set", args: []string{"set", "client.theme", "nord"}},
+		{name: "unset", args: []string{"unset", "client.theme"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "snatcher")
+			cfgPath := filepath.Join(dir, "config.json")
+
+			_, _, err := runConfig(t, append(tt.args, "--config", cfgPath)...)
+			require.NoError(t, err)
+
+			info, err := os.Stat(cfgPath)
+			require.NoError(t, err)
+			assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+			dirInfo, err := os.Stat(dir)
+			require.NoError(t, err)
+			assert.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
+		})
+	}
+}
+
+// TestConfigSetIsCaseInsensitiveInTheKey checks the key is matched the way every
+// other key in the CLI is, while the value's spelling stays the validator's call.
+func TestConfigSetIsCaseInsensitiveInTheKey(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	_, _, err := runConfig(t, "set", " CLIENT.List_Sort ", "added", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, "added", readClientObject(t, cfgPath)["list_sort"])
 }

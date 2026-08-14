@@ -1083,7 +1083,7 @@ Remove all trackers from the torrent.
 Bandwidth group name for the torrent.
 .RE
 .SS "config"
-Read snatcher's own settings \(em how snatcher itself behaves, as opposed to
+Read and change snatcher's own settings \(em how snatcher itself behaves, as opposed to
 which server it talks to. They live in the
 .B client
 object of the config file (see
@@ -1128,6 +1128,46 @@ error listing the valid keys. A value in the config file that is not valid for
 its key is an error naming the key, the offending value, and what is accepted;
 it is never silently replaced by the default. Accepts
 .BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher config set \fIkey\fR \fIvalue\fR \fR[\fIoptions\fR]
+Store one setting in the config file. The value is parsed and checked before
+anything is written, so an unknown key or a value the key does not accept is an
+error naming the key, the offending value, and what is accepted, and the config
+file is left exactly as it was. A list-valued key such as
+.B client.list_columns
+takes its elements comma-separated, in order; an empty list, an unknown element,
+and a repeated element are all rejected. Everything else in the file \(em the
+.B servers
+map, the
+.BR default_server ,
+and any key snatcher does not recognize \(em is carried through untouched, and a
+config file that does not exist yet is created (mode 0600, its parent 0700)
+rather than refused. A value that begins with a dash, such as a negative
+duration, must follow a
+.B \-\-
+terminator. On success the key and its new value are reported;
+.B \-\-json
+and
+.B \-\-jq
+emit the same
+.IR key ", " value ", " source
+object the read commands emit. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher config unset \fIkey\fR \fR[\fIoptions\fR]
+Remove one setting from the config file, so the key reverts to its default.
+Unsetting a key that is not set succeeds and changes nothing, so it is safe to
+re-run. The reported value is the default the key falls back to, with source
+.BR default .
+Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.PP
+.B set
+and
+.B unset
+resolve only the key they are changing, so a value hand-edited into some other
+key that is not valid for it never blocks the repair: a config file is always
+fixable from the command line.
 .PP
 The settings, with the defaults that apply when they are not set:
 .TP
@@ -1550,13 +1590,17 @@ $ snatcher server update \-\-speed\-limit\-down 500 \-\-speed\-limit\-down\-enab
 # restore settings to their defaults
 $ snatcher server reset peer\-port encryption
 .EE
-.SS "Read snatcher's own settings"
+.SS "Read and change snatcher's own settings"
 .EX
 # every client setting, its value, and where the value came from
 $ snatcher config list
 
 # one value, bare, for a shell
 $ theme=$(snatcher config get client.theme)
+
+# change a setting, then drop it back to its default
+$ snatcher config set client.list_columns id,name,ratio
+$ snatcher config unset client.list_columns
 .EE
 .SS "Raw RPC calls"
 .EX
