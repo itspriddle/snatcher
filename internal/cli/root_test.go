@@ -62,23 +62,21 @@ func TestRootRejectsAnInvalidGlobalSettingEverywhere(t *testing.T) {
 	})
 
 	t.Run("environment variable on a command that never reads it", func(t *testing.T) {
-		t.Setenv("SNATCHER_NO_NERD_FONT", "yes-please")
+		t.Setenv(envNoNerdFont, "yes-please")
 
 		_, err := runRoot(t, "server", "list", "--config", cfgPath)
 		require.Error(t, err)
 
-		assert.Contains(t, err.Error(), "SNATCHER_NO_NERD_FONT")
+		assert.Contains(t, err.Error(), envNoNerdFont)
 		assert.Contains(t, err.Error(), "not a boolean")
 	})
 }
 
 // TestRootAcceptsValidGlobalSettings checks the hook costs an ordinary
 // invocation nothing, including one that passes the flags it does not yet
-// render.
+// render. Both environment companions are already out of the way — TestMain
+// unsets them for the whole package.
 func TestRootAcceptsValidGlobalSettings(t *testing.T) {
-	t.Setenv("SNATCHER_THEME", "")
-	t.Setenv("SNATCHER_NO_NERD_FONT", "")
-
 	out, err := runRoot(t, "--theme", "dracula", "--no-nerd-font", "--version")
 	require.NoError(t, err)
 

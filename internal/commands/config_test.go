@@ -227,6 +227,37 @@ func TestConfigListJQOutranksJSON(t *testing.T) {
 	assert.Equal(t, "\"nord\"\n", out)
 }
 
+// TestConfigListTableAligned exercises the TTY table branch directly, the way
+// peers, files, trackers, and "torrent list" pin theirs: runConfig writes into a
+// *bytes.Buffer, which isTTY reports false for, so the command can only ever
+// reach the piped path. The header row and the columns' order are the part of
+// the table contract worth pinning.
+func TestConfigListTableAligned(t *testing.T) {
+	entries := []configEntry{
+		{Key: keyListColumns, Value: []string{"id", "name", "ratio"}, Source: sourceConfig},
+		{Key: keyTheme, Value: "dracula", Source: sourceFlag},
+	}
+
+	var buf bytes.Buffer
+	// width 0 disables truncation so the full values show.
+	writeListTable(&buf, entries, configListColumns, 0, "No settings.")
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	require.Len(t, lines, 3, "header row plus one row per entry")
+
+	assert.True(t, strings.HasPrefix(lines[0], "KEY"))
+	assert.Contains(t, lines[0], "VALUE")
+	assert.Contains(t, lines[0], "SOURCE")
+
+	assert.Contains(t, lines[1], keyListColumns)
+	assert.Contains(t, lines[1], "id,name,ratio", "a list value renders comma-separated, as config set accepts it back")
+	assert.Contains(t, lines[1], sourceConfig)
+
+	assert.Contains(t, lines[2], keyTheme)
+	assert.Contains(t, lines[2], "dracula")
+	assert.Contains(t, lines[2], sourceFlag)
+}
+
 // TestConfigGetPrintsBareValue pins the shell-capture contract: the value and
 // nothing else, no key name, padding, or decoration.
 func TestConfigGetPrintsBareValue(t *testing.T) {
@@ -278,6 +309,20 @@ func TestConfigGetJSONEmitsSingleObject(t *testing.T) {
 	assert.Equal(t, "client.nerd_font", entry.Key)
 	assert.Equal(t, false, entry.Value)
 	assert.Equal(t, "config", entry.Source)
+}
+
+// TestConfigGetJQOutranksJSON pins the fixed precedence on "get" as well. It
+// needs its own case: "get" renders jq in its own block rather than through the
+// shared reportClientKey the write commands use, so the "set" case does not
+// cover this path. The filter selects a field only the structured shape carries,
+// so a plaintext fallthrough could not produce it.
+func TestConfigGetJQOutranksJSON(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord"}}`)
+
+	out, _, err := runConfig(t, "get", "client.theme", "--config", cfgPath, "--json", "--jq", ".source")
+	require.NoError(t, err)
+
+	assert.Equal(t, "\"config\"\n", out)
 }
 
 // TestConfigGetUnknownKey checks an unknown key is a non-zero exit whose message
