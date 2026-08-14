@@ -690,7 +690,7 @@ func dial(cmd *cobra.Command, configPath, server string) (*transmission.Client, 
 	}
 
 	if server == "" {
-		server = os.Getenv("SNATCHER_SERVER")
+		server = os.Getenv(envServer)
 	}
 
 	_, srv, err := config.Resolve(cfg, server)

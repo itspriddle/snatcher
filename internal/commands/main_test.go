@@ -8,11 +8,6 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// envServer names the environment variable that selects which configured server
-// a command dials. resolveServer reads it inline; it is named here so TestMain
-// can neutralize it alongside the two secret-store variables.
-const envServer = "SNATCHER_SERVER"
-
 // TestMain isolates this package from the environment the suite happens to run
 // in, before any test observes it.
 //

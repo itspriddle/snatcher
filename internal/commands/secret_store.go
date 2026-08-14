@@ -14,6 +14,15 @@ import (
 // store holds passwords, for every server, for one invocation.
 const envSecretStore = "SNATCHER_SECRET_STORE"
 
+// envServer names the environment variable that selects which configured server
+// a command dials. dial reads it when --server is omitted, so the precedence is
+// --server > this variable > the configured default server.
+//
+// It is not a secret-store setting; it lives beside the two that are so that
+// every variable a command reads is declared in one place, and so the test
+// suite can neutralize them together.
+const envServer = "SNATCHER_SERVER"
+
 // envPassword names the environment variable that supplies a server password for
 // one invocation.
 //

@@ -108,7 +108,7 @@ func TestServerEnvVarSelectsServer(t *testing.T) {
 	beta := newCountServer(t, 22)
 	cfgPath := twoServerConfig(t, alpha.URL, beta.URL, "alpha")
 
-	t.Setenv("SNATCHER_SERVER", "beta")
+	t.Setenv(envServer, "beta")
 
 	// SNATCHER_SERVER selects beta when --server is omitted, overriding the
 	// configured default (alpha).
@@ -122,7 +122,7 @@ func TestServerFlagOverridesEnvVar(t *testing.T) {
 	beta := newCountServer(t, 22)
 	cfgPath := twoServerConfig(t, alpha.URL, beta.URL, "beta")
 
-	t.Setenv("SNATCHER_SERVER", "beta")
+	t.Setenv(envServer, "beta")
 
 	// --server takes precedence over SNATCHER_SERVER: alpha (count 11) wins.
 	out, _, err := runStats(t, "--config", cfgPath, "--server", "alpha", "--json", "--jq", ".torrent_count")
