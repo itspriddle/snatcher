@@ -38,6 +38,12 @@ type renameStub struct {
 	// contract's fallback to the request arguments.
 	emptyEcho bool
 
+	// echoPath and echoName, when set, replace the corresponding value in the
+	// rename response so the server's echo can be made to differ from the
+	// request — the only way to tell a reported echo from a replayed argument.
+	echoPath string
+	echoName string
+
 	mu       sync.Mutex
 	name     string
 	requests map[string][]string
@@ -123,9 +129,18 @@ func (s *renameStub) torrentsBody(ids []json.RawMessage) []byte {
 	return s.envelope(map[string]any{"torrents": torrents})
 }
 
-// renameBody renders the server's echo of a completed rename, or a blank echo
-// when the stub is configured for one. It runs under the stub's lock.
+// renameBody renders the server's echo of a completed rename: the requested
+// path/name by default, the stub's overrides when set, or a blank echo when the
+// stub is configured for one. It runs under the stub's lock.
 func (s *renameStub) renameBody(path, name string) []byte {
+	if s.echoPath != "" {
+		path = s.echoPath
+	}
+
+	if s.echoName != "" {
+		name = s.echoName
+	}
+
 	if s.emptyEcho {
 		path, name = "", ""
 	}
@@ -296,6 +311,31 @@ func TestRenameJQ(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, `"ubuntu.iso"`, strings.TrimSpace(out))
+}
+
+// TestRenameReportsServerEcho pins the authoritative half of the contract: the
+// reported path and name are the server's echo of what it actually renamed, not
+// a replay of the request arguments. The stub is made to answer with values that
+// differ from what was asked for, so an implementation that rebuilt the contract
+// from the positional arguments fails here.
+func TestRenameReportsServerEcho(t *testing.T) {
+	cfgPath, stub, closeSrv := renameConfigPath(t, "")
+	defer closeSrv()
+
+	stub.echoPath = "Ubuntu 24.04/server-echo.iso"
+	stub.echoName = "server-echo.iso"
+
+	out, _, err := runRename(t, "--config", cfgPath, "--json", "1", "Ubuntu 24.04/disk.iso", "ubuntu.iso")
+	require.NoError(t, err)
+
+	got := decodeRenameResult(t, out)
+	assert.Equal(t, "Ubuntu 24.04/server-echo.iso", got.Path, "the reported path is the server's echo")
+	assert.Equal(t, "server-echo.iso", got.Name, "the reported name is the server's echo")
+
+	body, ok := stub.renameRequest()
+	require.True(t, ok, "the rename method was called")
+	assert.Contains(t, body, `"path":"Ubuntu 24.04/disk.iso"`, "the request carried the user's path")
+	assert.Contains(t, body, `"name":"ubuntu.iso"`, "the request carried the user's name")
 }
 
 // TestRenameEmptyEchoFallsBackToArguments guards that a server answering a
