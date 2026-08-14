@@ -84,20 +84,20 @@ func NewRenameCmd() *cobra.Command {
 				return err
 			}
 
-			path, newName := args[1], args[2]
+			// A directory path completed by a shell arrives with a trailing
+			// slash, which the server can never match: Transmission compares
+			// <path> exactly against the torrent's name or a file subpath. Trim
+			// it once, up front, so the validation below, the root check, and
+			// the call itself all see the value the server will actually be
+			// asked about — a bare "/" is an empty path, not a valid one.
+			path, newName := strings.TrimSuffix(args[1], "/"), args[2]
+
 			if strings.TrimSpace(path) == "" {
 				return fmt.Errorf("path must not be empty")
 			}
 			if strings.TrimSpace(newName) == "" {
 				return fmt.Errorf("new name must not be empty")
 			}
-
-			// A directory path completed by a shell arrives with a trailing
-			// slash, which the server can never match: Transmission compares
-			// <path> exactly against the torrent's name or a file subpath. Trim
-			// it once, here, so the root check and the call itself both see the
-			// value the server will actually be asked about.
-			path = strings.TrimSuffix(path, "/")
 
 			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {

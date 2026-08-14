@@ -528,7 +528,9 @@ func TestRootRenamePrompt(t *testing.T) {
 }
 
 // TestRenameRejectsEmptyArguments guards that an empty or whitespace-only path
-// or new name is rejected before any network call.
+// or new name is rejected before any network call. The path is validated after
+// its trailing slash is trimmed, so a bare "/" — which reaches the wire as ""
+// — is caught locally rather than three round-trips later.
 func TestRenameRejectsEmptyArguments(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -538,6 +540,7 @@ func TestRenameRejectsEmptyArguments(t *testing.T) {
 	}{
 		{name: "empty path", path: "", newName: "ubuntu.iso", want: "path must not be empty"},
 		{name: "blank path", path: "   ", newName: "ubuntu.iso", want: "path must not be empty"},
+		{name: "slash-only path", path: "/", newName: "ubuntu.iso", want: "path must not be empty"},
 		{name: "empty name", path: "Ubuntu 24.04/disk.iso", newName: "", want: "new name must not be empty"},
 		{name: "blank name", path: "Ubuntu 24.04/disk.iso", newName: "\t ", want: "new name must not be empty"},
 	}
