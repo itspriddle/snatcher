@@ -41,11 +41,19 @@ const (
 )
 
 // Server holds the non-secret connection details for one named Transmission
-// server. The password is never stored here; it lives in the OS keyring keyed
+// server. The password is never stored here; it lives in a secret store keyed
 // by URL (see internal/secrets).
+//
+// SecretStore names which store holds that password. It is written by
+// "server add --store" and read back by every command that needs the password,
+// so a store is chosen once rather than re-passed. An empty value means the
+// default store, so a config file written before the field existed loads
+// unchanged; the valid values and their precedence are owned by the command
+// layer, not by this package.
 type Server struct {
-	URL      string `json:"url"`
-	Username string `json:"username"`
+	URL         string `json:"url"`
+	Username    string `json:"username"`
+	SecretStore string `json:"secret_store,omitempty"`
 }
 
 // Config holds snatcher's non-secret configuration: the set of named servers

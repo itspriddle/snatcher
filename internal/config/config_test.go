@@ -122,6 +122,51 @@ func TestSaveWritesNewSchemaAndNoSecretKeys(t *testing.T) {
 	assert.Equal(t, "bob", local["username"])
 }
 
+func TestSaveLoadRoundTripsSecretStore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	cfg := Config{
+		Servers:       map[string]Server{"local": {URL: "http://example", Username: "bob", SecretStore: "file"}},
+		DefaultServer: "local",
+	}
+	require.NoError(t, Save(cfg, path))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "file", got.Servers["local"].SecretStore)
+}
+
+func TestSaveOmitsEmptySecretStore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	cfg := Config{
+		Servers:       map[string]Server{"local": {URL: "http://example", Username: "bob"}},
+		DefaultServer: "local",
+	}
+	require.NoError(t, Save(cfg, path))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	// The default store is expressed by the field's absence, so a config file
+	// written without one is byte-identical to what earlier versions wrote.
+	assert.NotContains(t, string(raw), "secret_store")
+}
+
+func TestLoadWithoutSecretStoreLeavesItEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	// A config file written before the field existed must load unchanged; an
+	// empty value means the default store (resolved at the command layer).
+	legacy := `{"servers":{"local":{"url":"http://example","username":"bob"}},"default_server":"local"}`
+	require.NoError(t, os.WriteFile(path, []byte(legacy), filePerm))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, Server{URL: "http://example", Username: "bob"}, got.Servers["local"])
+	assert.Empty(t, got.Servers["local"].SecretStore)
+}
+
 func TestLoadIgnoresUnknownLegacyKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 

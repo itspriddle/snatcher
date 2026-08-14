@@ -111,12 +111,12 @@ BitTorrent listening port, and download-path free space
 .TP
 .B snatcher server add \fR[\fIoptions\fR]
 Add or update a named server. Its URL and username are stored in the config
-file under the server's alias and the password in the OS keyring. The password
-is read from a hidden, non-echoing prompt (with confirmation) or, for
-scripting, from standard input with
+file under the server's alias and the password in a secret store, by default
+the OS keyring. The password is read from a hidden, non-echoing prompt (with
+confirmation) or, for scripting, from standard input with
 .BR \-\-password\-stdin .
 An empty password is a valid choice (a server with authentication disabled)
-and stores no secret. When the alias's URL changes, the old URL's keyring entry
+and stores no secret. When the alias's URL changes, the old URL's stored secret
 is deleted. The first server registered when no default is set becomes the
 default. Options:
 .RS
@@ -135,6 +135,28 @@ Username for HTTP Basic Auth.
 .TP
 .B \-\-password\-stdin
 Read the password from standard input instead of prompting.
+.TP
+.BR \-\-store " " \fIname\fR
+Secret store this server's password lives in, one of
+.BR keyring ", " file ", or " none .
+.B keyring
+is the default: the operating system keyring, and only the keyring \(em it
+never falls back to another store when it cannot be reached.
+.B file
+writes the password in
+.B plaintext
+to
+.IR $XDG_STATE_HOME/snatcher/secrets.json ,
+created with mode 0600 under a 0700 directory; it exists for machines with no
+OS keyring and is less safe than the keyring.
+.B none
+stores nothing at all. The value is saved with the server, so later commands
+use the same store without repeating the option; when it is omitted an existing
+server keeps the store it already had. See also
+.B SNATCHER_SECRET_STORE
+under
+.BR ENVIRONMENT ,
+which overrides it.
 .RE
 .TP
 .B snatcher server list \fR[\fIoptions\fR]
@@ -871,6 +893,22 @@ The
 .B \-\-server
 flag takes precedence; when neither is set, the configured default server is
 used.
+.TP
+.B SNATCHER_SECRET_STORE
+Selects the secret store passwords are read from and written to, for every
+server, for this invocation. One of
+.BR keyring ", " file ", or " none ,
+with the same meanings as
+.B \-\-store
+on
+.BR "snatcher server add" .
+Precedence is
+.B SNATCHER_SECRET_STORE
+over the server's
+.B secret_store
+value in the config file, over
+.BR keyring .
+An unrecognized value is an error, never a silent fallback.
 .TP
 .B NO_COLOR
 When set to a non-empty value, forces

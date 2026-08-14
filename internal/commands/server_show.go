@@ -229,7 +229,12 @@ func loadServerShowResult(cmd *cobra.Command, configPath, alias string) (serverS
 
 	secretStored := false
 	if srv.URL != "" {
-		_, err := secrets.Get(srv.URL)
+		store, storeErr := serverStore(srv)
+		if storeErr != nil {
+			return serverShowResult{}, false, storeErr
+		}
+
+		_, err := store.Get(srv.URL)
 		switch {
 		case err == nil:
 			secretStored = true

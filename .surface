@@ -47,6 +47,7 @@ FLAG snatcher api --server type=string
 FLAG snatcher server add --config type=string
 FLAG snatcher server add --name type=string
 FLAG snatcher server add --password-stdin type=bool
+FLAG snatcher server add --store type=string
 FLAG snatcher server add --url type=string
 FLAG snatcher server add --username type=string
 FLAG snatcher server default --config type=string
