@@ -636,6 +636,29 @@ func TestConfigUnsetRemovesKey(t *testing.T) {
 	assert.Equal(t, "added", client["list_sort"])
 }
 
+// TestConfigUnsetClearsACaseVariantStoredKey checks the CLI can repair a
+// hand-edit that spelled a key with the wrong case. encoding/json reads "Theme"
+// into the modeled field, so unset must clear it rather than report success
+// against a copy the file keeps.
+func TestConfigUnsetClearsACaseVariantStoredKey(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"Theme": "dracula"}}`)
+
+	before := configBytes(t, cfgPath)
+
+	_, _, err := runConfig(t, "unset", "client.theme", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, before, configBytes(t, cfgPath), "the file must actually change")
+
+	out, _, err := runConfig(t, "get", "client.theme", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var entry configEntry
+	require.NoError(t, json.Unmarshal([]byte(out), &entry))
+	assert.Equal(t, "default", entry.Source)
+	assert.Equal(t, "default", entry.Value)
+}
+
 // TestConfigUnsetIsIdempotent checks unsetting a key that was never set succeeds
 // and changes nothing, so the command is safe to re-run in a script.
 func TestConfigUnsetIsIdempotent(t *testing.T) {

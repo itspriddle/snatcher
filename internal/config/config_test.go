@@ -481,6 +481,57 @@ func TestSaveKeepsAnUnknownClientKeyAsTheOnlyClientContent(t *testing.T) {
 	assert.Equal(t, map[string]any{"date_format": "iso8601"}, clientObject(t, path))
 }
 
+func TestSaveCanonicalizesACaseVariantClientKeyInsteadOfDuplicatingIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	// encoding/json matches struct fields case-insensitively, so "Theme" lands in
+	// Client.Theme. It must not also be kept as an unknown key, or the file ends
+	// up with both spellings and the shadow copy outlives every unset.
+	hand := `{"servers":{},"default_server":"","client":{"Theme":"dracula"}}`
+	require.NoError(t, os.WriteFile(path, []byte(hand), filePerm))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Client.Theme)
+	require.Equal(t, "dracula", *cfg.Client.Theme)
+
+	require.NoError(t, Save(cfg, path))
+	assert.Equal(t, map[string]any{"theme": "dracula"}, clientObject(t, path))
+
+	// Clearing the field clears the setting: no case-variant copy is left to
+	// reload it.
+	cfg, err = Load(path)
+	require.NoError(t, err)
+	cfg.Client.Theme = nil
+	require.NoError(t, Save(cfg, path))
+
+	reloaded, err := Load(path)
+	require.NoError(t, err)
+	assert.Nil(t, reloaded.Client.Theme)
+}
+
+func TestSaveCanonicalizesACaseVariantTopLevelKeyInsteadOfDuplicatingIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	hand := `{"SERVERS":{"local":{"url":"http://example","username":"bob"}},"Client":{"theme":"nord"}}`
+	require.NoError(t, os.WriteFile(path, []byte(hand), filePerm))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Client.Theme)
+	require.Equal(t, "nord", *cfg.Client.Theme)
+
+	require.NoError(t, Save(cfg, path))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var on map[string]any
+	require.NoError(t, json.Unmarshal(raw, &on))
+	assert.ElementsMatch(t, configKeys, slices.Collect(maps.Keys(on)))
+	assert.Equal(t, "nord", clientObject(t, path)["theme"])
+}
+
 func TestLoadAcceptsSemanticallyInvalidClientValues(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 

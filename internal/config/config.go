@@ -9,7 +9,9 @@
 // The file is operator-owned and hand-editable, so Load and Save preserve keys
 // this package does not model — both at the top level and inside the client
 // object — rather than dropping them on the next write. Save rewrites the file
-// with its keys in sorted order.
+// with its keys in sorted order, and a modeled key in its canonical spelling:
+// a hand-edited "Theme" is read as theme and written back as "theme", never as
+// both.
 //
 // Secrets (passwords) are never stored here — they live in whichever secret
 // store the server names (see internal/secrets). This file records only that
@@ -94,8 +96,9 @@ type Client struct {
 	unknown map[string]json.RawMessage
 }
 
-// clientKeys is every key inside the client object that Client models. Anything
-// else found there is preserved verbatim in Client.unknown.
+// clientKeys is every key inside the client object that Client models, in its
+// canonical spelling. Anything else found there — matched case-insensitively,
+// see unknownKeys — is preserved verbatim in Client.unknown.
 var clientKeys = []string{
 	"theme", "nerd_font", "poll_interval", "list_columns", "list_sort", "list_reverse",
 }
@@ -114,6 +117,38 @@ func (c Client) IsZero() bool {
 		len(c.unknown) == 0
 }
 
+// unknownKeys decodes data as a JSON object and returns the keys that modeled
+// does not cover, or nil when it covers them all.
+//
+// Matching is case-insensitive because encoding/json is: it falls back to a
+// case-insensitive field match, so a hand-edited "Theme" is decoded into the
+// Theme field. Preserving that key as unknown as well would write it back
+// beside the canonical "theme" on the next Save — two copies of one setting,
+// and an "unset" that changes nothing because the shadow copy loads again.
+func unknownKeys(data []byte, modeled []string) (map[string]json.RawMessage, error) {
+	var rest map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rest); err != nil {
+		return nil, err
+	}
+
+	known := make(map[string]struct{}, len(modeled))
+	for _, key := range modeled {
+		known[strings.ToLower(key)] = struct{}{}
+	}
+
+	for key := range rest {
+		if _, ok := known[strings.ToLower(key)]; ok {
+			delete(rest, key)
+		}
+	}
+
+	if len(rest) == 0 {
+		return nil, nil
+	}
+
+	return rest, nil
+}
+
 // UnmarshalJSON decodes the modeled keys and stashes every other key so Save can
 // write it back.
 func (c *Client) UnmarshalJSON(data []byte) error {
@@ -126,17 +161,11 @@ func (c *Client) UnmarshalJSON(data []byte) error {
 	}
 	*c = Client(decoded)
 
-	var rest map[string]json.RawMessage
-	if err := json.Unmarshal(data, &rest); err != nil {
+	rest, err := unknownKeys(data, clientKeys)
+	if err != nil {
 		return err
 	}
-
-	for _, key := range clientKeys {
-		delete(rest, key)
-	}
-	if len(rest) > 0 {
-		c.unknown = rest
-	}
+	c.unknown = rest
 
 	return nil
 }
@@ -193,7 +222,8 @@ type Config struct {
 	unknown map[string]json.RawMessage
 }
 
-// configKeys is every top-level key Config models.
+// configKeys is every top-level key Config models, in its canonical spelling.
+// Anything else is preserved in Config.unknown (see unknownKeys).
 var configKeys = []string{"servers", "default_server", "client"}
 
 // UnmarshalJSON decodes the modeled top-level keys and stashes every other one
@@ -208,17 +238,11 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	}
 	*c = Config(decoded)
 
-	var rest map[string]json.RawMessage
-	if err := json.Unmarshal(data, &rest); err != nil {
+	rest, err := unknownKeys(data, configKeys)
+	if err != nil {
 		return err
 	}
-
-	for _, key := range configKeys {
-		delete(rest, key)
-	}
-	if len(rest) > 0 {
-		c.unknown = rest
-	}
+	c.unknown = rest
 
 	return nil
 }
