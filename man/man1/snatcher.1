@@ -56,6 +56,37 @@ Read configuration from
 instead of the default location (see
 .BR FILES ).
 .TP
+.BR \-\-theme " " \fIname\fR
+Use the color theme
+.IR name ,
+one of
+.BR default ", " dracula ", or " nord ,
+for this invocation only, overriding the
+.B client.theme
+setting. An unknown name is an error listing the valid ones.
+.TP
+.B \-\-no\-nerd\-font
+Draw ASCII icons rather than Nerd Font glyphs for this invocation only,
+overriding the
+.B client.nerd_font
+setting. The flag is negative and the setting is positive, so
+.B \-\-no\-nerd\-font
+means
+.BR client.nerd_font=false ;
+.B \-\-no\-nerd\-font=false
+asks for glyphs explicitly.
+.IP
+Nothing renders a theme or a glyph yet \(em these two options resolve and are
+checked, but no command's output changes. They exist so the forthcoming TUI
+reads a settled contract. Their full precedence chain is
+.BR \-\-theme / \-\-no\-nerd\-font
+over
+.BR SNATCHER_THEME / SNATCHER_NO_NERD_FONT
+over the config file, over the built-in default;
+.B snatcher config list
+reports which rung supplied each value. An invalid value at any rung is an
+error naming that rung, on every command, never a silent fallback.
+.TP
 .B \-\-version
 Print version information and exit. Valid on
 .B snatcher
@@ -1104,10 +1135,16 @@ instead.
 .B snatcher config list \fR[\fIoptions\fR]
 List every client setting, sorted by key, with its effective value and the
 source that value came from:
+.B flag
+when a command-line option supplied it for this invocation,
+.B env
+when an environment variable did,
 .B config
 when the key is set in the config file, and
 .B default
-when it is not. Plaintext is an aligned KEY VALUE SOURCE table on a terminal and
+when none of them is. That is the precedence order, so the listing answers what
+this invocation would actually use rather than only what the file holds.
+Plaintext is an aligned KEY VALUE SOURCE table on a terminal and
 tab-separated, header-less rows when piped or when
 .B NO_COLOR
 is set (the same contract as
@@ -1128,7 +1165,18 @@ emit the same
 .IR key ", " value ", " source
 object that
 .B config list
-emits per row, with the value in its natural JSON type. An unknown key is an
+emits per row, with the value in its natural JSON type. The value is resolved
+through the same
+.B flag
+\(->
+.B env
+\(->
+.B config
+\(->
+.B default
+chain
+.B config list
+reports. An unknown key is an
 error listing the valid keys. A value in the config file that is not valid for
 its key is an error naming the key, the offending value, and what is accepted;
 it is never silently replaced by the default. Accepts
@@ -1217,6 +1265,19 @@ reverses its sort order by default
 .RB ( true / false ).
 Default:
 .BR false .
+.PP
+.BR client.theme " and " client.nerd_font
+can also be overridden for a single invocation, without editing the file, with
+.BR \-\-theme " and " \-\-no\-nerd\-font
+or with
+.BR SNATCHER_THEME " and " SNATCHER_NO_NERD_FONT .
+An override applies to what
+.BR "config list" " and " "config get"
+report and to nothing else:
+.BR set " and " unset
+write the file and are unaffected by whatever is in force, so a
+.B \-\-theme
+on the command line can never end up persisted.
 .PP
 .BR client.theme ", " client.nerd_font ", and " client.poll_interval
 are stored and validated but nothing renders them yet; they exist for the
@@ -1442,6 +1503,42 @@ it is inherited by every child process snatcher spawns, and it is commonly
 captured in shell history and CI logs. Prefer the OS keyring where one is
 available.
 .TP
+.B SNATCHER_THEME
+Selects the color theme for this invocation, equivalent to passing
+.BR \-\-theme .
+One of
+.BR default ", " dracula ", or " nord .
+The
+.B \-\-theme
+flag takes precedence; when neither is set, the
+.B client.theme
+setting is used, and failing that the built-in default. An unset or empty value
+expresses no opinion and falls through. An unknown theme is an error naming the
+variable and the valid names, never a silent fallback.
+.TP
+.B SNATCHER_NO_NERD_FONT
+Draws ASCII icons rather than Nerd Font glyphs for this invocation, equivalent
+to passing
+.BR \-\-no\-nerd\-font .
+Like the flag, and unlike the positive
+.B client.nerd_font
+setting, it is negative: a truthy value
+.RB ( 1 ", " true )
+turns glyphs
+.IR off ,
+and a falsy one turns them on. An unset or empty value expresses no opinion and
+falls through to the config file. The
+.B \-\-no\-nerd\-font
+flag takes precedence. A value that is not a boolean is an error naming the
+variable, never a silent fallback.
+.IP
+Neither variable changes any output today \(em nothing renders a theme or a
+glyph until the TUI exists \(em but both are resolved and checked on every
+command, and
+.B snatcher config list
+reports a setting they supply with the source
+.BR env .
+.TP
 .B NO_COLOR
 When set to a non-empty value, forces
 .B list
@@ -1604,6 +1701,10 @@ $ theme=$(snatcher config get client.theme)
 # change a setting, then drop it back to its default
 $ snatcher config set client.list_columns id,name,ratio
 $ snatcher config unset client.list_columns
+
+# override an appearance setting for one invocation, without editing the file
+$ snatcher config list --theme nord
+$ SNATCHER_NO_NERD_FONT=1 snatcher config get client.nerd_font
 .EE
 .SS "Raw RPC calls"
 .EX

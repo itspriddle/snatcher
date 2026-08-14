@@ -107,6 +107,21 @@ func TestClientKeyRegistryEntriesAreComplete(t *testing.T) {
 	}
 }
 
+// TestClientKeyRegistryOverridesMatchTheGlobalFlags pins which keys can be
+// overridden from outside the config file to exactly the two that have a global
+// flag and an environment companion. A key that grew an override without a flag
+// — or a flag without an override — would be a rung an operator cannot see.
+func TestClientKeyRegistryOverridesMatchTheGlobalFlags(t *testing.T) {
+	overridable := []string{}
+	for _, def := range clientKeyRegistry {
+		if def.override != nil {
+			overridable = append(overridable, def.key)
+		}
+	}
+
+	assert.Equal(t, []string{"client.theme", "client.nerd_font"}, overridable)
+}
+
 // TestClientKeyRegistryDefaultsAreValid checks every default against its own
 // validator, so a typo in a default is a failing test rather than an error the
 // operator sees on a config they never wrote.
@@ -752,4 +767,260 @@ func TestConfigSetIsCaseInsensitiveInTheKey(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "added", readClientObject(t, cfgPath)["list_sort"])
+}
+
+// configEntryFor runs "config get <key> --json" with args appended and decodes
+// the reported entry, so a test can assert on both the effective value and the
+// rung that supplied it.
+func configEntryFor(t *testing.T, key string, args ...string) configEntry {
+	t.Helper()
+
+	out, _, err := runConfig(t, append([]string{"get", key, "--json"}, args...)...)
+	require.NoError(t, err)
+
+	var entry configEntry
+	require.NoError(t, json.Unmarshal([]byte(out), &entry))
+
+	return entry
+}
+
+// TestClientSettingPrecedence walks the whole chain — flag > env > config >
+// default — for both overridable keys, including every case where a lower rung
+// is set and a higher one is not, which is where a precedence bug actually
+// lives.
+//
+// The theme cases pin the Changed detection too: "--theme default" passes the
+// registry default explicitly and must still report source "flag", which a
+// zero-value comparison would get wrong. The nerd-font cases pin the negation:
+// the flag and the variable are negative, the config key is positive.
+func TestClientSettingPrecedence(t *testing.T) {
+	tests := []struct {
+		name       string
+		key        string
+		client     string
+		envName    string
+		envValue   string
+		args       []string
+		wantValue  any
+		wantSource string
+	}{
+		{
+			name:       "theme default with nothing set",
+			key:        "client.theme",
+			wantValue:  "default",
+			wantSource: sourceDefault,
+		},
+		{
+			name:       "theme from the config file",
+			key:        "client.theme",
+			client:     `"theme": "nord"`,
+			wantValue:  "nord",
+			wantSource: sourceConfig,
+		},
+		{
+			name:       "theme env outranks the config file",
+			key:        "client.theme",
+			client:     `"theme": "nord"`,
+			envName:    envTheme,
+			envValue:   "dracula",
+			wantValue:  "dracula",
+			wantSource: sourceEnv,
+		},
+		{
+			name:       "theme env with no stored value",
+			key:        "client.theme",
+			envName:    envTheme,
+			envValue:   "dracula",
+			wantValue:  "dracula",
+			wantSource: sourceEnv,
+		},
+		{
+			name:       "theme flag outranks env and the config file",
+			key:        "client.theme",
+			client:     `"theme": "nord"`,
+			envName:    envTheme,
+			envValue:   "dracula",
+			args:       []string{"--theme", "default"},
+			wantValue:  "default",
+			wantSource: sourceFlag,
+		},
+		{
+			name:       "theme empty env falls through to the config file",
+			key:        "client.theme",
+			client:     `"theme": "nord"`,
+			envName:    envTheme,
+			envValue:   "",
+			wantValue:  "nord",
+			wantSource: sourceConfig,
+		},
+		{
+			name:       "nerd font default with nothing set",
+			key:        "client.nerd_font",
+			wantValue:  true,
+			wantSource: sourceDefault,
+		},
+		{
+			name:       "nerd font from the config file",
+			key:        "client.nerd_font",
+			client:     `"nerd_font": false`,
+			wantValue:  false,
+			wantSource: sourceConfig,
+		},
+		{
+			name:       "truthy env turns off a config file that says on",
+			key:        "client.nerd_font",
+			client:     `"nerd_font": true`,
+			envName:    envNoNerdFont,
+			envValue:   "1",
+			wantValue:  false,
+			wantSource: sourceEnv,
+		},
+		{
+			name:       "falsy env turns on a config file that says off",
+			key:        "client.nerd_font",
+			client:     `"nerd_font": false`,
+			envName:    envNoNerdFont,
+			envValue:   "false",
+			wantValue:  true,
+			wantSource: sourceEnv,
+		},
+		{
+			name:       "nerd font flag outranks a falsy env",
+			key:        "client.nerd_font",
+			client:     `"nerd_font": true`,
+			envName:    envNoNerdFont,
+			envValue:   "false",
+			args:       []string{"--no-nerd-font"},
+			wantValue:  false,
+			wantSource: sourceFlag,
+		},
+		{
+			name:       "nerd font empty env falls through to the config file",
+			key:        "client.nerd_font",
+			client:     `"nerd_font": false`,
+			envName:    envNoNerdFont,
+			envValue:   "",
+			wantValue:  false,
+			wantSource: sourceConfig,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envName != "" {
+				t.Setenv(tt.envName, tt.envValue)
+			}
+
+			cfgPath := writeConfigFile(t, `{"servers": {}, "client": {`+tt.client+`}}`)
+
+			entry := configEntryFor(t, tt.key, append([]string{"--config", cfgPath}, tt.args...)...)
+
+			assert.Equal(t, tt.key, entry.Key)
+			assert.Equal(t, tt.wantValue, entry.Value)
+			assert.Equal(t, tt.wantSource, entry.Source)
+		})
+	}
+}
+
+// TestConfigListReportsOverrideSources checks the listing reports the rung each
+// value came from, so "config list" shows what this process would actually use
+// rather than only what the file holds. Keys with no override rung are
+// unaffected by the flags and variables in force.
+func TestConfigListReportsOverrideSources(t *testing.T) {
+	t.Setenv(envNoNerdFont, "true")
+
+	cfgPath := writeConfigFile(t, `{
+		"servers": {},
+		"client": {"theme": "nord", "nerd_font": true, "list_sort": "added"}
+	}`)
+
+	out, _, err := runConfig(t, "list", "--config", cfgPath, "--theme", "dracula")
+	require.NoError(t, err)
+
+	assert.Equal(t, [][]string{
+		{"client.list_columns", "id,name,status,done,size,down,up,ratio,eta", "default"},
+		{"client.list_reverse", "false", "default"},
+		{"client.list_sort", "added", "config"},
+		{"client.nerd_font", "false", "env"},
+		{"client.poll_interval", "5s", "default"},
+		{"client.theme", "dracula", "flag"},
+	}, configRows(t, out))
+}
+
+// TestConfigGetPrintsTheOverriddenValue checks the bare plaintext value is the
+// effective one, so a shell capture agrees with what the process would use.
+func TestConfigGetPrintsTheOverriddenValue(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord"}}`)
+
+	out, _, err := runConfig(t, "get", "client.theme", "--config", cfgPath, "--theme", "dracula")
+	require.NoError(t, err)
+
+	assert.Equal(t, "dracula\n", out)
+}
+
+// TestConfigReadsRejectInvalidOverrides checks a bad override is an error naming
+// its rung, rather than a silent fall back to the config file — the whole point
+// of reporting sources is that a rung is never invisible.
+func TestConfigReadsRejectInvalidOverrides(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord"}}`)
+
+	t.Run("flag", func(t *testing.T) {
+		out, _, err := runConfig(t, "get", "client.theme", "--config", cfgPath, "--theme", "solarized")
+		require.Error(t, err)
+
+		assert.Empty(t, out)
+		assert.Contains(t, err.Error(), "--theme")
+		assert.Contains(t, err.Error(), "not a known theme")
+	})
+
+	t.Run("env", func(t *testing.T) {
+		t.Setenv(envNoNerdFont, "yes-please")
+
+		out, _, err := runConfig(t, "list", "--config", cfgPath)
+		require.Error(t, err)
+
+		assert.Empty(t, out)
+		assert.Contains(t, err.Error(), envNoNerdFont)
+		assert.Contains(t, err.Error(), "not a boolean")
+	})
+}
+
+// TestConfigWritesIgnoreOverrides is the separation the two commands depend on:
+// a --theme or a SNATCHER_NO_NERD_FONT in force for this invocation is an
+// override for this process and must never leak into the file, nor into what the
+// write reports having done.
+func TestConfigWritesIgnoreOverrides(t *testing.T) {
+	t.Setenv(envNoNerdFont, "true")
+
+	t.Run("set", func(t *testing.T) {
+		cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+		out, _, err := runConfig(t, "set", "client.theme", "nord", "--config", cfgPath,
+			"--theme", "dracula", "--json")
+		require.NoError(t, err)
+
+		var entry configEntry
+		require.NoError(t, json.Unmarshal([]byte(out), &entry))
+		assert.Equal(t, "nord", entry.Value, "the write reported the override, not the file")
+		assert.Equal(t, sourceConfig, entry.Source)
+
+		client := readClientObject(t, cfgPath)
+		assert.Equal(t, "nord", client["theme"])
+		assert.NotContains(t, client, "nerd_font", "an override was persisted")
+	})
+
+	t.Run("unset", func(t *testing.T) {
+		cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"nerd_font": false}}`)
+
+		out, _, err := runConfig(t, "unset", "client.nerd_font", "--config", cfgPath,
+			"--theme", "dracula", "--json")
+		require.NoError(t, err)
+
+		var entry configEntry
+		require.NoError(t, json.Unmarshal([]byte(out), &entry))
+		assert.Equal(t, true, entry.Value, "unset reported the override, not the default it left behind")
+		assert.Equal(t, sourceDefault, entry.Source)
+
+		assert.NotContains(t, readClientObject(t, cfgPath), "nerd_font")
+	})
 }

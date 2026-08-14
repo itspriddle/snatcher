@@ -58,6 +58,8 @@ CMD snatcher torrent trackers
 CMD snatcher torrent update
 CMD snatcher torrent verify
 FLAG snatcher --config type=string
+FLAG snatcher --no-nerd-font type=bool
+FLAG snatcher --theme type=string
 FLAG snatcher --version type=bool
 FLAG snatcher api --field type=stringArray
 FLAG snatcher api --input type=string

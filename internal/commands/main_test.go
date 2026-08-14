@@ -36,6 +36,10 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 // ~/.local/state/snatcher/secrets.json, and every result here would depend on
 // whose shell the suite ran in.
 //
+// Two more override client settings for an invocation — SNATCHER_THEME and
+// SNATCHER_NO_NERD_FONT — and would otherwise make "config list" report a source
+// of "env" for a key the test staged in a config file.
+//
 // XDG_STATE_HOME is pointed at a throwaway directory for the same reason, as the
 // belt to the unset variable's braces: no test — including one written later
 // that forgets stateDir — can resolve the real secrets file. Tests that do use
@@ -47,7 +51,7 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 // keyring state still call keyring.MockInit or mockStoreUnavailable themselves;
 // this only decides what an unprepared test gets.
 func TestMain(m *testing.M) {
-	for _, key := range []string{envSecretStore, envPassword, envServer} {
+	for _, key := range []string{envSecretStore, envPassword, envServer, envTheme, envNoNerdFont} {
 		if err := os.Unsetenv(key); err != nil {
 			fmt.Fprintf(os.Stderr, "commands: unsetting %s: %v\n", key, err)
 			os.Exit(1)

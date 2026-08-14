@@ -16,8 +16,16 @@ import (
 
 // The sources a client setting's effective value can come from, reported by
 // "config list" and "config get" so four rungs of precedence are visible
-// without opening the file.
+// without opening the file. They are listed here in precedence order: flag >
+// env > config > default.
 const (
+	// sourceFlag means a command-line flag supplied the value for this
+	// invocation, outranking everything below it.
+	sourceFlag = "flag"
+
+	// sourceEnv means an environment variable supplied it, outranking the file.
+	sourceEnv = "env"
+
 	// sourceConfig means the value was read from the client section of
 	// config.json.
 	sourceConfig = "config"
@@ -80,6 +88,17 @@ type clientKeyDef struct {
 	// that "nothing to check here" is a decision on the record rather than an
 	// omission.
 	validate func(any) error
+
+	// override resolves the key from the two rungs above the config file — a
+	// command-line flag, then an environment variable — for the invocation cmd
+	// belongs to. It yields nothing when neither rung has an opinion, leaving
+	// the file (or the default) to settle the key.
+	//
+	// A nil override means the key has no rungs above the file at all, which is
+	// true of every key but the two the TUI's appearance depends on: a setting
+	// worth a global flag is one worth overriding for a single invocation, and
+	// the rest are changed with "config set".
+	override func(*cobra.Command) (*clientOverride, error)
 }
 
 // clientKeyRegistry is the single source of truth for every client setting, in
@@ -93,6 +112,7 @@ var clientKeyRegistry = []clientKeyDef{
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.Theme) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.Theme, v) },
 		validate: validateTheme,
+		override: themeOverride,
 	},
 	{
 		key:      "client.nerd_font",
@@ -100,6 +120,7 @@ var clientKeyRegistry = []clientKeyDef{
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.NerdFont) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.NerdFont, v) },
 		validate: alwaysValid,
+		override: nerdFontOverride,
 	},
 	{
 		key:      "client.poll_interval",
@@ -416,11 +437,15 @@ func formatClientValue(v any) string {
 	return formatSettingValue(v)
 }
 
-// resolveClientKey returns one key's effective value and its source. A stored
-// value is validated; an absent one yields the registry default, which is not
-// re-validated (TestClientKeyRegistryDefaultsAreValid pins that at build time
-// instead).
-func resolveClientKey(def clientKeyDef, cfg config.Config) (configEntry, error) {
+// resolveStoredClientKey returns what the config file says one key is, and its
+// source: the stored value, or the registry default when nothing is stored. A
+// stored value is validated; a default is not re-validated
+// (TestClientKeyRegistryDefaultsAreValid pins that at build time instead).
+//
+// This is the bottom two rungs only. The write commands report through it
+// deliberately: "config set" describes the file it just wrote, so a --theme in
+// force for that invocation cannot be mistaken for something that was persisted.
+func resolveStoredClientKey(def clientKeyDef, cfg config.Config) (configEntry, error) {
 	value, ok := def.accessor(cfg.Client)
 	if !ok {
 		return configEntry{Key: def.key, Value: def.def, Source: sourceDefault}, nil
@@ -433,14 +458,33 @@ func resolveClientKey(def clientKeyDef, cfg config.Config) (configEntry, error) 
 	return configEntry{Key: def.key, Value: value, Source: sourceConfig}, nil
 }
 
-// clientEntries resolves every registry key against cfg, sorted by key. A single
-// invalid stored value fails the whole listing rather than being reported as a
-// default: "config list" answers "what would this process use", and it cannot
-// answer that for a key it does not understand.
-func clientEntries(cfg config.Config) ([]configEntry, error) {
+// resolveClientSetting returns one key's effective value for this invocation and
+// the rung that supplied it, applying the full precedence chain: flag > env >
+// config > default. It is what the read commands report, so "config list"
+// answers "what would this process use" rather than only "what is in the file".
+func resolveClientSetting(cmd *cobra.Command, def clientKeyDef, cfg config.Config) (configEntry, error) {
+	if def.override != nil {
+		override, err := def.override(cmd)
+		if err != nil {
+			return configEntry{}, err
+		}
+
+		if override != nil {
+			return configEntry{Key: def.key, Value: override.value, Source: override.source}, nil
+		}
+	}
+
+	return resolveStoredClientKey(def, cfg)
+}
+
+// clientEntries resolves every registry key for this invocation, sorted by key.
+// A single invalid stored value fails the whole listing rather than being
+// reported as a default: "config list" answers "what would this process use",
+// and it cannot answer that for a key it does not understand.
+func clientEntries(cmd *cobra.Command, cfg config.Config) ([]configEntry, error) {
 	entries := make([]configEntry, 0, len(sortedClientKeyDefs))
 	for _, def := range sortedClientKeyDefs {
-		entry, err := resolveClientKey(def, cfg)
+		entry, err := resolveClientSetting(cmd, def, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -464,6 +508,10 @@ func clientEntries(cfg config.Config) ([]configEntry, error) {
 // run, before any server is added. Everything else in the file — servers, the
 // default server, and any key snatcher does not recognize — is carried through
 // untouched by the load/save round trip.
+//
+// The entry reported back describes the file, not the invocation: a --theme or a
+// SNATCHER_THEME in force for this command is an override for this process and
+// has no business either being written or being reported as what was written.
 func writeClientKey(def clientKeyDef, configPath string, value any) (configEntry, error) {
 	cfg, _, err := loadConfig(configPath)
 	if err != nil {
@@ -478,7 +526,7 @@ func writeClientKey(def clientKeyDef, configPath string, value any) (configEntry
 		return configEntry{}, err
 	}
 
-	return resolveClientKey(def, cfg)
+	return resolveStoredClientKey(def, cfg)
 }
 
 // reportClientKey renders one written key in the mode the flags ask for, with
@@ -539,11 +587,15 @@ func NewConfigCmd() *cobra.Command {
 }
 
 // newConfigListCmd builds "config list", which prints every client setting with
-// its effective value and where that value came from — the config file or the
-// built-in default. Plaintext is an aligned table on a terminal and
-// tab-separated, header-less rows when piped or when NO_COLOR is set (the same
-// contract as "torrent list"); --json and --jq emit the stable {key, value,
-// source} shape, sorted by key.
+// its effective value and where that value came from: a command-line flag, an
+// environment variable, the config file, or the built-in default, in that order
+// of precedence. Reporting the whole chain is the point — a setting overridden
+// for this invocation is shown as overridden, so "why is my theme not what I
+// set" is answerable without opening the file.
+//
+// Plaintext is an aligned table on a terminal and tab-separated, header-less
+// rows when piped or when NO_COLOR is set (the same contract as "torrent list");
+// --json and --jq emit the stable {key, value, source} shape, sorted by key.
 func newConfigListCmd() *cobra.Command {
 	var (
 		asJSON bool
@@ -556,7 +608,10 @@ func newConfigListCmd() *cobra.Command {
 		Short:   "List every client setting with its value and source",
 		Long: "List every client setting, its effective value, and where that value " +
 			"came from, so a deliberate setting is distinguishable from a default " +
-			"without opening the config file.",
+			"without opening the config file.\n\n" +
+			"The source is the rung of the precedence chain that supplied the value: " +
+			"flag, env, config, or default, in that order. A setting overridden for " +
+			"this invocation is reported as overridden, not as what the file holds.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -566,7 +621,7 @@ func newConfigListCmd() *cobra.Command {
 				return err
 			}
 
-			entries, err := clientEntries(cfg)
+			entries, err := clientEntries(cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -592,10 +647,11 @@ func newConfigListCmd() *cobra.Command {
 }
 
 // newConfigGetCmd builds "config get <key>", which prints one setting's
-// effective value. The plaintext path prints the bare value with no key name,
-// padding, or decoration, so $(snatcher config get client.theme) is directly
-// usable in a shell; --json and --jq emit the same {key, value, source} object
-// "config list" uses.
+// effective value for this invocation — the same flag > env > config > default
+// chain "config list" reports. The plaintext path prints the bare value with no
+// key name, padding, or decoration, so $(snatcher config get client.theme) is
+// directly usable in a shell; --json and --jq emit the same {key, value, source}
+// object "config list" uses.
 func newConfigGetCmd() *cobra.Command {
 	var (
 		asJSON bool
@@ -623,7 +679,7 @@ func newConfigGetCmd() *cobra.Command {
 				return err
 			}
 
-			entry, err := resolveClientKey(def, cfg)
+			entry, err := resolveClientSetting(cmd, def, cfg)
 			if err != nil {
 				return err
 			}
