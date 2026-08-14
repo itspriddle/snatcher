@@ -441,8 +441,9 @@ func TestTrackersRegisteredOnTorrentGroup(t *testing.T) {
 	cfgPath, closeSrv := showConfigPath(t, bespokeTrackersResponse)
 	defer closeSrv()
 
-	out, err := runTorrent(t, "trackers", "1", "--config", cfgPath)
+	out, errOut, err := runTorrent(t, "trackers", "1", "--config", cfgPath)
 	require.NoError(t, err)
+	assert.Empty(t, errOut, "nothing is written to stderr")
 
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	require.Len(t, lines, 2)

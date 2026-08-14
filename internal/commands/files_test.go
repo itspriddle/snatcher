@@ -537,8 +537,10 @@ func runFilesUpdate(t *testing.T, args ...string) (string, string, error) {
 }
 
 // runTorrent executes args against the whole torrent group, so command routing
-// (not just a single constructor) is exercised.
-func runTorrent(t *testing.T, args ...string) (string, error) {
+// (not just a single constructor) is exercised. It returns (stdout, stderr,
+// error) like every other run* helper in the package, so a routing guard can
+// assert nothing leaked to stderr on the way through the parent.
+func runTorrent(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	cmd := NewTorrentCmd()
@@ -551,7 +553,7 @@ func runTorrent(t *testing.T, args ...string) (string, error) {
 
 	err := cmd.Execute()
 
-	return out.String(), err
+	return out.String(), errOut.String(), err
 }
 
 // TestFilesUpdateRoutesPastTheParentSelector is the guard for the first command
@@ -565,8 +567,9 @@ func TestFilesUpdateRoutesPastTheParentSelector(t *testing.T) {
 		cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
 		defer closeSrv()
 
-		out, err := runTorrent(t, "files", "update", "1", "0", "--wanted", "--config", cfgPath)
+		out, errOut, err := runTorrent(t, "files", "update", "1", "0", "--wanted", "--config", cfgPath)
 		require.NoError(t, err)
+		assert.Empty(t, errOut, "nothing is written to stderr")
 
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		require.Len(t, lines, 1, "only the affected file row is rendered")
@@ -581,8 +584,9 @@ func TestFilesUpdateRoutesPastTheParentSelector(t *testing.T) {
 		cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
 		defer closeSrv()
 
-		out, err := runTorrent(t, "files", "1", "--config", cfgPath)
+		out, errOut, err := runTorrent(t, "files", "1", "--config", cfgPath)
 		require.NoError(t, err)
+		assert.Empty(t, errOut, "nothing is written to stderr")
 
 		assert.Len(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), 3,
 			"the parent listed the torrent's three files")

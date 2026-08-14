@@ -409,8 +409,9 @@ func TestPeersRegisteredOnTorrentGroup(t *testing.T) {
 	cfgPath, closeSrv := showConfigPath(t, bespokePeersResponse)
 	defer closeSrv()
 
-	out, err := runTorrent(t, "peers", "1", "--config", cfgPath)
+	out, errOut, err := runTorrent(t, "peers", "1", "--config", cfgPath)
 	require.NoError(t, err)
+	assert.Empty(t, errOut, "nothing is written to stderr")
 
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	require.Len(t, lines, 2)
