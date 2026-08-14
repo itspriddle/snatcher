@@ -750,50 +750,68 @@ func TestServerAddFileStoreReportsPlaintextLocation(t *testing.T) {
 	assert.Contains(t, out, "0600")
 }
 
+// assertStoredPassword asserts what store holds for serverURL. An empty want
+// means the store must hold no entry at all.
+func assertStoredPassword(t *testing.T, store secretStore, serverURL, want string) {
+	t.Helper()
+
+	stored, err := store.Get(serverURL)
+	if want == "" {
+		require.ErrorIs(t, err, secrets.ErrNotFound)
+
+		return
+	}
+
+	require.NoError(t, err)
+	assert.Equal(t, want, stored)
+}
+
 // TestServerAddClearsSecretWhenStoreChanges pins the pre-clear on a store
 // change, not only a URL change. Re-adding the same server with a different
 // store used to report the new choice while leaving the old plaintext password
 // readable in secrets.json — output contradicting the disk after an explicit
 // opt-out.
+//
+// The keyring-to-file case is the likeliest real migration on a headless box,
+// and the only direction where the store being cleared is the keyring.
 func TestServerAddClearsSecretWhenStoreChanges(t *testing.T) {
 	const serverURL = "http://host:9091/transmission/rpc"
 
 	tests := []struct {
 		name       string
-		store      string
+		from       string
+		to         string
 		password   string
 		wantOutHas string
 	}{
-		{name: "file to none", store: "none", wantOutHas: "no password stored"},
-		{name: "file to keyring", store: "keyring", password: "hunter3", wantOutHas: "Saved credentials"},
+		{name: "file to none", from: "file", to: "none", wantOutHas: "no password stored"},
+		{name: "file to keyring", from: "file", to: "keyring", password: "hunter3", wantOutHas: "Saved credentials"},
+		{name: "keyring to file", from: "keyring", to: "file", password: "hunter3", wantOutHas: "Saved credentials"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(envSecretStore, "")
-			secretsPath := stateDir(t)
+			stateDir(t)
 			cfgPath := filepath.Join(t.TempDir(), "config.json")
 
 			keyring.MockInit()
 			resetStoreUnavailableWarning(t)
 
-			// The server starts out opted into the plaintext file store.
+			// The server starts out in the store it is about to move off.
 			_, _, err := runServer(t, "hunter2\n",
 				"add",
 				"--config", cfgPath,
 				"--url", serverURL,
 				"--username", "alice",
 				"--password-stdin",
-				"--store", "file",
+				"--store", tc.from,
 			)
 			require.NoError(t, err)
-			require.FileExists(t, secretsPath)
 
-			fileStore, storeErr := secrets.NewFileStore("")
+			fromStore, storeErr := openStore(storeMode(tc.from))
 			require.NoError(t, storeErr)
-			stored, getErr := fileStore.Get(serverURL)
-			require.NoError(t, getErr)
-			require.Equal(t, "hunter2", stored)
+			assertStoredPassword(t, fromStore, serverURL, "hunter2")
 
 			stdin := tc.password
 			if stdin != "" {
@@ -806,23 +824,22 @@ func TestServerAddClearsSecretWhenStoreChanges(t *testing.T) {
 				"--url", serverURL,
 				"--username", "alice",
 				"--password-stdin",
-				"--store", tc.store,
+				"--store", tc.to,
 			)
 			require.NoError(t, err)
 			assert.Contains(t, out, tc.wantOutHas)
 
 			// Nothing is left behind in the store the server just moved off.
-			_, getErr = fileStore.Get(serverURL)
-			require.ErrorIs(t, getErr, secrets.ErrNotFound)
+			assertStoredPassword(t, fromStore, serverURL, "")
 
 			cfg, loadErr := config.Load(cfgPath)
 			require.NoError(t, loadErr)
-			assert.Equal(t, tc.store, cfg.Servers["host:9091"].SecretStore)
+			assert.Equal(t, tc.to, cfg.Servers["host:9091"].SecretStore)
 
 			if tc.password != "" {
-				keyringStored, keyringErr := secrets.Get(serverURL)
-				require.NoError(t, keyringErr)
-				assert.Equal(t, tc.password, keyringStored)
+				toStore, openErr := openStore(storeMode(tc.to))
+				require.NoError(t, openErr)
+				assertStoredPassword(t, toStore, serverURL, tc.password)
 			}
 		})
 	}
@@ -925,32 +942,43 @@ func TestServerAddDropsTheSecretWhenSavingConfigFails(t *testing.T) {
 // asks.
 //
 // It has to fire whenever the add pointed the alias somewhere new — a changed
-// store counts, not only a changed URL. There the pre-clear has already dropped
-// the old secret, so skipping the rollback leaves the previously working server
-// broken and the freshly written password orphaned for good: a later corrective
-// add compares the same store to itself and never clears it.
+// store counts, not only a changed URL. Skipping the rollback there orphans the
+// freshly written password for good: a later corrective add compares the same
+// store to itself and never clears it.
 //
 // It must not fire otherwise. On a failed username edit the saved config still
 // names this URL and this store, so the password just written is that server's
 // live credential, and deleting it would leave a working server unable to
 // authenticate.
+//
+// The rekeyed case also pins the other half of that consequence: the secret the
+// alias had before must survive, because the config still names the store
+// holding it. That is what forces the pre-clear to run only after a successful
+// save — dropping it earlier leaves the server with no password in any store.
 func TestServerAddSaveFailureRollbackMatchesTheRekeyRule(t *testing.T) {
-	const serverURL = "http://host:9091/transmission/rpc"
+	const (
+		serverURL  = "http://host:9091/transmission/rpc"
+		firstPass  = "hunter2"
+		secondPass = "hunter3"
+	)
 
 	tests := []struct {
-		name       string
-		firstStore string
-		wantStored string // "" means the file store must hold no entry
+		name        string
+		firstStore  string
+		wantFile    string // "" means the file store must hold no entry
+		wantKeyring string // "" means the keyring must hold no entry
 	}{
 		{
-			name:       "store changed drops the secret the failed add wrote",
-			firstStore: "keyring",
-			wantStored: "",
+			name:        "store changed drops the new secret and keeps the old one",
+			firstStore:  "keyring",
+			wantFile:    "",
+			wantKeyring: firstPass,
 		},
 		{
-			name:       "same URL and store keeps the live password",
-			firstStore: "file",
-			wantStored: "hunter2",
+			name:        "same URL and store keeps the password the add wrote",
+			firstStore:  "file",
+			wantFile:    secondPass,
+			wantKeyring: "",
 		},
 	}
 
@@ -962,7 +990,7 @@ func TestServerAddSaveFailureRollbackMatchesTheRekeyRule(t *testing.T) {
 
 			keyring.MockInit()
 
-			_, _, err := runServer(t, "hunter2\n",
+			_, _, err := runServer(t, firstPass+"\n",
 				"add",
 				"--config", cfgPath,
 				"--url", serverURL,
@@ -981,9 +1009,11 @@ func TestServerAddSaveFailureRollbackMatchesTheRekeyRule(t *testing.T) {
 			require.NoError(t, os.Chmod(cfgPath, 0o400))
 			t.Cleanup(func() { _ = os.Chmod(cfgPath, 0o600) })
 
-			// Same alias, same URL, edited username. Only the first add's store
-			// differs between the cases, so this is a store change or it is not.
-			_, _, err = runServer(t, "hunter2\n",
+			// Same alias, same URL, edited username, and a password the first add
+			// did not store — so neither expectation can be met by an add that
+			// never reached writeServerSecret. Only the first add's store differs
+			// between the cases, so this is a store change or it is not.
+			_, _, err = runServer(t, secondPass+"\n",
 				"add",
 				"--config", cfgPath,
 				"--url", serverURL,
@@ -1000,15 +1030,8 @@ func TestServerAddSaveFailureRollbackMatchesTheRekeyRule(t *testing.T) {
 			fileStore, storeErr := secrets.NewFileStore("")
 			require.NoError(t, storeErr)
 
-			stored, getErr := fileStore.Get(serverURL)
-			if tc.wantStored == "" {
-				require.ErrorIs(t, getErr, secrets.ErrNotFound)
-
-				return
-			}
-
-			require.NoError(t, getErr)
-			assert.Equal(t, tc.wantStored, stored)
+			assertStoredPassword(t, fileStore, serverURL, tc.wantFile)
+			assertStoredPassword(t, keyringSecretStore{}, serverURL, tc.wantKeyring)
 		})
 	}
 }

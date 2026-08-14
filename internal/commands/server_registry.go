@@ -107,53 +107,12 @@ func newServerAddCmd() *cobra.Command {
 				cfg.Servers = map[string]config.Server{}
 			}
 
-			prev := cfg.Servers[alias]
-
-			// One mode decides both where the password is written and what is
-			// saved with the server, so config can never name a store the
-			// password did not go to.
-			mode, err := addStoreMode(storeFlag, cmd.Flags().Changed("store"), prev)
+			plan, err := planServerSecret(storeFlag, cmd.Flags().Changed("store"), cfg.Servers[alias], serverURL, password)
 			if err != nil {
 				return err
 			}
 
-			// Where the alias's existing secret lives — the store the saved
-			// entry itself names, never SNATCHER_SECRET_STORE (see
-			// recordedStoreMode).
-			prevMode, err := recordedStoreMode(prev)
-			if err != nil {
-				return err
-			}
-
-			// Whether the entry being saved points somewhere other than the
-			// alias's existing secret: a different URL, a different store, or
-			// no previous entry at all. The pre-clear and the config.Save
-			// rollback below must key off the same answer — whatever the
-			// pre-clear drops is no longer there to fall back on.
-			rekeyed := prev.URL != serverURL || prevMode != mode
-
-			srv := config.Server{URL: serverURL, Username: username, SecretStore: string(mode)}
-
-			// Confirm the store can hold the password before anything is written.
-			// A password with nowhere to go must leave config and every store
-			// untouched rather than registering a server that silently has no
-			// password.
-			store, err := storeForPassword(mode, serverURL, password)
-			if err != nil {
-				return err
-			}
-
-			if err := clearPreviousSecret(prev, prevMode, rekeyed); err != nil {
-				return err
-			}
-
-			// The secret is written before config, so a store that still refuses
-			// the password after the probe leaves no half-saved server behind.
-			if err := writeServerSecret(store, serverURL, password); err != nil {
-				return err
-			}
-
-			cfg.Servers[alias] = srv
+			cfg.Servers[alias] = config.Server{URL: serverURL, Username: username, SecretStore: string(plan.mode)}
 
 			// The first server registered when no default exists becomes the
 			// default.
@@ -161,39 +120,11 @@ func newServerAddCmd() *cobra.Command {
 				cfg.DefaultServer = alias
 			}
 
-			if err := config.Save(cfg, configPath); err != nil {
-				// The secret is written first so a store that refuses it cannot
-				// leave a registered server without a password. The cost of that
-				// ordering is this path: the save failed, so the config on disk
-				// never came to name this URL and store, and the credential —
-				// plaintext, under --store=file — would be stranded for an entry
-				// that does not exist. Drop it again, best effort. Only when the
-				// add was rekeyed: otherwise the saved config still points this
-				// alias at exactly the URL and store just written, so that
-				// password is live, and clearing it would leave a working server
-				// unable to authenticate.
-				if password != "" && rekeyed {
-					_ = store.Delete(serverURL)
-				}
-
+			if err := commitServerSecret(plan, cfg, configPath); err != nil {
 				return err
 			}
 
-			out := cmd.OutOrStdout()
-
-			if password == "" {
-				_, _ = fmt.Fprintf(out, "Saved server %q (%s) with no password stored\n", alias, serverURL)
-
-				return nil
-			}
-
-			_, _ = fmt.Fprintf(out, "Saved credentials for server %q (%s)\n", alias, serverURL)
-
-			// The file store is plaintext by design; say where it landed, so an
-			// operator who opted in knows exactly what is on disk.
-			if fileStore, ok := store.(*secrets.FileStore); ok {
-				_, _ = fmt.Fprintf(out, "Password stored in plaintext at %s (mode 0600)\n", fileStore.Path())
-			}
+			reportServerAdded(cmd, plan, alias)
 
 			return nil
 		},
@@ -207,6 +138,128 @@ func newServerAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&storeFlag, "store", "", `where to keep the password: "keyring" (default), "file" (plaintext, mode 0600), or "none"`)
 
 	return cmd
+}
+
+// serverSecretPlan is everything "server add" settles about a password before
+// anything is written: which store the entry being saved uses, where the entry
+// it replaces kept its secret, and whether those are the same place.
+type serverSecretPlan struct {
+	// serverURL keys the secret in every store, and password is the one being
+	// stored. An empty password means the server keeps no secret at all.
+	serverURL string
+	password  string
+
+	// store holds the new entry's password, and mode names it. The same mode
+	// is saved with the server, so config can never name a store the password
+	// did not go to.
+	store secretStore
+	mode  storeMode
+
+	// prev is the entry being replaced, and prevMode the store prev itself
+	// names — never the one SNATCHER_SECRET_STORE points at (see
+	// recordedStoreMode).
+	prev     config.Server
+	prevMode storeMode
+
+	// rekeyed reports whether the entry being saved points somewhere other
+	// than prev's secret: a different URL, a different store, or no previous
+	// entry at all. The old and new secrets are then necessarily two different
+	// entries, which is what lets commitServerSecret write one and drop the
+	// other without either touching the wrong one.
+	rekeyed bool
+}
+
+// planServerSecret settles where "server add" puts the password and what it
+// owes the secret the alias already had, before anything is written.
+//
+// The store is probed here (see storeForPassword): a password with nowhere to
+// go must abort the command with config and every store untouched, rather than
+// registering a server that silently has no password.
+func planServerSecret(storeFlag string, flagChanged bool, prev config.Server, serverURL, password string) (serverSecretPlan, error) {
+	mode, err := addStoreMode(storeFlag, flagChanged, prev)
+	if err != nil {
+		return serverSecretPlan{}, err
+	}
+
+	prevMode, err := recordedStoreMode(prev)
+	if err != nil {
+		return serverSecretPlan{}, err
+	}
+
+	store, err := storeForPassword(mode, serverURL, password)
+	if err != nil {
+		return serverSecretPlan{}, err
+	}
+
+	return serverSecretPlan{
+		serverURL: serverURL,
+		password:  password,
+		store:     store,
+		mode:      mode,
+		prev:      prev,
+		prevMode:  prevMode,
+		rekeyed:   prev.URL != serverURL || prevMode != mode,
+	}, nil
+}
+
+// commitServerSecret carries out plan: write the password, save cfg, then drop
+// the secret the alias used to keep.
+//
+// The order is the guarantee. The secret goes in before the config, so a store
+// that refuses it after the probe cannot leave a registered server with no
+// password. The old secret is dropped only once the config that stops naming it
+// is safely on disk: until then it is still that server's live credential, and
+// deleting it ahead of a save that then fails would leave a previously working
+// server unable to authenticate. Dropping it last costs nothing, because a
+// rekeyed add never writes to the entry it is about to clear — either the URL
+// differs or the store does.
+//
+// A failed save takes the freshly written password back out again, best effort,
+// so a credential — plaintext, under --store=file — is not stranded for an entry
+// the config never came to name. Only when the add was rekeyed: otherwise the
+// saved config still points this alias at exactly the URL and store just
+// written, so that password is live and clearing it would break the server.
+func commitServerSecret(plan serverSecretPlan, cfg config.Config, configPath string) error {
+	if err := writeServerSecret(plan.store, plan.serverURL, plan.password); err != nil {
+		return err
+	}
+
+	if err := config.Save(cfg, configPath); err != nil {
+		if plan.password != "" && plan.rekeyed {
+			_ = plan.store.Delete(plan.serverURL)
+		}
+
+		return err
+	}
+
+	// The server is saved either way at this point, so say that plainly rather
+	// than returning a bare store error for a command that did register the
+	// server — an operator whose old secret survived needs to know where it is.
+	if err := clearPreviousSecret(plan.prev, plan.prevMode, plan.rekeyed); err != nil {
+		return fmt.Errorf("the server was saved, but its previous password could not be removed from the %q store: %w", plan.prevMode, err)
+	}
+
+	return nil
+}
+
+// reportServerAdded prints what "server add" saved and, for the plaintext file
+// store, exactly what is now on disk.
+func reportServerAdded(cmd *cobra.Command, plan serverSecretPlan, alias string) {
+	out := cmd.OutOrStdout()
+
+	if plan.password == "" {
+		_, _ = fmt.Fprintf(out, "Saved server %q (%s) with no password stored\n", alias, plan.serverURL)
+
+		return
+	}
+
+	_, _ = fmt.Fprintf(out, "Saved credentials for server %q (%s)\n", alias, plan.serverURL)
+
+	// The file store is plaintext by design; say where it landed, so an
+	// operator who opted in knows exactly what is on disk.
+	if fileStore, ok := plan.store.(*secrets.FileStore); ok {
+		_, _ = fmt.Fprintf(out, "Password stored in plaintext at %s (mode 0600)\n", fileStore.Path())
+	}
 }
 
 // clearPreviousSecret drops the secret an existing alias used to keep, when
