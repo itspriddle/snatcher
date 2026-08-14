@@ -936,6 +936,15 @@ Overrides
 .BR client.list_columns ,
 which defaults to
 .BR id,name,status,done,size,down,up,ratio,eta .
+Column selection applies to the plaintext output only:
+.BR \-\-json " and " \-\-jq
+always emit whole torrent objects, so a script sees every field regardless of
+.B \-\-fields
+or
+.BR client.list_columns .
+.BR \-\-sort ", " \-\-reverse ", " client.list_sort ", and " client.list_reverse
+do apply to the structured paths \(em only the choice of columns is
+plaintext-only.
 .RE
 .IP
 Each of
@@ -1591,9 +1600,18 @@ alias, and a
 .B client
 object holding snatcher's own settings \(em see
 .BR "snatcher config" ),
-created with mode 0600. The file is operator-owned and hand-editable: keys
-snatcher does not recognize, at either level, survive a rewrite untouched.
-Falls back to
+created with mode 0600 under a 0700 directory. The file is operator-owned and
+hand-editable: keys snatcher does not recognize, at either level, survive a
+rewrite untouched. Every write is atomic \(em the new content goes to a
+temporary file created with mode 0600 in the same directory, which is then
+renamed over the target, so an interrupted write cannot truncate the config.
+One consequence is worth knowing: a rename
+.I replaces
+a symlink at that path rather than writing through it, so a
+.I config.json
+symlinked into a dotfiles repository is turned into a regular file by the first
+.BR "snatcher config set" ", " "snatcher server add" ,
+or any other command that saves. Falls back to
 .I ~/.config/snatcher/config.json
 when
 .B XDG_CONFIG_HOME
@@ -1728,7 +1746,7 @@ $ snatcher torrent list
 $ snatcher torrent list \-\-sort queue
 
 # override an appearance setting for one invocation, without editing the file
-$ snatcher config list --theme nord
+$ snatcher config list \-\-theme nord
 $ SNATCHER_NO_NERD_FONT=1 snatcher config get client.nerd_font
 .EE
 .SS "Raw RPC calls"
