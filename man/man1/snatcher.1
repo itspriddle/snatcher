@@ -625,7 +625,7 @@ the object always contains exactly the fields the plaintext block shows.
 Accepts
 .BR \-\-json " and " \-\-jq .
 .TP
-.B snatcher server bandwidth update \fIdownload\fR|\fIupload speed\fR [\fIoptions\fR]
+.B snatcher server bandwidth update \fIdownload\fR|\fIupload\fR \fIspeed\fR \fR[\fIoptions\fR]
 Set the global speed limit for one direction. The direction is
 .B download
 or
@@ -1845,6 +1845,26 @@ $ snatcher server update \-\-speed\-limit\-down 500 \-\-speed\-limit\-down\-enab
 
 # restore settings to their defaults
 $ snatcher server reset peer\-port encryption
+.EE
+.SS "Speed limits and turtle mode"
+.EX
+# the whole picture: current rates, both limit pairs, and the alt switch
+$ snatcher server bandwidth show
+
+# set the download limit to 500 KB/s \(em this also turns the limit on
+$ snatcher server bandwidth update download 500
+
+# turn the upload limit off, keeping its stored value for next time
+$ snatcher server bandwidth update upload off
+
+# store the alt (turtle) download limit, without activating turtle mode
+$ snatcher server bandwidth update download 50 \-\-alt
+
+# activate turtle mode for both directions
+$ snatcher server bandwidth alt toggle
+
+# is turtle mode on? (script-friendly)
+$ snatcher server bandwidth show \-\-jq '.alt_enabled'
 .EE
 .SS "Read and change snatcher's own settings"
 .EX

@@ -26,7 +26,8 @@ one. The "unblocks" line on each milestone says which pane is waiting.
 2. **M2**, **M3** detail-pane surface + rename - unblocks TUI detail pane
 3. ~~**M4** client config - unblocks TUI settings window, needed before the
    settings window is built, not after~~ **done**
-4. **M5**-**M7** small helpers - cheap, each unblocks a keybinding
+4. ~~**M5** `server bandwidth`~~ **done**; **M6**-**M7** small helpers - cheap,
+   each unblocks a keybinding
 5. **M8** Prowlarr - the only genuinely new backend; largest by far
 6. **M9** hygiene pass before the TUI starts
 
@@ -205,7 +206,7 @@ store-only - nothing renders them until the TUI does.
 
 ---
 
-## M5. `server bandwidth`
+## M5. `server bandwidth` - **done**
 
 **Unblocks:** the TUI `t` (turtle) key and the status bar's limit readouts.
 
@@ -227,6 +228,39 @@ snatcher server bandwidth alt on|off|toggle
 
 **Done when:** alt-speed can be flipped and both limit pairs read/written
 without touching `server update`'s raw flags.
+
+**Shipped.** `snatcher server bandwidth show|update|alt` wraps the seven
+`speed-limit-*` / `alt-speed-*` session keys, and no RPC-layer code changed -
+every key was already decoded in both wire schemes and writable through
+`SetSession`. All three subcommands emit one `bandwidthState` object
+(`{download, upload, alt_enabled, alt_schedule_enabled}`, each direction
+carrying `current_speed`, `limit`, `limit_enabled`, `alt_limit`), and the JSON
+is the rendered view: a positional `download`/`upload` drops the other
+direction's key entirely and `--alt` drops `limit`/`limit_enabled`, in the
+plaintext block and the JSON alike. `update <direction> <speed>` writes the
+value and its `-enabled` companion in a single call so setting a limit turns it
+on, while `off` flips only the switch and leaves the stored number to come back
+on the next enable. `alt on|off|toggle` writes `alt-speed-enabled` directly for
+`on`/`off` and read-then-writes for `toggle`, whose benign race against another
+client is documented rather than guarded, and it reports the **unnarrowed**
+state afterwards because the switch changes which limits are in force for both
+directions.
+
+Three things differ from the sketch above. **Speeds take no human units** - the
+claim that `torrent update --download-limit` accepts them was simply wrong
+(`applyRateLimit` has always taken a plain non-negative integer in kB/s or
+`off`), so `bandwidth update` matches it exactly rather than diverging: `5M` is
+rejected, never silently interpreted. **An `--alt` write never touches
+`alt-speed-enabled`** - the alt profile has one switch for both directions, so
+writing it from a per-direction command would silently throttle the other
+direction; that is also why `update <direction> off --alt` is an error naming
+`server bandwidth alt off` rather than a no-op. **Scheduling stays with
+`server update`** -
+`bandwidth show` reports `alt_schedule_enabled` read-only, and
+`alt-speed-time-begin`/`-end`/`-day`/`-enabled` remain writable only through the
+raw flags. Units are reported the way Transmission stores them, never converted:
+`current_speed` is bytes/second rendered as an IEC rate, every limit is an
+integer `KB/s`.
 
 ---
 

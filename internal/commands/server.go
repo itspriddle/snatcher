@@ -8,19 +8,20 @@ import (
 // server-scoped action. It owns two kinds of subcommands: a registry of named
 // servers (add/list/default/ping/remove), modeled after "git remote", and the
 // live operations against the selected server (show/update/reset, stats, port,
-// free-space). It owns no behavior of its own — a bare "snatcher server" prints
-// subcommand help. It mirrors the torrent group's structure (parent command plus
-// AddCommand children), including the show/update verb pair.
+// bandwidth, free-space). It owns no behavior of its own — a bare "snatcher
+// server" prints subcommand help. It mirrors the torrent group's structure
+// (parent command plus AddCommand children), including the show/update verb
+// pair.
 func NewServerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
-		Short: "Manage servers, settings, stats, port, and free space",
+		Short: "Manage servers, settings, stats, port, bandwidth, and free space",
 		Long: "Manage configured servers and the server itself.\n\n" +
 			"Maintain the inventory of named servers (add, list, default, ping, " +
 			"remove) and operate on the selected server: read its connection and " +
 			"session settings (show), change them (update, reset), and inspect its " +
-			"statistics, BitTorrent listening port, and download-path free space " +
-			"(stats, port, free-space).",
+			"statistics, BitTorrent listening port, global speed limits, and " +
+			"download-path free space (stats, port, bandwidth, free-space).",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

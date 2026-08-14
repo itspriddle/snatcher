@@ -46,6 +46,13 @@ Flags:
 Use "snatcher [command] --help" for more information about a command.
 ```
 
+**Note on `speed`.** That listing is the original alpha sketch, and its
+top-level `speed` command was never built and will not be. The capability
+shipped as `snatcher server bandwidth show|update|alt` instead, next to the
+other server-scoped verbs, since alt-speed and the global limits are server
+session settings. **`server bandwidth` is the only surface** - there is no
+top-level `speed` command and no alias for one.
+
 ---
 
 ## Unscoped Commands
@@ -87,9 +94,9 @@ Sequenced in `docs/todo.md` (CLI) and `docs/tui-todo.md` (TUI).
 
 ### Helpers?
 
-- [ ] `snatcher server bandwidth show [download|upload] [--alt]` - show speeds (current and limits)
-- [ ] `snatcher server bandwidth update <download|upload> [--alt]...` - set up/down speed limits
-- [ ] `snatcher server bandwidth alt on|off|toggle` - toggle/set alt-speed
+- [x] `snatcher server bandwidth show [download|upload] [--alt]` - show speeds (current and limits)
+- [x] `snatcher server bandwidth update <download|upload> <speed> [--alt]` - set up/down speed limits
+- [x] `snatcher server bandwidth alt on|off|toggle` - toggle/set alt-speed
 - [ ] `snatcher server doctor` - check for common issues with server connection, auth, config, network (server side, port) etc
     - show torrents with errors?
     - show old torrents with low seeding?
