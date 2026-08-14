@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -533,7 +534,7 @@ func TestDialUsesConfiguredFileStore(t *testing.T) {
 	t.Setenv(envSecretStore, "")
 	stateDir(t)
 
-	user, password := authProbe(t, "file", "")
+	user, password := authProbe(t, "file", "", "")
 	assert.Equal(t, "alice", user)
 	assert.Equal(t, "hunter2", password)
 }
@@ -543,7 +544,7 @@ func TestDialEnvOverridesConfiguredStore(t *testing.T) {
 
 	// The config says "none", the environment says "file": the environment wins,
 	// so the password stored in the file store is the one that is sent.
-	user, password := authProbe(t, "none", "file")
+	user, password := authProbe(t, "none", "file", "")
 	assert.Equal(t, "alice", user)
 	assert.Equal(t, "hunter2", password)
 }
@@ -553,20 +554,160 @@ func TestDialSendsNoPasswordInNoneMode(t *testing.T) {
 
 	// "none" reads nothing, even though the file store holds a password for this
 	// exact URL.
-	user, password := authProbe(t, "file", "none")
+	user, password := authProbe(t, "file", "none", "")
 	assert.Equal(t, "alice", user)
 	assert.Empty(t, password)
 }
 
+func TestPasswordFromEnv(t *testing.T) {
+	tests := []struct {
+		name   string
+		env    string
+		want   string
+		wantOK bool
+	}{
+		{name: "set", env: "hunter2", want: "hunter2", wantOK: true},
+		{name: "empty supplies nothing", env: ""},
+		{name: "used verbatim", env: "  hunter2  ", want: "  hunter2  ", wantOK: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envPassword, tc.env)
+
+			password, ok := passwordFromEnv()
+			assert.Equal(t, tc.want, password)
+			assert.Equal(t, tc.wantOK, ok)
+		})
+	}
+}
+
+func TestPasswordFromEnvUnset(t *testing.T) {
+	// t.Setenv first so the variable is restored on cleanup however the process
+	// inherited it.
+	t.Setenv(envPassword, "hunter2")
+	require.NoError(t, os.Unsetenv(envPassword))
+
+	password, ok := passwordFromEnv()
+	assert.Empty(t, password)
+	assert.False(t, ok)
+}
+
+func TestDialPrefersEnvPasswordOverStore(t *testing.T) {
+	stateDir(t)
+
+	// The file store holds "hunter2" for this exact URL and the config names it,
+	// so the environment value on the wire proves no store was consulted.
+	user, password := authProbe(t, "file", "", "from-env")
+	assert.Equal(t, "alice", user)
+	assert.Equal(t, "from-env", password)
+}
+
+func TestDialUsesEnvPasswordInNoneMode(t *testing.T) {
+	stateDir(t)
+
+	// "none" plus SNATCHER_PASSWORD is the unattended configuration: nothing is
+	// written to disk, and the password still reaches the server.
+	user, password := authProbe(t, "none", "none", "from-env")
+	assert.Equal(t, "alice", user)
+	assert.Equal(t, "from-env", password)
+}
+
+func TestDialIgnoresEmptyEnvPassword(t *testing.T) {
+	stateDir(t)
+
+	// An empty SNATCHER_PASSWORD supplies nothing and defers to the store.
+	user, password := authProbe(t, "file", "", "")
+	assert.Equal(t, "alice", user)
+	assert.Equal(t, "hunter2", password)
+}
+
+func TestDialEnvPasswordSkipsUnavailableStoreWarning(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	t.Setenv(envPassword, "from-env")
+	stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/rpc"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"host": {URL: url, Username: "alice"}},
+		DefaultServer: "host",
+	}, cfgPath))
+
+	// The keyring is unreachable, but it is never consulted, so there is nothing
+	// to warn about.
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	cmd := NewServerCmd()
+	var errOut bytes.Buffer
+	cmd.SetErr(&errOut)
+
+	backend, dialedURL, err := dial(cmd, cfgPath, "")
+	require.NoError(t, err)
+	require.NotNil(t, backend)
+	assert.Equal(t, url, dialedURL)
+	assert.Empty(t, errOut.String())
+}
+
+func TestEnvPasswordNeverAppearsInOutput(t *testing.T) {
+	const secret = "s3cr3t-from-env"
+
+	t.Setenv(envSecretStore, "")
+	t.Setenv(envPassword, secret)
+	stateDir(t)
+	keyring.MockInit()
+	resetStoreUnavailableWarning(t)
+
+	ok := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"session_get": `{"jsonrpc": "2.0", "result": {"version": "4.1.0", "rpc_version_semver": "6.0.0"}, "id": 1}`,
+		},
+	}.handler())
+	defer ok.Close()
+
+	denied := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer denied.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"ok":     {URL: ok.URL, Username: "alice"},
+			"denied": {URL: denied.URL, Username: "alice"},
+		},
+		DefaultServer: "ok",
+	}, cfgPath))
+
+	// Success path: the password authenticates the request and stays off both
+	// streams, structured output included.
+	out, errOut, err := runServer(t, "", "ping", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+	assert.Contains(t, out, `"connected": true`)
+	assert.NotContains(t, out+errOut, secret)
+
+	// Failure path: a rejected credential must not be echoed back while
+	// explaining itself.
+	out, errOut, err = runServer(t, "", "ping", "denied", "--config", cfgPath, "--json")
+	require.Error(t, err)
+	assert.NotContains(t, out+errOut+err.Error(), secret)
+}
+
 // authProbe runs "server ping" against a stub Transmission server for a config
 // whose sole server names configStore, with SNATCHER_SECRET_STORE set to envStore
-// (unset when empty) and the password "hunter2" pre-stored in the file store. It
-// returns the Basic Auth credentials the request actually carried, which is the
-// only externally visible proof of which store dial read.
-func authProbe(t *testing.T, configStore, envStore string) (string, string) {
+// and SNATCHER_PASSWORD to envPass (each behaving as unset when empty) and the
+// password "hunter2" pre-stored in the file store. It returns the Basic Auth
+// credentials the request actually carried, which is the only externally visible
+// proof of which password source dial read.
+func authProbe(t *testing.T, configStore, envStore, envPass string) (string, string) {
 	t.Helper()
 
 	t.Setenv(envSecretStore, envStore)
+	t.Setenv(envPassword, envPass)
 
 	var gotUser, gotPassword string
 	stub := transmissionStub{

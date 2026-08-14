@@ -910,6 +910,29 @@ value in the config file, over
 .BR keyring .
 An unrecognized value is an error, never a silent fallback.
 .TP
+.B SNATCHER_PASSWORD
+Supplies the password for this invocation, ahead of every secret store. When it
+is set to a non-empty value, no store is read at all, whatever
+.B SNATCHER_SECRET_STORE
+or the server's
+.B secret_store
+names, so
+.B SNATCHER_SECRET_STORE=none
+together with
+.B SNATCHER_PASSWORD
+is a fully unattended configuration with no password written to disk. It is a
+read-only override:
+.B "snatcher server add"
+never stores its value, and an empty or unset value defers to the resolved
+store.
+.IP
+Beware that a process environment is not private. On Linux any other process
+running as the same user can read it (for example
+.IR /proc/ PID /environ ),
+it is inherited by every child process snatcher spawns, and it is commonly
+captured in shell history and CI logs. Prefer the OS keyring where one is
+available.
+.TP
 .B NO_COLOR
 When set to a non-empty value, forces
 .B list

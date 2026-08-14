@@ -578,8 +578,9 @@ func firstArg(args []string) string {
 //
 // Server selection precedence is: the server argument (the --server flag) >
 // the SNATCHER_SERVER environment variable > the configured default server.
-// Store selection precedence is SNATCHER_SECRET_STORE > the server's
-// secret_store > the keyring (see resolveStoreMode).
+// Password precedence is SNATCHER_PASSWORD > the resolved store (see
+// serverPassword). Store selection precedence is SNATCHER_SECRET_STORE > the
+// server's secret_store > the keyring (see resolveStoreMode).
 func dial(cmd *cobra.Command, configPath, server string) (*transmission.Client, string, error) {
 	cfg, configured, err := loadConfig(configPath)
 	if err != nil {
@@ -599,26 +600,48 @@ func dial(cmd *cobra.Command, configPath, server string) (*transmission.Client, 
 		return nil, "", resolveServerError(cfg, server, err)
 	}
 
-	store, err := serverStore(srv)
+	password, err := serverPassword(cmd, srv)
 	if err != nil {
-		return nil, "", err
-	}
-
-	// An unreachable store is not fatal on a read path: the server may not need
-	// auth at all, and if it does the request fails later with the transmission
-	// auth error, which already says what to do. Get yields an empty password
-	// alongside its error, so the client is built without one.
-	password, err := store.Get(srv.URL)
-	switch {
-	case errors.Is(err, secrets.ErrUnavailable):
-		warnStoreUnavailableOnce(cmd, "connecting without a stored password")
-	case err != nil && !errors.Is(err, secrets.ErrNotFound):
 		return nil, "", err
 	}
 
 	backend := transmission.New(srv.URL, transmission.WithBasicAuth(srv.Username, password))
 
 	return backend, srv.URL, nil
+}
+
+// serverPassword returns the password to dial srv with.
+//
+// SNATCHER_PASSWORD comes first and settles it: no store is resolved, opened, or
+// read, whatever mode srv names, so SNATCHER_SECRET_STORE=none plus
+// SNATCHER_PASSWORD is a working unattended configuration with nothing written to
+// disk. No unavailable-store warning is emitted on that path either — the store
+// was never needed, so there is nothing to warn about.
+//
+// Otherwise the store srv resolves to answers. An unreachable store is not fatal
+// on a read path: the server may not need auth at all, and if it does the request
+// fails later with the transmission auth error, which already says what to do.
+// Get yields an empty password alongside its error, so the client is built
+// without one.
+func serverPassword(cmd *cobra.Command, srv config.Server) (string, error) {
+	if password, ok := passwordFromEnv(); ok {
+		return password, nil
+	}
+
+	store, err := serverStore(srv)
+	if err != nil {
+		return "", err
+	}
+
+	password, err := store.Get(srv.URL)
+	switch {
+	case errors.Is(err, secrets.ErrUnavailable):
+		warnStoreUnavailableOnce(cmd, "connecting without a stored password")
+	case err != nil && !errors.Is(err, secrets.ErrNotFound):
+		return "", err
+	}
+
+	return password, nil
 }
 
 // resolveServerError turns a config.Resolve sentinel into a clear, actionable

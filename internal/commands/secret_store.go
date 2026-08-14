@@ -14,6 +14,26 @@ import (
 // store holds passwords, for every server, for one invocation.
 const envSecretStore = "SNATCHER_SECRET_STORE"
 
+// envPassword names the environment variable that supplies a server password for
+// one invocation.
+//
+// It is not a store: nothing ever writes to it, "server add" never consults it,
+// and it persists nothing. It is a read override in the same category as
+// --password-stdin, sitting above every store, so that an unattended run (a
+// container, a CI job) can dial with no password at rest anywhere — the usable
+// counterpart to SNATCHER_SECRET_STORE=none.
+const envPassword = "SNATCHER_PASSWORD"
+
+// passwordFromEnv returns the password envPassword supplies and whether it
+// supplied one. An unset or empty value supplies nothing and defers to the
+// store; any other value is used verbatim, since leading or trailing whitespace
+// can be part of a password.
+func passwordFromEnv() (string, bool) {
+	password := os.Getenv(envPassword)
+
+	return password, password != ""
+}
+
 // storeUnavailableAdvice is the fatal counterpart to storeUnavailableRemedy: it
 // is returned when a password has been typed and there is nowhere to put it, so
 // it names every way forward rather than only the preferred one. Like every
