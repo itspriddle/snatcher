@@ -600,7 +600,10 @@ block; when piped (or when
 .B NO_COLOR
 is set) it is
 .IR key <TAB> value
-lines with no header \(em a stable scripting contract. With
+lines with no header \(em a stable scripting contract. When
+.B \-\-fields
+selects exactly one field the piped form drops the key column too, printing
+the bare value on its own line so it can be captured verbatim. With
 .B \-\-json
 the torrent is emitted as a single JSON object (not an array), and
 .B \-\-jq
@@ -623,8 +626,11 @@ is shown. Available fields:
 .B magnet_link
 is opt-in: it is selectable but excluded from the default set, because a magnet
 URI is a single long line that would dominate the block. Select it on its own
-to print just the magnet URI, e.g.
-.BR "snatcher torrent show \-\-fields magnet_link 3" .
+to print just the magnet URI \(em no label, no tab \(em e.g.
+.IP
+.EX
+snatcher torrent show \-\-fields magnet_link 3 | pbcopy
+.EE
 .IP
 This affects plaintext only:
 .B \-\-json

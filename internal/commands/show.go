@@ -126,7 +126,8 @@ func promote(registry map[string]column[transmission.Torrent]) map[string]column
 // set of fields. The output honors the same precedence as list: --jq filters
 // the single torrent object, --json emits it as one JSON object (not an array),
 // and the default plaintext is a vertical aligned "key: value" block on a TTY or
-// header-less "key<TAB>value" lines when piped. --fields selects and orders the
+// header-less "key<TAB>value" lines when piped — or, when --fields selects
+// exactly one field, the bare value alone. --fields selects and orders the
 // plaintext lines (defaulting to detailFieldKeys — every field but the opt-in
 // magnet_link); it has no effect on
 // --json (always the full object) or --jq (which selects fields itself). It
@@ -242,8 +243,10 @@ func resolveTorrentID(cmd *cobra.Command, backend *transmission.Client, serverUR
 // writeShowPlaintext renders one row's fields as a vertical "key: value" block.
 // On a TTY the labels are column-aligned via tabwriter; when piped or when
 // NO_COLOR is set, each line is "key<TAB>value" (header-less, scripting-
-// stable). Sanitizable fields pass through cellValue's SanitizeTerminal in both
-// paths; the JSON/jq paths never reach here. A column's rightAlign and truncate
+// stable), except that a single selected field is written as its bare value —
+// see writeShowPiped. Sanitizable fields pass through cellValue's
+// SanitizeTerminal in both paths; the JSON/jq paths never reach here. A
+// column's rightAlign and truncate
 // are inert on this path — they exist so one column[T] serves both the vertical
 // block and the table renderer.
 // It mirrors writeListPlaintext's split into a TTY writer and a piped writer so
@@ -272,7 +275,18 @@ func writeShowBlock[T any](w io.Writer, row T, columns []column[T]) {
 
 // writeShowPiped writes the header-less "key<TAB>value" form of the vertical
 // block — the stable scripting contract, one line per column.
+//
+// Selecting exactly one field drops the key column too, writing the bare value:
+// with nothing to disambiguate, the label is noise a script has to cut off, and
+// "show --fields magnet_link <id> | pbcopy" has to yank the URI alone to be the
+// equivalent of the TUI's "y m" key. Two or more fields keep the key column,
+// which is what makes a multi-field block parseable.
 func writeShowPiped[T any](w io.Writer, row T, columns []column[T]) {
+	if len(columns) == 1 {
+		_, _ = fmt.Fprintln(w, cellValue(columns[0], row))
+		return
+	}
+
 	for _, col := range columns {
 		_, _ = fmt.Fprintf(w, "%s\t%s\n", col.header, cellValue(col, row))
 	}

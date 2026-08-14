@@ -81,8 +81,10 @@ const bespokeShowResponse = `{
 }`
 
 // bespokeShowSanitizeResponse is a torrent-get payload whose name, labels,
-// download dir, and error carry terminal control sequences, used to verify the
-// sanitize-in-human-but-not-json boundary.
+// download dir, error, comment, creator, and magnet link carry terminal control
+// sequences, used to verify the sanitize-in-human-but-not-json boundary. The
+// control bytes are spelled as JSON \u escapes because encoding/json rejects a
+// raw control byte inside a string literal.
 const bespokeShowSanitizeResponse = `{
 	"arguments": {"torrents": [
 		{
@@ -92,7 +94,10 @@ const bespokeShowSanitizeResponse = `{
 			"status": 4,
 			"downloadDir": "/d\u001bir",
 			"errorString": "boom\u0007",
-			"labels": ["li\u001bnux"]
+			"labels": ["li\u001bnux"],
+			"comment": "com\u001bment",
+			"creator": "cre\u0007ator",
+			"magnetLink": "magnet:?xt=urn:btih:` + infoHash1 + `&dn=ma\u001blicious"
 		}
 	]},
 	"result": "success",
@@ -385,6 +390,13 @@ func TestShowSanitizesHumanOutputNotJSON(t *testing.T) {
 	assert.Contains(t, human, "boom", "error is sanitized")
 	assert.Contains(t, human, "linux", "labels are sanitized")
 
+	// The detail-only scalars are as untrusted as the list ones: comment and
+	// creator come from whoever made the .torrent, and both are in the default
+	// block.
+	fields := showFields(t, human)
+	assert.Equal(t, "comment", fields["Comment"], "comment is sanitized")
+	assert.Equal(t, "creator", fields["Creator"], "creator is sanitized")
+
 	// JSON: the structured contract is never sanitized, so the raw control
 	// bytes survive in the encoded output.
 	raw, _, err := runShow(t, "--config", cfgPath, "1", "--json")
@@ -395,6 +407,9 @@ func TestShowSanitizesHumanOutputNotJSON(t *testing.T) {
 		DownloadDir string   `json:"download_dir"`
 		Error       string   `json:"error"`
 		Labels      []string `json:"labels"`
+		Comment     string   `json:"comment"`
+		Creator     string   `json:"creator"`
+		MagnetLink  string   `json:"magnet_link"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(raw), &got))
 	assert.Contains(t, got.Name, "\x1b", "JSON name keeps the raw ESC (unsanitized)")
@@ -402,6 +417,58 @@ func TestShowSanitizesHumanOutputNotJSON(t *testing.T) {
 	assert.Contains(t, got.Error, "\x07", "JSON error keeps the raw BEL")
 	require.Len(t, got.Labels, 1)
 	assert.Contains(t, got.Labels[0], "\x1b", "JSON label keeps the raw ESC")
+	assert.Contains(t, got.Comment, "\x1b", "JSON comment keeps the raw ESC")
+	assert.Contains(t, got.Creator, "\x07", "JSON creator keeps the raw BEL")
+	assert.Contains(t, got.MagnetLink, "\x1b", "JSON magnet link keeps the raw ESC")
+}
+
+// TestShowSanitizesMagnetLink covers the opt-in magnet_link column, which the
+// default block never renders and so the sanitize test above never reaches.
+// A magnet URI is the one field users pipe straight into a clipboard, so a
+// control sequence smuggled through its display name must not survive either
+// plaintext path.
+func TestShowSanitizesMagnetLink(t *testing.T) {
+	cfgPath, closeSrv := showConfigPath(t, bespokeShowSanitizeResponse)
+	defer closeSrv()
+
+	human, _, err := runShow(t, "--config", cfgPath, "1", "--fields", "magnet_link")
+	require.NoError(t, err)
+	assert.Equal(t, "magnet:?xt=urn:btih:"+infoHash1+"&dn=malicious\n", human,
+		"the piped magnet line is the bare, sanitized URI")
+
+	raw, _, err := runShow(t, "--config", cfgPath, "1", "--fields", "magnet_link", "--json")
+	require.NoError(t, err)
+
+	var got struct {
+		MagnetLink string `json:"magnet_link"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(raw), &got))
+	assert.Contains(t, got.MagnetLink, "\x1b", "JSON magnet link keeps the raw ESC")
+}
+
+// TestShowBlockSanitizesUntrustedScalars exercises the TTY writer, which the
+// end-to-end tests cannot reach (isTTY needs a real terminal). Sanitization
+// lives in cellValue, shared by both writers, but a dropped "sanitize: true"
+// on a column would silently reach the terminal path too — so both are pinned.
+func TestShowBlockSanitizesUntrustedScalars(t *testing.T) {
+	detail := transmission.TorrentDetail{
+		Comment:    "com\x1bment",
+		Creator:    "cre\x07ator",
+		MagnetLink: "magnet:?xt=urn:btih:" + infoHash1 + "&dn=ma\x1blicious",
+	}
+
+	cols, err := parseFields(detailFields, detailFieldKeys, "comment,creator,magnet_link")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeShowBlock(&buf, detail, cols)
+
+	block := buf.String()
+	assert.NotContains(t, block, "\x1b", "raw ESC must not reach the TTY block")
+	assert.NotContains(t, block, "\x07", "raw BEL must not reach the TTY block")
+	assert.Contains(t, block, "comment", "visible comment text survives")
+	assert.Contains(t, block, "creator", "visible creator text survives")
+	assert.Contains(t, block, "magnet:?xt=urn:btih:"+infoHash1+"&dn=malicious")
 }
 
 func TestShowFieldsSubsetAndOrder(t *testing.T) {
@@ -544,10 +611,13 @@ func TestShowMagnetLinkField(t *testing.T) {
 	cfgPath, closeSrv := showConfigPath(t, bespokeShowResponse)
 	defer closeSrv()
 
-	// Piped path, end to end through the command.
+	// Piped path, end to end through the command. A single selected field is
+	// written bare, so the line can be piped straight into a clipboard with
+	// nothing to cut off.
 	out, _, err := runShow(t, "--config", cfgPath, "1", "--fields", "magnet_link")
 	require.NoError(t, err)
-	assert.Equal(t, "Magnet Link\t"+magnet+"\n", out, "piped output is exactly the magnet line")
+	assert.Equal(t, magnet+"\n", out, "piped output is exactly the magnet URI")
+	assert.NotContains(t, out, "\t", "no key column to strip")
 
 	// TTY path. isTTY needs a real terminal, so the TTY writer is exercised
 	// directly, as the list tests do for writeListTable.
@@ -557,6 +627,38 @@ func TestShowMagnetLinkField(t *testing.T) {
 	var buf bytes.Buffer
 	writeShowBlock(&buf, transmission.TorrentDetail{MagnetLink: magnet}, cols)
 	assert.Equal(t, "Magnet Link:  "+magnet+"\n", buf.String(), "TTY output is exactly the magnet line")
+}
+
+// TestShowPipedKeyColumn pins the piped path's two shapes: one selected field
+// is the bare value with no key column and no tab, while two or more keep the
+// "key<TAB>value" contract that makes a multi-field block parseable.
+func TestShowPipedKeyColumn(t *testing.T) {
+	cfgPath, closeSrv := showConfigPath(t, bespokeShowResponse)
+	defer closeSrv()
+
+	t.Run("one field is the bare value", func(t *testing.T) {
+		out, _, err := runShow(t, "--config", cfgPath, "1", "--fields", "name")
+		require.NoError(t, err)
+		assert.Equal(t, "ubuntu-24.04.iso\n", out)
+		assert.NotContains(t, out, "\t", "no key column, no tab")
+	})
+
+	t.Run("two fields keep the key column", func(t *testing.T) {
+		out, _, err := runShow(t, "--config", cfgPath, "1", "--fields", "name,id")
+		require.NoError(t, err)
+		assert.Equal(t, "Name\tubuntu-24.04.iso\nID\t1\n", out)
+	})
+
+	t.Run("the default block keeps the key column", func(t *testing.T) {
+		out, _, err := runShow(t, "--config", cfgPath, "1")
+		require.NoError(t, err)
+
+		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+		require.Len(t, lines, len(detailFieldKeys))
+		for _, line := range lines {
+			assert.Contains(t, line, "\t", "every default line is key<TAB>value: %q", line)
+		}
+	})
 }
 
 // TestDetailFieldsAreShowOnly asserts the registry boundary in both directions:
