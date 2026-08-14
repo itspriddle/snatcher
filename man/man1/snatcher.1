@@ -666,6 +666,32 @@ must follow a
 separator so it is not read as a flag. Accepts
 .BR \-\-json " and " \-\-jq .
 .TP
+.B snatcher server bandwidth alt \fIon\fR|\fIoff\fR|\fItoggle\fR \fR[\fIoptions\fR]
+Turn the alt (turtle) speed profile on or off, or toggle it. The state is
+.BR on ", " off ", or " toggle
+(case-insensitively); anything else is an error and no request is sent. This is
+the one switch that decides whether the alt limits are in force, and it governs
+both directions at once, which is why an
+.B \-\-alt
+write in
+.B snatcher server bandwidth update
+never touches it. The subcommand takes no
+.B \-\-alt
+flag of its own.
+.B on
+and
+.B off
+write the switch directly without reading it first;
+.B toggle
+reads the current state and writes its inverse, and because Transmission's RPC
+offers no compare-and-set, another client flipping the switch between that read
+and the write wins. After the write the complete state is read back and
+reported unnarrowed \(em both directions and every limit field \(em in the same
+shape as
+.BR "snatcher server bandwidth show" ,
+since flipping the switch changes which limits apply everywhere. Accepts
+.BR \-\-json " and " \-\-jq .
+.TP
 .B snatcher server free-space \fR[\fIpath\fR] [\fIoptions\fR]
 Show the free space on a download path. With no
 .I path

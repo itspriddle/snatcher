@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -69,12 +70,21 @@ func runBandwidth(t *testing.T, args ...string) (string, string, error) {
 func capturedBandwidthServer(t *testing.T, captured *[]string, rpcVersion string) (string, func()) {
 	t.Helper()
 
+	return capturedBandwidthSessionServer(t, captured, rpcVersion, bespokeSessionResponse, jsonrpcBandwidthSessionResponse)
+}
+
+// capturedBandwidthSessionServer is capturedBandwidthServer with each scheme's
+// session-get payload supplied by the caller, so a test that turns on the
+// server's starting state — the alt switch a toggle inverts — can choose it.
+func capturedBandwidthSessionServer(t *testing.T, captured *[]string, rpcVersion, bespokeSession, jsonrpcSession string) (string, func()) {
+	t.Helper()
+
 	keyring.MockInit()
 
 	responses := map[string]string{
-		"session-get":   bespokeSessionResponse,
+		"session-get":   bespokeSession,
 		"session-stats": bespokeStatsResponse,
-		"session_get":   jsonrpcBandwidthSessionResponse,
+		"session_get":   jsonrpcSession,
 		"session_stats": jsonrpcStatsResponse,
 	}
 
@@ -676,6 +686,216 @@ func TestBandwidthUpdateWriteFailureWrapsServerURL(t *testing.T) {
 	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
 
 	out, _, err := runBandwidth(t, "update", "download", "500", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connecting to "+srv.URL)
+	assert.Empty(t, out, "no state is rendered when the write fails")
+}
+
+// withAltSpeedEnabled returns a session-get fixture with its alt-speed switch
+// forced to enabled, under the given scheme's key spelling. The two shared
+// fixtures start on opposite states, so this is what lets a toggle test pick
+// either starting state in either wire scheme; requiring the literal to be
+// present keeps a later fixture edit from silently neutering the test.
+func withAltSpeedEnabled(t *testing.T, body, key string, enabled bool) string {
+	t.Helper()
+
+	want := fmt.Sprintf("%q: %t", key, enabled)
+	if strings.Contains(body, want) {
+		return body
+	}
+
+	from := fmt.Sprintf("%q: %t", key, !enabled)
+	require.Contains(t, body, from, "the fixture carries no alt-speed switch to force")
+
+	return strings.Replace(body, from, want, 1)
+}
+
+// bandwidthAltServer stands up the capturing stub with the named scheme's
+// alt-speed switch forced to enabled, returning the config path and a cleanup.
+func bandwidthAltServer(t *testing.T, captured *[]string, rpcVersion string, enabled bool) (string, func()) {
+	t.Helper()
+
+	if rpcVersion == "" {
+		bespoke := withAltSpeedEnabled(t, bespokeSessionResponse, "alt-speed-enabled", enabled)
+
+		return capturedBandwidthSessionServer(t, captured, rpcVersion, bespoke, jsonrpcBandwidthSessionResponse)
+	}
+
+	jsonrpc := withAltSpeedEnabled(t, jsonrpcBandwidthSessionResponse, "alt_speed_enabled", enabled)
+
+	return capturedBandwidthSessionServer(t, captured, rpcVersion, bespokeSessionResponse, jsonrpc)
+}
+
+func TestBandwidthAltOnAndOffWriteDirectly(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		rpcVersion  string
+		state       string
+		want        string
+		wantMethods []string
+	}{
+		// The first request is the client's one-shot protocol probe, which always
+		// speaks the bespoke session-get envelope. Nothing else precedes the write:
+		// "on" and "off" know the value they want without reading it.
+		{"jsonrpc on", "6.0.0", "on", `"alt_speed_enabled":true`, []string{"session-get", "session_set", "session_get", "session_stats"}},
+		{"jsonrpc off", "6.0.0", "off", `"alt_speed_enabled":false`, []string{"session-get", "session_set", "session_get", "session_stats"}},
+		{"bespoke on", "", "on", `"alt-speed-enabled":true`, []string{"session-get", "session-set", "session-get", "session-stats"}},
+		{"bespoke off", "", "off", `"alt-speed-enabled":false`, []string{"session-get", "session-set", "session-get", "session-stats"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured []string
+			cfgPath, closeSrv := capturedBandwidthServer(t, &captured, tc.rpcVersion)
+			defer closeSrv()
+
+			_, _, err := runBandwidth(t, "alt", tc.state, "--config", cfgPath)
+			require.NoError(t, err)
+
+			assert.Contains(t, bandwidthSetBody(t, captured), tc.want)
+			assert.Equal(t, tc.wantMethods, capturedMethods(t, captured),
+				"on and off write the switch without reading it first")
+		})
+	}
+}
+
+func TestBandwidthAltToggleWritesTheInverse(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		rpcVersion  string
+		starting    bool
+		want        string
+		wantMethods []string
+	}{
+		// toggle reads the switch and writes its inverse, so its request sequence
+		// carries an extra session-get ahead of the write.
+		{"jsonrpc from off", "6.0.0", false, `"alt_speed_enabled":true`, []string{"session-get", "session_get", "session_set", "session_get", "session_stats"}},
+		{"jsonrpc from on", "6.0.0", true, `"alt_speed_enabled":false`, []string{"session-get", "session_get", "session_set", "session_get", "session_stats"}},
+		{"bespoke from off", "", false, `"alt-speed-enabled":true`, []string{"session-get", "session-get", "session-set", "session-get", "session-stats"}},
+		{"bespoke from on", "", true, `"alt-speed-enabled":false`, []string{"session-get", "session-get", "session-set", "session-get", "session-stats"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured []string
+			cfgPath, closeSrv := bandwidthAltServer(t, &captured, tc.rpcVersion, tc.starting)
+			defer closeSrv()
+
+			_, _, err := runBandwidth(t, "alt", "toggle", "--config", cfgPath)
+			require.NoError(t, err)
+
+			assert.Contains(t, bandwidthSetBody(t, captured), tc.want)
+			assert.Equal(t, tc.wantMethods, capturedMethods(t, captured))
+		})
+	}
+}
+
+func TestBandwidthAltStateIsCaseInsensitive(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedBandwidthServer(t, &captured, "6.0.0")
+	defer closeSrv()
+
+	_, _, err := runBandwidth(t, "alt", "ON", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, bandwidthSetBody(t, captured), `"alt_speed_enabled":true`)
+}
+
+func TestBandwidthAltRejectsInvalidState(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedBandwidthServer(t, &captured, "6.0.0")
+	defer closeSrv()
+
+	_, _, err := runBandwidth(t, "alt", "maybe", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid state "maybe"`)
+	assert.Contains(t, err.Error(), "on")
+	assert.Contains(t, err.Error(), "off")
+	assert.Contains(t, err.Error(), "toggle")
+	assert.Empty(t, captured, "an invalid state aborts before any network call")
+}
+
+func TestBandwidthAltRejectsWrongArgCount(t *testing.T) {
+	cfgPath, closeSrv := bandwidthConfigPath(t, "6.0.0")
+	defer closeSrv()
+
+	_, _, err := runBandwidth(t, "alt", "--config", cfgPath)
+	require.Error(t, err, "exactly one state argument is required")
+
+	_, _, err = runBandwidth(t, "alt", "on", "off", "--config", cfgPath)
+	require.Error(t, err, "exactly one state argument is required")
+}
+
+func TestBandwidthAltRendersUnnarrowedReadBack(t *testing.T) {
+	cfgPath, closeSrv := bandwidthConfigPath(t, "6.0.0")
+	defer closeSrv()
+
+	// Flipping the switch changes which profile is in force for both directions,
+	// so the read-back is the full picture, not a narrowed slice of it. The stub
+	// is stateless, so the re-read returns the fixture's values.
+	out, _, err := runBandwidth(t, "alt", "on", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	assert.JSONEq(t, `{
+		"download": {"current_speed": 1572864, "limit": 500, "limit_enabled": true, "alt_limit": 50},
+		"upload": {"current_speed": 524288, "limit": 100, "limit_enabled": false, "alt_limit": 25},
+		"alt_enabled": true,
+		"alt_schedule_enabled": false
+	}`, out)
+}
+
+func TestBandwidthAltPlaintextAndJQ(t *testing.T) {
+	cfgPath, closeSrv := bandwidthConfigPath(t, "")
+	defer closeSrv()
+
+	out, _, err := runBandwidth(t, "alt", "off", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, strings.Join([]string{
+		"Alt-speed:      no (schedule: no)",
+		"Download:",
+		"  Current:      2.0 MiB/s",
+		"  Limit:        100 KB/s (disabled)",
+		"  Alt limit:    50 KB/s",
+		"Upload:",
+		"  Current:      1.0 MiB/s",
+		"  Limit:        100 KB/s (disabled)",
+		"  Alt limit:    50 KB/s",
+		"",
+	}, "\n"), out)
+
+	out, _, err = runBandwidth(t, "alt", "toggle", "--config", cfgPath, "--jq", ".alt_enabled")
+	require.NoError(t, err)
+	assert.Equal(t, "false", strings.TrimSpace(out))
+}
+
+func TestBandwidthAltWriteFailureWrapsServerURL(t *testing.T) {
+	keyring.MockInit()
+
+	// The protocol probe succeeds and the write fails, so the failure surfaces
+	// with the resolved server URL like every sibling in the group.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+
+		var envelope struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(body, &envelope)
+
+		if envelope.Method == "session-set" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		_, _ = w.Write([]byte(bespokeSessionResponse))
+	}))
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
+
+	out, _, err := runBandwidth(t, "alt", "toggle", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connecting to "+srv.URL)
 	assert.Empty(t, out, "no state is rendered when the write fails")

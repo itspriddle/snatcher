@@ -20,6 +20,15 @@ const (
 	directionUpload   = "upload"
 )
 
+// altStateOn, altStateOff, and altStateToggle are the three values the "alt"
+// subcommand's state argument may take, and the canonical spelling
+// parseBandwidthAltState returns.
+const (
+	altStateOn     = "on"
+	altStateOff    = "off"
+	altStateToggle = "toggle"
+)
+
 // bandwidthDirectionToken maps a canonical direction to the token Transmission's
 // speed-limit and alt-speed session keys spell it with. Every direction reaching
 // this map has already been through parseBandwidthDirection.
@@ -83,6 +92,7 @@ func NewBandwidthCmd() *cobra.Command {
 
 	cmd.AddCommand(newBandwidthShowCmd())
 	cmd.AddCommand(newBandwidthUpdateCmd())
+	cmd.AddCommand(newBandwidthAltCmd())
 
 	return cmd
 }
@@ -223,6 +233,80 @@ func newBandwidthUpdateCmd() *cobra.Command {
 	return cmd
 }
 
+// newBandwidthAltCmd builds "bandwidth alt <on|off|toggle>", the one command
+// that owns the alt (turtle) switch. It exists so the switch is reachable
+// without spelling alt-speed-enabled, and so the TUI's turtle key has an exact
+// CLI equivalent.
+//
+// The switch governs both directions at once, so flipping it changes which
+// limits are in force everywhere; the full, unnarrowed state is therefore read
+// back and reported rather than a slice of it.
+func newBandwidthAltCmd() *cobra.Command {
+	var (
+		server string
+		asJSON bool
+		jqExpr string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "alt <on|off|toggle>",
+		Short: "Turn the alt (turtle) profile on, off, or toggle it",
+		Long: "Activate or deactivate the server's alt (turtle) speed profile, the " +
+			"single switch that puts the alt limits in force for both directions " +
+			"at once.\n\n" +
+			"'on' and 'off' write the switch directly without reading it first. " +
+			"'toggle' reads the current state and writes its inverse — Transmission's " +
+			"RPC has no compare-and-set, so another client flipping the switch between " +
+			"that read and the write wins, and this command does not guard against " +
+			"it.\n\n" +
+			"Because the switch decides which limits apply to both directions, the " +
+			"complete state is read back and reported afterwards.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate the state before dialing so a typo never opens a connection.
+			mode, err := parseBandwidthAltState(args[0])
+			if err != nil {
+				return err
+			}
+
+			backend, serverURL, err := dial(cmd, server)
+			if err != nil {
+				return err
+			}
+
+			enabled := mode == altStateOn
+
+			if mode == altStateToggle {
+				session, err := backend.GetSession(cmd.Context())
+				if err != nil {
+					return fmt.Errorf("connecting to %s: %w", serverURL, err)
+				}
+
+				enabled = !session.AltSpeedEnabled
+			}
+
+			if err := backend.SetSession(cmd.Context(), map[string]any{"alt-speed-enabled": enabled}); err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			state, err := readBandwidthState(cmd.Context(), backend)
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			return renderBandwidthState(cmd, state, asJSON, jqExpr)
+		},
+	}
+
+	addServerFlag(cmd, &server)
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+
+	return cmd
+}
+
 // bandwidthLimitChanges builds the session-set payload for one direction's
 // limit. The normal profile has a per-direction switch, so a numeric speed
 // writes the value and enables it together while "off" flips only the switch and
@@ -291,6 +375,23 @@ func parseBandwidthDirection(raw string) (string, error) {
 	}
 
 	return "", fmt.Errorf("invalid direction %q: must be one of: %s, %s", raw, directionDownload, directionUpload)
+}
+
+// parseBandwidthAltState validates the alt subcommand's state argument
+// case-insensitively and returns its canonical spelling. Any other value returns
+// an error naming all three valid values, and the caller performs no network
+// call.
+func parseBandwidthAltState(raw string) (string, error) {
+	switch strings.ToLower(raw) {
+	case altStateOn:
+		return altStateOn, nil
+	case altStateOff:
+		return altStateOff, nil
+	case altStateToggle:
+		return altStateToggle, nil
+	}
+
+	return "", fmt.Errorf("invalid state %q: must be one of: %s, %s, %s", raw, altStateOn, altStateOff, altStateToggle)
 }
 
 // readBandwidthState performs the GetSession + Stats pair — two round-trips,

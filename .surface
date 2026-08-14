@@ -3,6 +3,7 @@ ARG snatcher config get 0 key
 ARG snatcher config set 0 key
 ARG snatcher config set 1 value
 ARG snatcher config unset 0 key
+ARG snatcher server bandwidth alt 0 on|off|toggle
 ARG snatcher server bandwidth update 0 download|upload
 ARG snatcher server bandwidth update 1 speed
 ARG snatcher server default 0 alias
@@ -26,6 +27,7 @@ CMD snatcher config unset
 CMD snatcher server
 CMD snatcher server add
 CMD snatcher server bandwidth
+CMD snatcher server bandwidth alt
 CMD snatcher server bandwidth show
 CMD snatcher server bandwidth update
 CMD snatcher server default
@@ -85,6 +87,9 @@ FLAG snatcher server add --password-stdin type=bool
 FLAG snatcher server add --store type=string
 FLAG snatcher server add --url type=string
 FLAG snatcher server add --username type=string
+FLAG snatcher server bandwidth alt --jq type=string
+FLAG snatcher server bandwidth alt --json type=bool
+FLAG snatcher server bandwidth alt --server type=string
 FLAG snatcher server bandwidth show --alt type=bool
 FLAG snatcher server bandwidth show --jq type=string
 FLAG snatcher server bandwidth show --json type=bool
