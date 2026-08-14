@@ -121,9 +121,9 @@ func resolveStoreMode(srv config.Server) (storeMode, error) {
 // "server add" always saves the store it actually wrote the password to, so the
 // server's own value is the authoritative answer, and an exported environment
 // variable pointing somewhere else cannot make a secret move. Honoring the
-// override on a cleanup path would delete from the wrong store and report
-// success while a live password — plaintext, under the file store — stayed on
-// disk.
+// override when deleting a secret would delete from the wrong store, and when
+// reporting one would report that none is stored, both while a live password —
+// plaintext, under the file store — stayed on disk.
 func recordedStoreMode(srv config.Server) (storeMode, error) {
 	if strings.TrimSpace(srv.SecretStore) == "" {
 		return storeKeyring, nil
@@ -165,9 +165,10 @@ func serverStore(srv config.Server) (secretStore, error) {
 }
 
 // recordedStore opens the store srv itself names (see recordedStoreMode). It is
-// the counterpart to serverStore for the paths that delete a secret a server
-// already has — "server remove", and "server add" clearing the entry it is
-// replacing — where the only correct target is the store holding the secret.
+// the counterpart to serverStore for the paths that act on a secret a server
+// already has rather than on a password for this invocation: "server remove"
+// deleting it, and serverSecretStored reporting whether it exists. The only
+// correct target for both is the store actually holding the secret.
 func recordedStore(srv config.Server) (secretStore, error) {
 	mode, err := recordedStoreMode(srv)
 	if err != nil {
@@ -231,6 +232,48 @@ func storeForPassword(mode storeMode, serverURL, password string) (secretStore, 
 	}
 
 	return store, nil
+}
+
+// serverSecretStored answers "does this server have a stored password" for the
+// two commands that report it, "server list" and "server show". It reads
+// nothing but the presence of an entry; the password itself is never returned.
+//
+// The store is the one srv itself names (recordedStore), not the one this
+// invocation resolves to. The question is about the server, so an exported
+// SNATCHER_SECRET_STORE — which only ever says where to read a password *for
+// this run* — must not change the answer. Reading through the override makes
+// the documented unattended pattern, SNATCHER_SECRET_STORE=none plus
+// SNATCHER_PASSWORD, report that no secret is stored for every server while
+// plaintext passwords sit in secrets.json. Warning instead of ignoring the
+// override could not repair that: the bool is what --json and --jq consumers
+// read, and these two commands are how an operator audits which passwords are
+// on disk.
+//
+// unavailable reports that no store could be reached, so the honest answer is
+// "cannot tell" rather than "no". Callers still render stored as false —
+// secret_stored is a bool on a stable JSON contract — and say so on stderr with
+// secretStatusUnknown. A server with no URL has no key to look anything up by.
+func serverSecretStored(srv config.Server) (stored, unavailable bool, err error) {
+	if srv.URL == "" {
+		return false, false, nil
+	}
+
+	store, err := recordedStore(srv)
+	if err != nil {
+		return false, false, err
+	}
+
+	_, err = store.Get(srv.URL)
+	switch {
+	case err == nil:
+		return true, false, nil
+	case errors.Is(err, secrets.ErrUnavailable):
+		return false, true, nil
+	case errors.Is(err, secrets.ErrNotFound):
+		return false, false, nil
+	default:
+		return false, false, err
+	}
 }
 
 // keyringSecretStore adapts internal/secrets' package-level keyring functions to

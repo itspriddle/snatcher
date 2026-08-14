@@ -1077,7 +1077,7 @@ func TestKeyringModeNeverReadsExistingFileStore(t *testing.T) {
 	assert.FileExists(t, secretsPath)
 }
 
-func TestServerListReadsResolvedStore(t *testing.T) {
+func TestServerListReadsEachServersOwnStore(t *testing.T) {
 	t.Setenv(envSecretStore, "")
 	stateDir(t)
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
@@ -1108,6 +1108,93 @@ func TestServerListReadsResolvedStore(t *testing.T) {
 	require.Len(t, results, 2)
 	assert.True(t, results[0].SecretStored, "file-backed server")
 	assert.False(t, results[1].SecretStored, "keyring-backed server with no reachable keyring")
+}
+
+// reportingConfig registers three servers covering both answers "server list"
+// and "server show" can give and both stores they can come from: a file-mode
+// server holding a password, a file-mode server holding none, and a
+// keyring-mode server holding one. It returns the config path.
+//
+// Read through SNATCHER_SECRET_STORE=none every one of them reports "no
+// secret"; read through the store each server itself names, only the middle one
+// does.
+func reportingConfig(t *testing.T) string {
+	t.Helper()
+
+	stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	fileStore, err := secrets.NewFileStore("")
+	require.NoError(t, err)
+	require.NoError(t, fileStore.Set("http://filed:9091/rpc", "hunter2"))
+
+	keyring.MockInit()
+	require.NoError(t, keyringSecretStore{}.Set("http://keyed:9091/rpc", "hunter3"))
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"filed": {URL: "http://filed:9091/rpc", Username: "alice", SecretStore: "file"},
+			"empty": {URL: "http://empty:9091/rpc", Username: "bob", SecretStore: "file"},
+			"keyed": {URL: "http://keyed:9091/rpc", Username: "carol"},
+		},
+		DefaultServer: "filed",
+	}, cfgPath))
+
+	return cfgPath
+}
+
+// TestServerListIgnoresStoreOverride pins that "server list" reports whether
+// each server has a secret, not whether the store this invocation happens to
+// resolve to has one. Under the documented unattended pattern
+// (SNATCHER_SECRET_STORE=none plus SNATCHER_PASSWORD) it used to report
+// secret_stored false for every server, with empty stderr, while plaintext
+// passwords sat in secrets.json — the reporting half of the misreport
+// "server remove" already closed.
+func TestServerListIgnoresStoreOverride(t *testing.T) {
+	t.Setenv(envSecretStore, "none")
+	cfgPath := reportingConfig(t)
+
+	out, errOut, err := runServer(t, "", "list", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+	assert.Empty(t, errOut)
+
+	var results []serverListResult
+	require.NoError(t, json.Unmarshal([]byte(out), &results))
+	require.Len(t, results, 3)
+
+	// Sorted by alias: empty, filed, keyed.
+	assert.False(t, results[0].SecretStored, "file-mode server with no stored password")
+	assert.True(t, results[1].SecretStored, "file-mode server whose password is on disk")
+	assert.True(t, results[2].SecretStored, "keyring-mode server whose password is in the keyring")
+}
+
+// TestServerShowIgnoresStoreOverride is TestServerListIgnoresStoreOverride for
+// the other reporting path: both answer the same question and now share one
+// helper, so both need pinning against the override.
+func TestServerShowIgnoresStoreOverride(t *testing.T) {
+	t.Setenv(envSecretStore, "none")
+	cfgPath := reportingConfig(t)
+
+	tests := []struct {
+		alias string
+		want  bool
+	}{
+		{alias: "empty", want: false},
+		{alias: "filed", want: true},
+		{alias: "keyed", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.alias, func(t *testing.T) {
+			out, errOut, err := runServer(t, "", "show", tc.alias, "--config", cfgPath, "--local", "--json")
+			require.NoError(t, err)
+			assert.Empty(t, errOut)
+
+			var result serverShowResult
+			require.NoError(t, json.Unmarshal([]byte(out), &result))
+			assert.Equal(t, tc.want, result.SecretStored)
+		})
+	}
 }
 
 func TestServerRemoveDeletesFromResolvedStore(t *testing.T) {

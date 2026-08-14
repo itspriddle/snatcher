@@ -27,6 +27,12 @@ import (
 // OS secret service answered, not which helper binary the provider looked for.
 const storeUnavailableRemedy = "Install or start an OS secret service, or keep passwords in a plaintext file at mode 0600 with 'server add --store=file' (or SNATCHER_SECRET_STORE=file)."
 
+// secretStatusUnknown is the consequence both reporting commands ("server list"
+// and "server show") pass to warnStoreUnavailable: with no store to ask, they
+// cannot tell whether a secret exists, and secret_stored is a bool with no
+// third state. One wording, one constant, so the two cannot drift apart.
+const secretStatusUnknown = `secret status could not be determined and is reported as "no"`
+
 // storeUnavailableWarned guards warnStoreUnavailableOnce, so the warning dial
 // emits fires once per process rather than once per call. A future polling
 // client dials repeatedly and must not spam stderr.
@@ -377,8 +383,8 @@ func newServerListCmd() *cobra.Command {
 }
 
 // serverListResults builds the per-server result rows for "server list", sorted
-// by alias, asking the store each server resolves to whether its secret is
-// stored.
+// by alias, asking the store each server itself names whether its secret is
+// stored (see serverSecretStored).
 //
 // An unreachable secret store does not fail the listing: the rows are still
 // emitted with secret_stored false and a single stderr note explains that the
@@ -393,23 +399,12 @@ func serverListResults(cmd *cobra.Command, cfg config.Config) ([]serverListResul
 	for _, name := range names {
 		srv := cfg.Servers[name]
 
-		secretStored := false
-		if srv.URL != "" {
-			store, err := serverStore(srv)
-			if err != nil {
-				return nil, err
-			}
-
-			_, err = store.Get(srv.URL)
-			switch {
-			case err == nil:
-				secretStored = true
-			case errors.Is(err, secrets.ErrUnavailable):
-				storeUnavailable = true
-			case !errors.Is(err, secrets.ErrNotFound):
-				return nil, err
-			}
+		secretStored, unavailable, err := serverSecretStored(srv)
+		if err != nil {
+			return nil, err
 		}
+
+		storeUnavailable = storeUnavailable || unavailable
 
 		results = append(results, serverListResult{
 			Name:         name,
@@ -421,7 +416,7 @@ func serverListResults(cmd *cobra.Command, cfg config.Config) ([]serverListResul
 	}
 
 	if storeUnavailable {
-		warnStoreUnavailable(cmd, `secret status could not be determined and is reported as "no"`)
+		warnStoreUnavailable(cmd, secretStatusUnknown)
 	}
 
 	return results, nil

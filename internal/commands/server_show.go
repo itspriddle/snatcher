@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/secrets"
 )
 
 // serverShowResult is the JSON shape emitted by "server show": the local
@@ -205,8 +203,9 @@ func newServerShowCmd() *cobra.Command {
 // on a first run with no servers it returns an empty, unconfigured result rather
 // than a resolve error, so "server show" stays informative before setup.
 //
-// An unreachable secret store does not fail the read: secret_stored is reported
-// false with a single stderr note, matching "server list".
+// Whether a secret is stored is asked of the store the server itself names (see
+// serverSecretStored). An unreachable one does not fail the read: secret_stored
+// is reported false with a single stderr note, matching "server list".
 func loadServerShowResult(cmd *cobra.Command, configPath, alias string) (serverShowResult, bool, error) {
 	resolvedPath, err := resolveConfigPath(configPath)
 	if err != nil {
@@ -227,22 +226,13 @@ func loadServerShowResult(cmd *cobra.Command, configPath, alias string) (serverS
 		return serverShowResult{}, false, resolveServerError(cfg, alias, err)
 	}
 
-	secretStored := false
-	if srv.URL != "" {
-		store, storeErr := serverStore(srv)
-		if storeErr != nil {
-			return serverShowResult{}, false, storeErr
-		}
+	secretStored, storeUnavailable, err := serverSecretStored(srv)
+	if err != nil {
+		return serverShowResult{}, false, err
+	}
 
-		_, err := store.Get(srv.URL)
-		switch {
-		case err == nil:
-			secretStored = true
-		case errors.Is(err, secrets.ErrUnavailable):
-			warnStoreUnavailable(cmd, `secret status could not be determined and is reported as "no"`)
-		case !errors.Is(err, secrets.ErrNotFound):
-			return serverShowResult{}, false, err
-		}
+	if storeUnavailable {
+		warnStoreUnavailable(cmd, secretStatusUnknown)
 	}
 
 	return serverShowResult{
