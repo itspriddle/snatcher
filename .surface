@@ -3,6 +3,8 @@ ARG snatcher config get 0 key
 ARG snatcher config set 0 key
 ARG snatcher config set 1 value
 ARG snatcher config unset 0 key
+ARG snatcher server bandwidth update 0 download|upload
+ARG snatcher server bandwidth update 1 speed
 ARG snatcher server default 0 alias
 ARG snatcher torrent files 0 id|hash
 ARG snatcher torrent files update 0 id|hash
@@ -25,6 +27,7 @@ CMD snatcher server
 CMD snatcher server add
 CMD snatcher server bandwidth
 CMD snatcher server bandwidth show
+CMD snatcher server bandwidth update
 CMD snatcher server default
 CMD snatcher server free-space
 CMD snatcher server list
@@ -86,6 +89,10 @@ FLAG snatcher server bandwidth show --alt type=bool
 FLAG snatcher server bandwidth show --jq type=string
 FLAG snatcher server bandwidth show --json type=bool
 FLAG snatcher server bandwidth show --server type=string
+FLAG snatcher server bandwidth update --alt type=bool
+FLAG snatcher server bandwidth update --jq type=string
+FLAG snatcher server bandwidth update --json type=bool
+FLAG snatcher server bandwidth update --server type=string
 FLAG snatcher server free-space --jq type=string
 FLAG snatcher server free-space --json type=bool
 FLAG snatcher server free-space --server type=string

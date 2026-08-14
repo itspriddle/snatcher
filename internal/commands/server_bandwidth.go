@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,14 @@ const (
 	directionDownload = "download"
 	directionUpload   = "upload"
 )
+
+// bandwidthDirectionToken maps a canonical direction to the token Transmission's
+// speed-limit and alt-speed session keys spell it with. Every direction reaching
+// this map has already been through parseBandwidthDirection.
+var bandwidthDirectionToken = map[string]string{
+	directionDownload: "down",
+	directionUpload:   "up",
+}
 
 // bandwidthState is the JSON contract emitted by every "bandwidth" subcommand:
 // the live transfer rates, both limit pairs, and the alt (turtle) switches. Its
@@ -73,6 +82,7 @@ func NewBandwidthCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(newBandwidthShowCmd())
+	cmd.AddCommand(newBandwidthUpdateCmd())
 
 	return cmd
 }
@@ -137,6 +147,136 @@ func newBandwidthShowCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&alt, "alt", false, "report the alt (turtle) limits instead of the normal ones")
 
 	return cmd
+}
+
+// newBandwidthUpdateCmd builds "bandwidth update <download|upload> <speed>",
+// which writes one direction's global limit and then reports the resulting
+// state, narrowed to what it wrote. It exists so a caller never has to know that
+// a limit value and its "-enabled" companion travel together: a numeric speed
+// writes both in one call, and "off" flips only the switch, leaving the stored
+// value to come back with the next enable.
+//
+// --alt writes the alt (turtle) profile's limit instead. That profile has no
+// per-direction switch — one alt-speed-enabled governs both directions — so an
+// --alt write never touches it, and "off" there is an error rather than a write
+// that would silently throttle the other direction.
+func newBandwidthUpdateCmd() *cobra.Command {
+	var (
+		server string
+		asJSON bool
+		jqExpr string
+		alt    bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "update <download|upload> <speed>",
+		Short: "Set a global speed limit",
+		Long: "Set the server's global download or upload speed limit.\n\n" +
+			"The speed is a non-negative integer in KB/s, exactly as Transmission " +
+			"stores it (suffixed values like 5M are not accepted), or the literal " +
+			"'off'. Setting a limit also turns it on; 'off' turns it off while " +
+			"leaving the stored value in place, so re-enabling restores it.\n\n" +
+			"--alt writes the alt (turtle) profile's limit instead. The alt profile " +
+			"has a single switch governing both directions, so an --alt write never " +
+			"touches it and 'off' is rejected — use 'snatcher server bandwidth alt " +
+			"off' to leave turtle mode. After writing, the server's actual values " +
+			"are read back and reported.",
+		Args:          cobra.ExactArgs(2),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate both arguments before dialing so a typo never opens a
+			// connection, let alone performs a partial write.
+			direction, err := parseBandwidthDirection(args[0])
+			if err != nil {
+				return err
+			}
+
+			changes, err := bandwidthLimitChanges(direction, args[1], alt)
+			if err != nil {
+				return err
+			}
+
+			backend, serverURL, err := dial(cmd, server)
+			if err != nil {
+				return err
+			}
+
+			if err := backend.SetSession(cmd.Context(), changes); err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			state, err := readBandwidthState(cmd.Context(), backend)
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			return renderBandwidthState(cmd, narrowBandwidthState(state, direction, alt), asJSON, jqExpr)
+		},
+	}
+
+	addServerFlag(cmd, &server)
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	cmd.Flags().BoolVar(&alt, "alt", false, "write the alt (turtle) limit instead of the normal one")
+
+	return cmd
+}
+
+// bandwidthLimitChanges builds the session-set payload for one direction's
+// limit. The normal profile has a per-direction switch, so a numeric speed
+// writes the value and enables it together while "off" flips only the switch and
+// preserves the stored number. The alt profile has no per-direction switch, so a
+// numeric speed writes the stored value alone — never alt-speed-enabled, which
+// governs both directions — and "off" is an error pointing at the command that
+// does own that switch. An invalid speed returns an error and no write is
+// performed.
+func bandwidthLimitChanges(direction, raw string, alt bool) (map[string]any, error) {
+	token := bandwidthDirectionToken[direction]
+	value := strings.TrimSpace(raw)
+	off := strings.EqualFold(value, "off")
+
+	if alt {
+		if off {
+			return nil, fmt.Errorf("cannot turn off an alt limit per direction: " +
+				"one alt-speed switch governs both directions; " +
+				"use 'snatcher server bandwidth alt off' to leave turtle mode")
+		}
+
+		kbps, err := parseBandwidthSpeed(value)
+		if err != nil {
+			return nil, err
+		}
+
+		return map[string]any{"alt-speed-" + token: kbps}, nil
+	}
+
+	if off {
+		return map[string]any{"speed-limit-" + token + "-enabled": false}, nil
+	}
+
+	kbps, err := parseBandwidthSpeed(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"speed-limit-" + token:              kbps,
+		"speed-limit-" + token + "-enabled": true,
+	}, nil
+}
+
+// parseBandwidthSpeed validates a speed argument as a non-negative integer in
+// KB/s. Negative, fractional, suffixed ("5M"), and non-numeric values are all
+// rejected: this deliberately mirrors torrent update's --download-limit grammar
+// rather than introducing a human-unit parser.
+func parseBandwidthSpeed(raw string) (int, error) {
+	kbps, err := strconv.Atoi(raw)
+	if err != nil || kbps < 0 {
+		return 0, fmt.Errorf("invalid speed %q: must be a non-negative integer (KB/s) or 'off'", raw)
+	}
+
+	return kbps, nil
 }
 
 // parseBandwidthDirection validates a direction argument case-insensitively and

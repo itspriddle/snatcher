@@ -625,6 +625,47 @@ the object always contains exactly the fields the plaintext block shows.
 Accepts
 .BR \-\-json " and " \-\-jq .
 .TP
+.B snatcher server bandwidth update \fIdownload\fR|\fIupload speed\fR [\fIoptions\fR]
+Set the global speed limit for one direction. The direction is
+.B download
+or
+.B upload
+(case-insensitively). The
+.I speed
+is a non-negative integer in
+.BR KB/s ,
+exactly as Transmission stores it \(em suffixed values such as
+.B 5M
+are not accepted \(em or the literal
+.B off
+(case-insensitively). Setting a limit also turns it on, writing the value and
+its enabled companion in a single call;
+.B off
+turns the limit off while leaving the stored value in place, so re-enabling
+restores it. Besides the common options:
+.RS
+.TP
+.B \-\-alt
+Write the alt (turtle) profile's limit for that direction instead of the
+normal-profile limit.
+.RE
+.IP
+The alt profile has a single switch governing both directions, so an
+.B \-\-alt
+write never touches it and
+.B off
+is rejected with an error \(em use
+.B snatcher server bandwidth alt off
+to leave turtle mode. After writing, the server's actual values are read back
+and reported in the same shape as
+.BR "snatcher server bandwidth show" ,
+narrowed to the direction and profile that was written. A negative
+.I speed
+must follow a
+.B \-\-
+separator so it is not read as a flag. Accepts
+.BR \-\-json " and " \-\-jq .
+.TP
 .B snatcher server free-space \fR[\fIpath\fR] [\fIoptions\fR]
 Show the free space on a download path. With no
 .I path

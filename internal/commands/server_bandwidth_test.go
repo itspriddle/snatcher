@@ -422,6 +422,265 @@ func TestBandwidthShowStatsFailureWrapsServerURL(t *testing.T) {
 	assert.Empty(t, out, "no state is rendered when the stats read fails")
 }
 
+// bandwidthSetBody returns the one captured session-set request body — under
+// either wire scheme's method spelling — failing the test unless exactly one
+// write was sent, which is itself the "a limit and its switch travel in a single
+// SetSession" assertion.
+func bandwidthSetBody(t *testing.T, captured []string) string {
+	t.Helper()
+
+	var bodies []string
+
+	for _, body := range captured {
+		var envelope struct {
+			Method string `json:"method"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(body), &envelope))
+
+		if envelope.Method == "session-set" || envelope.Method == "session_set" {
+			bodies = append(bodies, body)
+		}
+	}
+
+	require.Len(t, bodies, 1, "exactly one session-set write is expected")
+
+	return bodies[0]
+}
+
+func TestBandwidthUpdateWritesValueAndEnablesLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		rpcVersion string
+		direction  string
+		wantValue  string
+		wantSwitch string
+	}{
+		{"jsonrpc download", "6.0.0", "download", `"speed_limit_down":500`, `"speed_limit_down_enabled":true`},
+		{"jsonrpc upload", "6.0.0", "upload", `"speed_limit_up":500`, `"speed_limit_up_enabled":true`},
+		{"bespoke download", "", "download", `"speed-limit-down":500`, `"speed-limit-down-enabled":true`},
+		{"bespoke upload", "", "upload", `"speed-limit-up":500`, `"speed-limit-up-enabled":true`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured []string
+			cfgPath, closeSrv := capturedBandwidthServer(t, &captured, tc.rpcVersion)
+			defer closeSrv()
+
+			_, _, err := runBandwidth(t, "update", tc.direction, "500", "--config", cfgPath)
+			require.NoError(t, err)
+
+			// The value and its enabled companion travel together: setting a limit
+			// also turns it on, so the caller never writes the pair by hand.
+			setBody := bandwidthSetBody(t, captured)
+			assert.Contains(t, setBody, tc.wantValue, "the KB/s value reaches the wire as a number")
+			assert.Contains(t, setBody, tc.wantSwitch, "the limit is enabled alongside its value")
+		})
+	}
+}
+
+func TestBandwidthUpdateOffWritesOnlyTheSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		rpcVersion string
+		direction  string
+		wantSwitch string
+		wantNoKey  string
+	}{
+		{"jsonrpc download", "6.0.0", "download", `"speed_limit_down_enabled":false`, `"speed_limit_down":`},
+		{"jsonrpc upload", "6.0.0", "upload", `"speed_limit_up_enabled":false`, `"speed_limit_up":`},
+		{"bespoke download", "", "download", `"speed-limit-down-enabled":false`, `"speed-limit-down":`},
+		{"bespoke upload", "", "upload", `"speed-limit-up-enabled":false`, `"speed-limit-up":`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured []string
+			cfgPath, closeSrv := capturedBandwidthServer(t, &captured, tc.rpcVersion)
+			defer closeSrv()
+
+			// "off" is case-insensitive, matching every other enum argument.
+			_, _, err := runBandwidth(t, "update", tc.direction, "OFF", "--config", cfgPath)
+			require.NoError(t, err)
+
+			// Only the switch flips: the stored limit survives so re-enabling
+			// restores the number the user last set.
+			setBody := bandwidthSetBody(t, captured)
+			assert.Contains(t, setBody, tc.wantSwitch)
+			assert.NotContains(t, setBody, tc.wantNoKey, "the stored limit value is left untouched")
+		})
+	}
+}
+
+func TestBandwidthUpdateAltWritesOnlyTheStoredLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		rpcVersion string
+		direction  string
+		wantValue  string
+		wantNoKey  string
+	}{
+		{"jsonrpc download", "6.0.0", "download", `"alt_speed_down":50`, "alt_speed_enabled"},
+		{"jsonrpc upload", "6.0.0", "upload", `"alt_speed_up":50`, "alt_speed_enabled"},
+		{"bespoke download", "", "download", `"alt-speed-down":50`, "alt-speed-enabled"},
+		{"bespoke upload", "", "upload", `"alt-speed-up":50`, "alt-speed-enabled"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured []string
+			cfgPath, closeSrv := capturedBandwidthServer(t, &captured, tc.rpcVersion)
+			defer closeSrv()
+
+			_, _, err := runBandwidth(t, "update", tc.direction, "50", "--alt", "--config", cfgPath)
+			require.NoError(t, err)
+
+			// The alt pair is a stored profile, not a live limit: one shared switch
+			// governs both directions, so writing it here would throttle the other
+			// direction too.
+			setBody := bandwidthSetBody(t, captured)
+			assert.Contains(t, setBody, tc.wantValue)
+			assert.NotContains(t, setBody, tc.wantNoKey,
+				"an --alt write never touches the shared alt-speed switch")
+		})
+	}
+}
+
+func TestBandwidthUpdateAltOffIsRejected(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedBandwidthServer(t, &captured, "6.0.0")
+	defer closeSrv()
+
+	_, _, err := runBandwidth(t, "update", "download", "off", "--alt", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "snatcher server bandwidth alt off",
+		"the error names the command that owns the shared switch")
+	assert.Empty(t, captured, "the rejection aborts before any network call")
+}
+
+func TestBandwidthUpdateRejectsInvalidDirection(t *testing.T) {
+	var captured []string
+	cfgPath, closeSrv := capturedBandwidthServer(t, &captured, "6.0.0")
+	defer closeSrv()
+
+	_, _, err := runBandwidth(t, "update", "sideways", "500", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid direction "sideways"`)
+	assert.Contains(t, err.Error(), "download")
+	assert.Contains(t, err.Error(), "upload")
+	assert.Empty(t, captured, "an invalid direction aborts before any network call")
+}
+
+func TestBandwidthUpdateRejectsInvalidSpeed(t *testing.T) {
+	// No human-unit parser exists here: a suffixed or fractional speed is an
+	// error, not a value to interpret.
+	for _, speed := range []string{"-1", "5M", "1.5", "fast", ""} {
+		t.Run("speed="+speed, func(t *testing.T) {
+			var captured []string
+			cfgPath, closeSrv := capturedBandwidthServer(t, &captured, "6.0.0")
+			defer closeSrv()
+
+			// The speed follows "--" so a negative value is read as an argument
+			// rather than as an unknown shorthand flag.
+			_, _, err := runBandwidth(t, "update", "--config", cfgPath, "download", "--", speed)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must be a non-negative integer (KB/s) or 'off'")
+			assert.Empty(t, captured, "an invalid speed performs no write")
+		})
+	}
+}
+
+func TestBandwidthUpdateRejectsWrongArgCount(t *testing.T) {
+	cfgPath, closeSrv := bandwidthConfigPath(t, "6.0.0")
+	defer closeSrv()
+
+	_, _, err := runBandwidth(t, "update", "download", "--config", cfgPath)
+	require.Error(t, err, "both a direction and a speed are required")
+}
+
+func TestBandwidthUpdateRendersNarrowedReadBack(t *testing.T) {
+	cfgPath, closeSrv := bandwidthConfigPath(t, "6.0.0")
+	defer closeSrv()
+
+	// The read-back is narrowed to the direction and profile that was written,
+	// exactly as "show download" would render it (the stub is stateless, so the
+	// re-read returns the fixture's values).
+	out, _, err := runBandwidth(t, "update", "download", "500", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	assert.JSONEq(t, `{
+		"download": {"current_speed": 1572864, "limit": 500, "limit_enabled": true, "alt_limit": 50},
+		"alt_enabled": true,
+		"alt_schedule_enabled": false
+	}`, out)
+}
+
+func TestBandwidthUpdateAltRendersAltReadBack(t *testing.T) {
+	cfgPath, closeSrv := bandwidthConfigPath(t, "6.0.0")
+	defer closeSrv()
+
+	out, _, err := runBandwidth(t, "update", "download", "50", "--alt", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	assert.JSONEq(t, `{
+		"download": {"current_speed": 1572864, "alt_limit": 50},
+		"alt_enabled": true,
+		"alt_schedule_enabled": false
+	}`, out)
+}
+
+func TestBandwidthUpdatePlaintextAndJQ(t *testing.T) {
+	cfgPath, closeSrv := bandwidthConfigPath(t, "")
+	defer closeSrv()
+
+	out, _, err := runBandwidth(t, "update", "upload", "100", "--config", cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, strings.Join([]string{
+		"Alt-speed:      no (schedule: no)",
+		"Upload:",
+		"  Current:      1.0 MiB/s",
+		"  Limit:        100 KB/s (disabled)",
+		"  Alt limit:    50 KB/s",
+		"",
+	}, "\n"), out)
+
+	out, _, err = runBandwidth(t, "update", "upload", "100", "--config", cfgPath, "--jq", ".upload.limit")
+	require.NoError(t, err)
+	assert.Equal(t, "100", strings.TrimSpace(out))
+}
+
+func TestBandwidthUpdateWriteFailureWrapsServerURL(t *testing.T) {
+	keyring.MockInit()
+
+	// The protocol probe succeeds and the write fails, so the failure surfaces
+	// with the resolved server URL like every sibling in the group.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+
+		var envelope struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(body, &envelope)
+
+		if envelope.Method == "session-set" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		_, _ = w.Write([]byte(bespokeSessionResponse))
+	}))
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
+
+	out, _, err := runBandwidth(t, "update", "download", "500", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connecting to "+srv.URL)
+	assert.Empty(t, out, "no state is rendered when the write fails")
+}
+
 func TestBandwidthShowNotConfigured(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
