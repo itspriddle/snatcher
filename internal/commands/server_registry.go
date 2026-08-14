@@ -25,7 +25,7 @@ import (
 // storeUnavailableRemedy names the fix in every unavailable-store warning. It
 // deliberately names no provider internals: an operator needs to know that no
 // OS secret service answered, not which helper binary the provider looked for.
-const storeUnavailableRemedy = "Install or start an OS secret service to store passwords."
+const storeUnavailableRemedy = "Install or start an OS secret service, or keep passwords in a plaintext file at mode 0600 with 'server add --store=file' (or SNATCHER_SECRET_STORE=file)."
 
 // storeUnavailableWarned guards warnStoreUnavailableOnce, so the warning dial
 // emits fires once per process rather than once per call. A future polling
@@ -120,6 +120,17 @@ func newServerAddCmd() *cobra.Command {
 				secretStore = string(mode)
 			}
 
+			srv := config.Server{URL: serverURL, Username: username, SecretStore: secretStore}
+
+			// Resolve the store and confirm it can hold the password before
+			// anything is written. A password with nowhere to go must leave config
+			// and every store untouched rather than registering a server that
+			// silently has no password.
+			store, err := storeForPassword(srv, password)
+			if err != nil {
+				return err
+			}
+
 			// When updating an existing alias to a different URL, drop the old URL's
 			// secret so no orphaned entry is left behind. Scope this to the alias
 			// being changed; other servers' secrets are untouched. A missing entry —
@@ -137,7 +148,12 @@ func newServerAddCmd() *cobra.Command {
 				}
 			}
 
-			srv := config.Server{URL: serverURL, Username: username, SecretStore: secretStore}
+			// The secret is written before config, so a store that still refuses
+			// the password after the probe leaves no half-saved server behind.
+			if err := writeServerSecret(store, serverURL, password); err != nil {
+				return err
+			}
+
 			cfg.Servers[alias] = srv
 
 			// The first server registered when no default exists becomes the
@@ -146,38 +162,25 @@ func newServerAddCmd() *cobra.Command {
 				cfg.DefaultServer = alias
 			}
 
-			// Resolve the store before writing config so an unusable store mode is
-			// reported without leaving a server entry pointing at it.
-			store, err := serverStore(srv)
-			if err != nil {
-				return err
-			}
-
 			if err := config.Save(cfg, configPath); err != nil {
 				return err
 			}
 
-			// An empty password means "no stored secret" (e.g. a server with auth
-			// disabled). Don't write an empty entry; drop any existing one for this
-			// URL so a previously stored password isn't silently reused. An
-			// unreachable store is not a failure here: there is no password to
-			// store, and nothing can read a stale secret back out of a store that
-			// cannot be reached either.
-			if password == "" {
-				if err := store.Delete(serverURL); err != nil && !secretAbsent(err) {
-					return err
-				}
+			out := cmd.OutOrStdout()
 
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved server %q (%s) with no password stored\n", alias, serverURL)
+			if password == "" {
+				_, _ = fmt.Fprintf(out, "Saved server %q (%s) with no password stored\n", alias, serverURL)
 
 				return nil
 			}
 
-			if err := store.Set(serverURL, password); err != nil {
-				return err
-			}
+			_, _ = fmt.Fprintf(out, "Saved credentials for server %q (%s)\n", alias, serverURL)
 
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved credentials for server %q (%s)\n", alias, serverURL)
+			// The file store is plaintext by design; say where it landed, so an
+			// operator who opted in knows exactly what is on disk.
+			if fileStore, ok := store.(*secrets.FileStore); ok {
+				_, _ = fmt.Fprintf(out, "Password stored in plaintext at %s (mode 0600)\n", fileStore.Path())
+			}
 
 			return nil
 		},
@@ -191,6 +194,25 @@ func newServerAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&storeFlag, "store", "", `where to keep the password: "keyring" (default), "file" (plaintext, mode 0600), or "none"`)
 
 	return cmd
+}
+
+// writeServerSecret persists password for serverURL in store.
+//
+// An empty password means "no stored secret" (e.g. a server with auth disabled).
+// No empty entry is written; any existing one for this URL is dropped so a
+// previously stored password isn't silently reused. An unreachable store is not
+// a failure there: there is no password to store, and nothing can read a stale
+// secret back out of a store that cannot be reached either.
+func writeServerSecret(store secretStore, serverURL, password string) error {
+	if password == "" {
+		if err := store.Delete(serverURL); err != nil && !secretAbsent(err) {
+			return err
+		}
+
+		return nil
+	}
+
+	return store.Set(serverURL, password)
 }
 
 // serverListResult is the JSON shape emitted for one server by "server list". It

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,6 +13,15 @@ import (
 // envSecretStore names the environment variable that overrides which secret
 // store holds passwords, for every server, for one invocation.
 const envSecretStore = "SNATCHER_SECRET_STORE"
+
+// storeUnavailableAdvice is the fatal counterpart to storeUnavailableRemedy: it
+// is returned when a password has been typed and there is nowhere to put it, so
+// it names every way forward rather than only the preferred one. Like every
+// other unavailable message it names no provider internals.
+const storeUnavailableAdvice = "the OS secret store could not be reached, so the password cannot be stored and nothing was saved: " +
+	"install or start an OS secret service; " +
+	"or re-run with --store=file to keep the password in a plaintext file at mode 0600; " +
+	"or re-run with --store=none to register the server with no stored password"
 
 // storeMode names which secret store a server's password lives in. The zero
 // value is not a mode; use resolveStoreMode, which supplies the default.
@@ -117,6 +127,50 @@ func serverStore(srv config.Server) (secretStore, error) {
 	}
 
 	return openStore(mode)
+}
+
+// storeForPassword resolves and opens the store srv's password belongs in and,
+// when there is a password to store, probes up front that the store can hold
+// one — without writing anything.
+//
+// Probing first is what keeps "server add" atomic. A password with nowhere to go
+// must abort the command, naming every way forward, rather than registering a
+// server that silently has no password. An empty password is not probed at all:
+// there is nothing to persist, so an unreachable store cannot lose anything.
+func storeForPassword(srv config.Server, password string) (secretStore, error) {
+	mode, err := resolveStoreMode(srv)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := openStore(mode)
+	if err != nil {
+		return nil, err
+	}
+
+	if password == "" {
+		return store, nil
+	}
+
+	if mode == storeNone {
+		return nil, fmt.Errorf(
+			"the secret store for %q is %q: the password cannot be stored and would be discarded, so nothing was saved; re-run with an empty password, or choose a store with --store=keyring or --store=file",
+			srv.URL, storeNone,
+		)
+	}
+
+	// A read is the only way to ask "is this store there?" without changing it.
+	// No entry for this URL is the expected answer for a new server and still
+	// proves the store answered.
+	if _, err := store.Get(srv.URL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+		if errors.Is(err, secrets.ErrUnavailable) {
+			return nil, errors.New(storeUnavailableAdvice)
+		}
+
+		return nil, err
+	}
+
+	return store, nil
 }
 
 // keyringSecretStore adapts internal/secrets' package-level keyring functions to

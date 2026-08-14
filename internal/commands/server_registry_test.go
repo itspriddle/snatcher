@@ -961,6 +961,8 @@ func TestServerRemoveToleratesUnavailableStore(t *testing.T) {
 	assert.Contains(t, errOut, "secret store could not be reached")
 	assert.Contains(t, errOut, "may remain")
 	assert.Contains(t, errOut, "OS secret service")
+	assert.Contains(t, errOut, "--store=file")
+	assert.Contains(t, errOut, "SNATCHER_SECRET_STORE=file")
 	assert.NotContains(t, errOut, "dbus-launch")
 }
 
@@ -993,6 +995,8 @@ func TestServerListToleratesUnavailableStore(t *testing.T) {
 	// One note for the whole listing, not one per server.
 	assert.Equal(t, 1, strings.Count(errOut, "secret store could not be reached"))
 	assert.Contains(t, errOut, "could not be determined")
+	assert.Contains(t, errOut, "--store=file")
+	assert.Contains(t, errOut, "SNATCHER_SECRET_STORE=file")
 	assert.NotContains(t, errOut, "dbus-launch")
 }
 
@@ -1075,6 +1079,8 @@ func TestDialToleratesUnavailableStore(t *testing.T) {
 
 	assert.Contains(t, errOut.String(), "secret store could not be reached")
 	assert.Contains(t, errOut.String(), "OS secret service")
+	assert.Contains(t, errOut.String(), "--store=file")
+	assert.Contains(t, errOut.String(), "SNATCHER_SECRET_STORE=file")
 	assert.NotContains(t, errOut.String(), "dbus-launch")
 }
 

@@ -271,6 +271,178 @@ func TestServerAddStoreNoneRefusesAPassword(t *testing.T) {
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot be stored")
+
+	// The refusal is atomic: a password that would be discarded leaves no
+	// half-saved, silently password-less server behind.
+	assert.NoFileExists(t, cfgPath)
+}
+
+// TestServerAddStoreMatrix walks every combination of store mode, password, and
+// keyring reachability, asserting the exit status, whether config.json was
+// written, and whether the plaintext file store was created. "keyring
+// unreachable" is the headless-Linux box: the file and none modes must be
+// indifferent to it, and only the keyring mode with a password to store may
+// fail.
+func TestServerAddStoreMatrix(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	tests := []struct {
+		name string
+
+		store     string
+		password  string
+		keyringUp bool
+
+		wantErrHas      string
+		wantOutHas      string
+		wantSecretsFile bool
+	}{
+		{name: "keyring/no password/keyring up", store: "keyring", keyringUp: true, wantOutHas: "no password stored"},
+		{name: "keyring/no password/keyring down", store: "keyring", wantOutHas: "no password stored"},
+		{name: "keyring/password/keyring up", store: "keyring", password: "hunter2", keyringUp: true, wantOutHas: "Saved credentials"},
+		{name: "keyring/password/keyring down", store: "keyring", password: "hunter2", wantErrHas: "--store=file"},
+
+		{name: "file/no password/keyring up", store: "file", keyringUp: true, wantOutHas: "no password stored"},
+		{name: "file/no password/keyring down", store: "file", wantOutHas: "no password stored"},
+		{name: "file/password/keyring up", store: "file", password: "hunter2", keyringUp: true, wantOutHas: "plaintext", wantSecretsFile: true},
+		{name: "file/password/keyring down", store: "file", password: "hunter2", wantOutHas: "plaintext", wantSecretsFile: true},
+
+		{name: "none/no password/keyring up", store: "none", keyringUp: true, wantOutHas: "no password stored"},
+		{name: "none/no password/keyring down", store: "none", wantOutHas: "no password stored"},
+		{name: "none/password/keyring up", store: "none", password: "hunter2", keyringUp: true, wantErrHas: "would be discarded"},
+		{name: "none/password/keyring down", store: "none", password: "hunter2", wantErrHas: "would be discarded"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envSecretStore, "")
+			secretsPath := stateDir(t)
+			cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+			if tc.keyringUp {
+				keyring.MockInit()
+			} else {
+				mockStoreUnavailable(t)
+			}
+			resetStoreUnavailableWarning(t)
+
+			stdin := tc.password
+			if stdin != "" {
+				stdin += "\n"
+			}
+
+			out, errOut, err := runServer(t, stdin,
+				"add",
+				"--config", cfgPath,
+				"--url", serverURL,
+				"--username", "alice",
+				"--password-stdin",
+				"--store", tc.store,
+			)
+
+			if tc.wantErrHas != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrHas)
+				assert.NotContains(t, err.Error()+out+errOut, "dbus-launch")
+
+				// Nothing at all is written when the password has nowhere to go.
+				assert.NoFileExists(t, cfgPath)
+				assert.NoFileExists(t, secretsPath)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Contains(t, out, tc.wantOutHas)
+			assert.NotContains(t, out+errOut, "dbus-launch")
+
+			cfg, loadErr := config.Load(cfgPath)
+			require.NoError(t, loadErr)
+			assert.Equal(t, serverURL, cfg.Servers["host:9091"].URL)
+
+			if tc.wantSecretsFile {
+				require.FileExists(t, secretsPath)
+
+				store, storeErr := secrets.NewFileStore("")
+				require.NoError(t, storeErr)
+				stored, getErr := store.Get(serverURL)
+				require.NoError(t, getErr)
+				assert.Equal(t, tc.password, stored)
+
+				return
+			}
+
+			// Only an explicit opt-in ever writes the plaintext file store.
+			assert.NoFileExists(t, secretsPath)
+		})
+	}
+}
+
+func TestServerAddWritesNothingWhenPasswordHasNowhereToGo(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	// A registry that already holds a server: the failed add must leave the file
+	// byte-identical, not merely free of the new alias.
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"seedbox": {URL: "http://seedbox:9091/rpc", Username: "bob"}},
+		DefaultServer: "seedbox",
+	}, cfgPath))
+
+	before, readErr := os.ReadFile(cfgPath)
+	require.NoError(t, readErr)
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	out, errOut, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", "http://host:9091/rpc",
+		"--username", "alice",
+		"--password-stdin",
+	)
+	require.Error(t, err)
+
+	// The error names all three ways forward and no provider internal.
+	msg := err.Error()
+	assert.Contains(t, msg, "OS secret service")
+	assert.Contains(t, msg, "--store=file")
+	assert.Contains(t, msg, "plaintext")
+	assert.Contains(t, msg, "0600")
+	assert.Contains(t, msg, "--store=none")
+	assert.NotContains(t, msg+out+errOut, "dbus-launch")
+
+	after, readErr := os.ReadFile(cfgPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, string(before), string(after))
+
+	// The refusal must not have created the plaintext store as a side effect.
+	assert.NoFileExists(t, secretsPath)
+}
+
+func TestServerAddFileStoreReportsPlaintextLocation(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	mockStoreUnavailable(t)
+
+	out, _, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", "http://host:9091/rpc",
+		"--password-stdin",
+		"--store", "file",
+	)
+	require.NoError(t, err)
+
+	// An operator who opted into plaintext is told exactly what is on disk.
+	assert.Contains(t, out, "plaintext")
+	assert.Contains(t, out, secretsPath)
+	assert.Contains(t, out, "0600")
 }
 
 func TestKeyringModeNeverTouchesFileStore(t *testing.T) {
