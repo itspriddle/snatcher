@@ -175,19 +175,23 @@ func Date(unix int64) string {
 }
 
 // SanitizeTerminal neutralizes terminal control sequences in untrusted,
-// server-derived strings (torrent names, labels, errors, download dirs) before
-// they reach a human/plaintext render path. It removes C0 control bytes
-// (0x00–0x1F, including ESC 0x1B), the DEL byte (0x7F), and C1 control runes
-// (0x80–0x9F), so a maliciously crafted torrent name cannot inject ANSI escapes
-// that clear the screen, move the cursor, or spoof output. Tabs, carriage
-// returns, and newlines are C0 controls and are therefore stripped too, which
-// also keeps tab-separated and line-oriented output columns intact.
+// server-derived strings (torrent names, labels, errors, download dirs, peer
+// client strings) before they reach a human/plaintext render path. It removes
+// C0 control bytes (0x00–0x1F, including ESC 0x1B), the DEL byte (0x7F), C1
+// control runes (0x80–0x9F), and the Unicode bidirectional and invisible
+// format controls (see isTerminalControl), so a maliciously crafted torrent
+// name or peer client string cannot inject ANSI escapes that clear the screen,
+// move the cursor, or spoof output, nor reverse the visual order of a rendered
+// row. Tabs, carriage returns, and newlines are C0 controls and are therefore
+// stripped too, which also keeps tab-separated and line-oriented output columns
+// intact.
 //
-// Legitimate printable text and Unicode (including wide and combining
-// characters) pass through untouched. The original string is returned
-// unchanged when it contains no control characters, so the common case avoids
-// any allocation. SanitizeTerminal must NOT be applied to --json/--jq output,
-// which is a structured contract that consumers handle themselves.
+// Legitimate printable text and Unicode (including accented Latin, CJK, emoji,
+// and wide or combining characters) pass through untouched. The original string
+// is returned unchanged when it contains no control characters, so the common
+// case avoids any allocation. SanitizeTerminal must NOT be applied to
+// --json/--jq output, which is a structured contract that consumers handle
+// themselves.
 func SanitizeTerminal(s string) string {
 	if !strings.ContainsFunc(s, isTerminalControl) {
 		return s
@@ -205,10 +209,39 @@ func SanitizeTerminal(s string) string {
 	return b.String()
 }
 
-// isTerminalControl reports whether r is a C0 control (0x00–0x1F), DEL (0x7F),
-// or a C1 control (0x80–0x9F) — the bytes/runes SanitizeTerminal removes.
+// isTerminalControl reports whether r is one of the runes SanitizeTerminal
+// removes: a C0 control (0x00–0x1F), DEL (0x7F), a C1 control (0x80–0x9F), or a
+// Unicode bidirectional/invisible format control.
+//
+// The Unicode ranges matter because a terminal honors them the way a browser
+// does. U+202E (RLO) reverses the display order of everything after it, so a
+// peer-supplied client string ending in RLO would visually swap the Down, Up,
+// and Encrypted cells that follow it on the same aligned row — spoofing values
+// snatcher itself rendered. The isolate controls U+2066–U+2069 do the same
+// inside a bounded run, U+202A–U+202D are the older embedding/override forms,
+// and U+200B–U+200F are zero-width and invisible: they either hide themselves
+// inside a name or (LRM/RLM) nudge the surrounding direction. None of them
+// carries meaning snatcher needs to render, so all are dropped rather than
+// escaped.
+//
+// The one legitimate casualty is U+200D (ZWJ): dropping it splits an emoji ZWJ
+// sequence into its component glyphs. That is accepted — an invisible joiner in
+// a server-supplied string is far more often a hiding place than a family
+// emoji, and every other kind of non-ASCII text (accented Latin, CJK,
+// standalone emoji, combining marks) is untouched.
 func isTerminalControl(r rune) bool {
-	return r < 0x20 || r == 0x7F || (r >= 0x80 && r <= 0x9F)
+	switch {
+	case r < 0x20, r == 0x7F, r >= 0x80 && r <= 0x9F:
+		return true
+	case r >= 0x200B && r <= 0x200F: // ZWSP, ZWNJ, ZWJ, LRM, RLM
+		return true
+	case r >= 0x202A && r <= 0x202E: // LRE, RLE, PDF, LRO, RLO
+		return true
+	case r >= 0x2066 && r <= 0x2069: // LRI, RLI, FSI, PDI
+		return true
+	default:
+		return false
+	}
 }
 
 // ETA formats a torrent's estimated time remaining. A negative value is
