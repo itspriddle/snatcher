@@ -23,8 +23,10 @@ reporting an unsupported\-version error instead of failing in confusing ways.
 .PP
 Commands speak to a single configured Transmission server over its RPC
 interface. The non-secret connection settings (server URL and username) are
-stored in a JSON config file; the password is stored only in the operating
-system keyring, never on disk. Run
+stored in a JSON config file; the password is kept in a secret store, by
+default the operating system keyring (see
+.BR SECRETS ).
+Run
 .B snatcher server add
 once to configure a server before using the other commands.
 .PP
@@ -161,7 +163,7 @@ which overrides it.
 .TP
 .B snatcher server list \fR[\fIoptions\fR]
 List every configured server, sorted by alias, showing its name, URL, username,
-whether a keyring secret is stored, and whether it is the default. Plaintext is
+whether a secret is stored, and whether it is the default. Plaintext is
 an aligned table on a terminal and tab-separated, header-less rows when piped or
 when
 .B NO_COLOR
@@ -884,6 +886,85 @@ An error occurred: the server was unreachable, authentication failed, the
 selectors matched no torrents, a confirmation was refused, or at least one
 .B add
 source failed.
+.SH SECRETS
+A server's password is the only secret snatcher holds, and it never goes in the
+config file. Each server names the store its password lives in, chosen with
+.B \-\-store
+at
+.B "snatcher server add"
+time, saved as
+.B secret_store
+in the config file, and overridable for one invocation with
+.BR SNATCHER_SECRET_STORE .
+.TP
+.B keyring
+The operating system keyring (macOS Keychain, or the Secret Service on Linux),
+under the service name
+.B snatcher
+keyed by the server URL. This is the default and the only store snatcher will
+use unless told otherwise.
+.TP
+.B file
+A
+.B plaintext
+JSON file at
+.IR $XDG_STATE_HOME/snatcher/secrets.json ,
+keyed by server URL, created with mode 0600 under a 0700 directory. It exists
+for machines with no OS keyring and is
+.B less safe
+than the keyring: anything that can read the file (a backup, another process
+running as you, a misconfigured sync) reads the password. Nothing writes to it
+unless it is asked for by name.
+.TP
+.B none
+No store at all: nothing is read and nothing is written. Supply the password
+per invocation with
+.B SNATCHER_PASSWORD
+instead, or use a server with authentication disabled.
+.PP
+.B SNATCHER_PASSWORD
+sits above every store on read paths, so it works in all three modes. It is
+never written to any store.
+.SS "When the secret store is unavailable"
+Snatcher distinguishes
+.I no entry for this server
+from
+.IR "the store could not be reached at all" .
+The second is reported as the secret store being
+.BR unavailable ,
+and is expected on a headless Linux box: the Secret Service is reached over the
+session D\-Bus, so with no D\-Bus session running there is nothing to answer,
+and every keyring read and write fails. It is not a sign of a corrupt keyring
+or a wrong password.
+.PP
+Read paths degrade rather than abort.
+.BR "server list" ", " "server show" ", " "server remove" ,
+and every command that connects to a server keep working; each prints a
+one-line warning
+on standard error and, where a password was needed, proceeds without one. If
+the server does require authentication, the request then fails with the usual
+authentication error.
+.PP
+.B "snatcher server add"
+is the one exception, and only when a non-empty password was typed: it refuses
+rather than register a server whose password went nowhere, and writes nothing
+at all \(em no config entry and no secret. An empty password always succeeds,
+since there is nothing to store. The three ways forward are:
+.RS
+.IP \(bu 2
+Install or start an OS secret service (on Linux, a Secret Service provider such
+as gnome\-keyring, and a D\-Bus session for it to answer on).
+.IP \(bu 2
+Re-run with
+.B \-\-store=file
+to keep the password in the plaintext file store described above.
+.IP \(bu 2
+Re-run with
+.B \-\-store=none
+and supply the password per invocation with
+.BR SNATCHER_PASSWORD ,
+which leaves nothing at rest on disk.
+.RE
 .SH ENVIRONMENT
 .TP
 .B SNATCHER_SERVER
@@ -941,6 +1022,15 @@ into the piped, tab-separated, header-less contract even on a terminal.
 .B XDG_CONFIG_HOME
 When set, the default config path is
 .IR $XDG_CONFIG_HOME/snatcher/config.json .
+.TP
+.B XDG_STATE_HOME
+When set, the default path of the
+.B file
+secret store is
+.IR $XDG_STATE_HOME/snatcher/secrets.json .
+It is consulted only in the
+.B file
+store mode; the keyring never touches it.
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/snatcher/config.json
@@ -956,13 +1046,35 @@ alias), created with mode 0600. Falls back to
 .I ~/.config/snatcher/config.json
 when
 .B XDG_CONFIG_HOME
-is unset.
+is unset. Server passwords are never written to this file; it holds only the
+name of the store each server's password lives in
+.RB ( secret_store ).
+.TP
+.I $XDG_STATE_HOME/snatcher/secrets.json
+The
+.B file
+secret store: server passwords in
+.BR plaintext ,
+as a JSON object keyed by server URL. Written atomically with mode 0600 under a
+0700 directory. Falls back to
+.I ~/.local/state/snatcher/secrets.json
+when
+.B XDG_STATE_HOME
+is unset. This file is created only for a server explicitly registered with
+.BR \-\-store=file " (or under " SNATCHER_SECRET_STORE=file );
+the default
+.B keyring
+store never creates it, and never falls back to it when the keyring cannot be
+reached.
 .PP
-The server password is not stored in any file. It lives only in the operating
-system keyring (macOS Keychain or the Linux Secret Service), under the service
-name
+In the default
+.B keyring
+store the password is in no file at all: it lives in the operating system
+keyring (macOS Keychain or the Linux Secret Service), under the service name
 .B snatcher
-keyed by the server URL.
+keyed by the server URL. See
+.B SECRETS
+for how a store is chosen.
 .SH EXAMPLES
 .SS "Configure and verify a server"
 .EX

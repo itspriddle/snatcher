@@ -118,15 +118,29 @@ snatcher can hold an inventory of named servers and target one per invocation.
   alias. Register servers with `server add --name <alias>`; an omitted `--name`
   defaults to the URL host. Legacy single-server configs are migrated on read.
   The config file is trusted, operator-owned input.
-- **Password (secret):** stored only in the OS keyring under the service name
-  `snatcher`, keyed by server URL. Never written to disk.
+- **Password (secret):** kept in a secret store chosen per server with
+  `server add --store`. The default is `keyring` — the OS keyring under the
+  service name `snatcher`, keyed by server URL, never written to disk. `file`
+  is an opt-in **plaintext** store at `$XDG_STATE_HOME/snatcher/secrets.json`
+  (mode 0600, 0700 directory) for machines with no OS keyring; it is less safe,
+  and `keyring` never falls back to it. `none` stores nothing at all.
 
 Every command that connects to a server accepts `--server <alias>` to pick one
 of your configured servers; `snatcher server default <alias>` sets the one used
 when `--server` is omitted. Selection precedence is `--server` flag >
 `SNATCHER_SERVER` env var > `default_server`.
 
-Useful environment variables: `SNATCHER_SERVER`, `NO_COLOR`, `XDG_CONFIG_HOME`.
+On a headless box with no OS secret store reachable (no D-Bus session, so
+nothing answers the Secret Service), read commands keep working and warn on
+stderr; `server add` refuses to register a server whose typed password has
+nowhere to go, and names the remedies — install or start a secret service, or
+re-run with `--store=file` or `--store=none`. See `SECRETS` in
+`man 1 snatcher`.
+
+Useful environment variables: `SNATCHER_SERVER`, `SNATCHER_SECRET_STORE`
+(`keyring` | `file` | `none`, overriding the per-server `secret_store`),
+`SNATCHER_PASSWORD` (a read-only per-invocation override that beats every
+store), `NO_COLOR`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`.
 
 ## Examples
 

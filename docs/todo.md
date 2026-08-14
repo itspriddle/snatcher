@@ -22,7 +22,7 @@ one. The "unblocks" line on each milestone says which pane is waiting.
 
 ## Sequence
 
-1. **M1** keyring bug - blocks real use on headless Linux today
+1. ~~**M1** keyring bug - blocks real use on headless Linux today~~ **done**
 2. **M2**, **M3** detail-pane surface + rename - unblocks TUI detail pane
 3. **M4** client config - unblocks TUI settings window, needed before the
    settings window is built, not after
@@ -32,7 +32,7 @@ one. The "unblocks" line on each milestone says which pane is waiting.
 
 ---
 
-## M1. Keyring failure on headless Linux
+## M1. Keyring failure on headless Linux - **done**
 
 **Bug.** Reported against a headless Linux box:
 
@@ -63,6 +63,17 @@ Work:
 
 **Done when:** `server add`, `server ping`, and `dial()` all work on a box with
 no D-Bus, and the failure mode is documented in the man page.
+
+**Shipped.** `internal/secrets` classifies an unreachable store as
+`ErrUnavailable`, distinct from `ErrNotFound`, and never leaks `dbus-launch`
+into a message. Every read path (`dial`, `server list`, `server show`,
+`server remove`) tolerates it and warns once with an actionable remedy;
+`server add` refuses to half-save a typed password and writes nothing. The
+fallback is an explicit opt-in: `--store=keyring|file|none` (saved as
+`secret_store` per server, overridden by `SNATCHER_SECRET_STORE`), where `file`
+is a plaintext 0600 store at `$XDG_STATE_HOME/snatcher/secrets.json` that
+`keyring` never falls back to on its own, plus a `SNATCHER_PASSWORD` read
+override for fully unattended runs.
 
 ---
 
