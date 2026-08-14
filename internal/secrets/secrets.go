@@ -153,13 +153,20 @@ func isUnavailableOn(goos string, err error) bool {
 	}
 
 	// The helper binary ran and exited non-zero, and what that means depends on
-	// which helper it was. On Linux a dbus-launch that exists but fails is the
-	// other half of the headless case — dbus installed with no X11 session
-	// autolaunches, prints "Autolaunch error: X11 initialization failed", and
-	// exits 1, leaving no session bus and so no secret service. On macOS the
-	// provider shells out to /usr/bin/security, which exits non-zero for a
-	// locked or user-denied keychain: the store answered and refused, which is a
-	// real answer, not an absent store.
+	// which helper it was. On Linux it is dbus-launch, which godbus runs with no
+	// arguments at all (dbus/v5 conn_other.go), so a non-zero exit means it could
+	// not bring up a session bus — the verified shape is dbus-launch installed
+	// with its dbus-daemon missing ("Failed to execute message bus daemon", exit
+	// 1). No session bus means no secret service, so the store is absent.
+	//
+	// Note that this is *not* the "dbus installed but no X11" case, which is the
+	// commoner headless one: bare dbus-launch forks its own daemon and exits 0
+	// there, so that configuration lands on the dbus.Error ServiceUnknown branch
+	// below instead. Both were reproduced end-to-end in a Debian container.
+	//
+	// On macOS the provider shells out to /usr/bin/security, which exits non-zero
+	// for a locked or user-denied keychain: the store answered and refused, which
+	// is a real answer, not an absent store.
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		return goos != "darwin"

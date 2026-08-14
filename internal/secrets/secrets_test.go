@@ -23,8 +23,11 @@ const testURL = "http://localhost:9091/transmission/rpc"
 var errDBusLaunchMissing = &exec.Error{Name: "dbus-launch", Err: exec.ErrNotFound}
 
 // dbusLaunchExitError builds the other half of the headless failure: a
-// dbus-launch that exists but exits non-zero (dbus installed, no X11 session,
-// "Autolaunch error: X11 initialization failed"). godbus returns
+// dbus-launch that exists but exits non-zero, leaving no session bus and so no
+// secret service. The verified shape is dbus-launch installed with its
+// dbus-daemon missing ("Failed to execute message bus daemon", exit 1) — not
+// "dbus installed, no X11", where bare dbus-launch forks its own daemon and
+// exits 0, producing a dbus.Error ServiceUnknown instead. godbus returns
 // CombinedOutput's error unwrapped, so the classifier sees a bare
 // *exec.ExitError. A real one is used rather than a zero value so the type is
 // exactly what the runtime produces.
