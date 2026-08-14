@@ -1086,11 +1086,14 @@ func TestServerAddSaveFailureRollbackMatchesTheRekeyRule(t *testing.T) {
 			before, readErr := os.ReadFile(cfgPath)
 			require.NoError(t, readErr)
 
-			// A read-only config file still loads, so the second add gets all the
-			// way to config.Save — with the secret already written — and fails
-			// there.
-			require.NoError(t, os.Chmod(cfgPath, 0o400))
-			t.Cleanup(func() { _ = os.Chmod(cfgPath, 0o600) })
+			// A read-only config directory still allows reading the file, so the
+			// second add gets all the way to config.Save — with the secret already
+			// written — and fails there. The directory rather than the file is what
+			// has to be locked: config.Save writes a temp file and renames it over
+			// the target, so the target's own mode no longer stops it.
+			cfgDir := filepath.Dir(cfgPath)
+			require.NoError(t, os.Chmod(cfgDir, 0o500))
+			t.Cleanup(func() { _ = os.Chmod(cfgDir, 0o700) })
 
 			// Same alias, same URL, edited username, and a password the first add
 			// did not store — so neither expectation can be met by an add that

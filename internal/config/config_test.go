@@ -2,9 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -167,17 +169,20 @@ func TestLoadWithoutSecretStoreLeavesItEmpty(t *testing.T) {
 	assert.Empty(t, got.Servers["local"].SecretStore)
 }
 
-func TestLoadIgnoresUnknownLegacyKeys(t *testing.T) {
+func TestLoadDoesNotMigrateLegacyKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 
-	// An old flat single-server file (no servers map) is no longer migrated:
-	// its unknown keys are ignored and it loads as a zero-value Config.
+	// An old flat single-server file (no servers map) is not migrated: none of
+	// its keys populate the modeled fields. They are preserved verbatim rather
+	// than dropped (see TestSavePreservesUnknownTopLevelKeys).
 	legacy := `{"server_url":"http://Localhost:9091/transmission/rpc","username":"dave"}`
 	require.NoError(t, os.WriteFile(path, []byte(legacy), filePerm))
 
 	got, err := Load(path)
 	require.NoError(t, err)
-	assert.Equal(t, Config{}, got)
+	assert.Empty(t, got.Servers)
+	assert.Empty(t, got.DefaultServer)
+	assert.True(t, got.Client.IsZero())
 }
 
 func TestLoadMissingFileReturnsZeroConfigAndNotConfigured(t *testing.T) {
@@ -284,4 +289,276 @@ func TestNamesSortedAscending(t *testing.T) {
 
 func TestNamesEmpty(t *testing.T) {
 	assert.Empty(t, Config{}.Names())
+}
+
+// ptr returns a pointer to v. Every client key is a pointer so that an unset key
+// stays distinguishable from one set to its zero value.
+func ptr[T any](v T) *T {
+	return &v
+}
+
+// clientObject decodes the client object out of the file at path. It fails the
+// test when the file is unreadable or the client key is absent.
+func clientObject(t *testing.T, path string) map[string]any {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var on map[string]any
+	require.NoError(t, json.Unmarshal(raw, &on))
+
+	client, ok := on["client"].(map[string]any)
+	require.True(t, ok, "client must be an object, got %v", on["client"])
+
+	return client
+}
+
+func TestSaveLoadRoundTripsEveryClientKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	want := Client{
+		Theme:        ptr("dracula"),
+		NerdFont:     ptr(false),
+		PollInterval: ptr("1m30s"),
+		ListColumns:  ptr([]string{"id", "name", "ratio"}),
+		ListSort:     ptr("added"),
+		ListReverse:  ptr(true),
+	}
+
+	require.NoError(t, Save(Config{Client: want}, path))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, want, got.Client)
+}
+
+func TestSaveWritesClientKeysWithTheirNaturalJSONTypes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	cfg := Config{Client: Client{
+		Theme:        ptr("nord"),
+		NerdFont:     ptr(false),
+		PollInterval: ptr("5s"),
+		ListColumns:  ptr([]string{"id", "name"}),
+		ListSort:     ptr("queue"),
+		ListReverse:  ptr(true),
+	}}
+	require.NoError(t, Save(cfg, path))
+
+	client := clientObject(t, path)
+	assert.Equal(t, "nord", client["theme"])
+	assert.Equal(t, false, client["nerd_font"])
+	assert.Equal(t, "5s", client["poll_interval"])
+	assert.Equal(t, []any{"id", "name"}, client["list_columns"])
+	assert.Equal(t, "queue", client["list_sort"])
+	assert.Equal(t, true, client["list_reverse"])
+
+	// The client section holds settings only — never a credential of any kind.
+	assert.ElementsMatch(t, clientKeys, slices.Collect(maps.Keys(client)))
+}
+
+func TestSaveDistinguishesExplicitZeroFromUnsetClientKey(t *testing.T) {
+	dir := t.TempDir()
+
+	explicit := filepath.Join(dir, "explicit.json")
+	require.NoError(t, Save(Config{Client: Client{NerdFont: ptr(false), ListReverse: ptr(false)}}, explicit))
+
+	got, err := Load(explicit)
+	require.NoError(t, err)
+	require.NotNil(t, got.Client.NerdFont, "an explicit false must survive the round trip")
+	assert.False(t, *got.Client.NerdFont)
+	require.NotNil(t, got.Client.ListReverse)
+	assert.False(t, *got.Client.ListReverse)
+
+	// Re-saving what was loaded must not turn the explicit false into an absent
+	// key, which would silently promote it back to the default.
+	require.NoError(t, Save(got, explicit))
+	client := clientObject(t, explicit)
+	assert.Equal(t, false, client["nerd_font"])
+
+	unset := filepath.Join(dir, "unset.json")
+	require.NoError(t, Save(Config{Client: Client{Theme: ptr("nord")}}, unset))
+
+	fromUnset, err := Load(unset)
+	require.NoError(t, err)
+	assert.Nil(t, fromUnset.Client.NerdFont, "an absent key must load as unset, not as false")
+	assert.NotContains(t, clientObject(t, unset), "nerd_font")
+}
+
+func TestSaveOmitsAnEmptyClientSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	cfg := Config{
+		Servers:       map[string]Server{"local": {URL: "http://example", Username: "bob"}},
+		DefaultServer: "local",
+	}
+	require.NoError(t, Save(cfg, path))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	// An operator who sets nothing keeps the file a version that predates the
+	// client section would have written.
+	assert.NotContains(t, string(raw), "client")
+}
+
+func TestSaveUnsettingAClientKeyRemovesItFromTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, Save(Config{Client: Client{Theme: ptr("nord"), ListSort: ptr("added")}}, path))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	cfg.Client.Theme = nil
+	require.NoError(t, Save(cfg, path))
+
+	client := clientObject(t, path)
+	assert.NotContains(t, client, "theme")
+	assert.Equal(t, "added", client["list_sort"])
+}
+
+func TestSavePreservesUnknownTopLevelKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	hand := `{
+  "servers": {"local": {"url": "http://example", "username": "bob"}},
+  "default_server": "local",
+  "future_feature": {"enabled": true, "note": "written by a newer snatcher"},
+  "operator_note": "do not delete"
+}`
+	require.NoError(t, os.WriteFile(path, []byte(hand), filePerm))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	cfg.Client.Theme = ptr("dracula")
+	require.NoError(t, Save(cfg, path))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var on map[string]any
+	require.NoError(t, json.Unmarshal(raw, &on))
+
+	assert.Equal(t, map[string]any{"enabled": true, "note": "written by a newer snatcher"}, on["future_feature"])
+	assert.Equal(t, "do not delete", on["operator_note"])
+	assert.Equal(t, "local", on["default_server"])
+}
+
+func TestSavePreservesUnknownClientKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	hand := `{
+  "servers": {},
+  "default_server": "",
+  "client": {"theme": "nord", "date_format": "iso8601", "future_toggle": false}
+}`
+	require.NoError(t, os.WriteFile(path, []byte(hand), filePerm))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	cfg.Client.ListSort = ptr("added")
+	require.NoError(t, Save(cfg, path))
+
+	client := clientObject(t, path)
+	assert.Equal(t, "iso8601", client["date_format"])
+	assert.Equal(t, false, client["future_toggle"])
+	assert.Equal(t, "nord", client["theme"])
+	assert.Equal(t, "added", client["list_sort"])
+}
+
+func TestSaveKeepsAnUnknownClientKeyAsTheOnlyClientContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	hand := `{"servers":{},"default_server":"","client":{"date_format":"iso8601"}}`
+	require.NoError(t, os.WriteFile(path, []byte(hand), filePerm))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	require.False(t, cfg.Client.IsZero(), "a preserved unknown key makes the section non-empty")
+	require.NoError(t, Save(cfg, path))
+
+	assert.Equal(t, map[string]any{"date_format": "iso8601"}, clientObject(t, path))
+}
+
+func TestLoadAcceptsSemanticallyInvalidClientValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	// Nonsense values must load so the CLI stays a route back to a valid file;
+	// meaning is checked at the command layer, not here.
+	hand := `{"servers":{},"default_server":"","client":{"theme":"bogus","poll_interval":"banana","list_sort":"nope","list_columns":["not_a_column"]}}`
+	require.NoError(t, os.WriteFile(path, []byte(hand), filePerm))
+
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "bogus", *got.Client.Theme)
+	assert.Equal(t, "banana", *got.Client.PollInterval)
+	assert.Equal(t, "nope", *got.Client.ListSort)
+	assert.Equal(t, []string{"not_a_column"}, *got.Client.ListColumns)
+}
+
+func TestLoadRejectsAClientValueOfTheWrongJSONType(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	hand := `{"servers":{},"default_server":"","client":{"nerd_font":"yes"}}`
+	require.NoError(t, os.WriteFile(path, []byte(hand), filePerm))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parsing")
+}
+
+func TestSaveTightensLoosePermissionsOnAnExistingFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits differ on windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"servers":{},"default_server":""}`), 0o644))
+
+	require.NoError(t, Save(Config{Client: Client{Theme: ptr("nord")}}, path))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(filePerm), info.Mode().Perm())
+}
+
+func TestSaveLeavesNoTempFileBehind(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	require.NoError(t, Save(Config{Client: Client{Theme: ptr("nord")}}, path))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "config.json", entries[0].Name())
+}
+
+func TestSaveLeavesTheExistingFileIntactWhenTheWriteFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits differ on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses the directory permission that makes the write fail")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	require.NoError(t, Save(Config{Client: Client{Theme: ptr("nord")}}, path))
+
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	// A read-only directory blocks the temp file, which is the whole point of
+	// writing to one: the previous config.json is never opened for truncation.
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(dir, dirPerm) })
+
+	require.Error(t, Save(Config{Client: Client{Theme: ptr("dracula")}}, path))
+
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after))
 }
