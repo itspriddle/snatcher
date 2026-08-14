@@ -262,7 +262,7 @@ func writeServerSecret(store secretStore, serverURL, password string) error {
 
 // serverListResult is the JSON shape emitted for one server by "server list". It
 // is a stable scripting contract: additive changes only. The password is never
-// included; only whether a keyring secret exists.
+// included; only whether a secret is stored.
 type serverListResult struct {
 	Name         string `json:"name"`
 	ServerURL    string `json:"server_url"`
@@ -272,7 +272,7 @@ type serverListResult struct {
 }
 
 // newServerListCmd builds "server list", which enumerates every configured
-// server with its alias, URL, username, whether a keyring secret is stored, and
+// server with its alias, URL, username, whether a secret is stored, and
 // whether it is the default. Plaintext is an aligned table on a TTY and
 // tab-separated, header-less rows when piped or NO_COLOR is set (the same
 // contract as "torrent list"); --json and --jq emit a stable structured shape.
@@ -324,7 +324,8 @@ func newServerListCmd() *cobra.Command {
 }
 
 // serverListResults builds the per-server result rows for "server list", sorted
-// by alias, querying the keyring for whether each server's secret is stored.
+// by alias, asking the store each server resolves to whether its secret is
+// stored.
 //
 // An unreachable secret store does not fail the listing: the rows are still
 // emitted with secret_stored false and a single stderr note explains that the
@@ -812,7 +813,7 @@ func validateURL(raw string) error {
 	}
 
 	// Embedded userinfo (e.g. https://user:pass@host) would persist credentials
-	// into config.json; passwords must live only in the OS keyring.
+	// into config.json; passwords must live only in a secret store.
 	if u.User != nil {
 		return fmt.Errorf("invalid --url %q: must not contain embedded credentials (user:pass@); set --username and the password separately", raw)
 	}

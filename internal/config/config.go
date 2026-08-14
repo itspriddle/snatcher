@@ -5,8 +5,9 @@
 // SNATCHER_SERVER env var) is resolved by callers via Resolve; the config file
 // itself stores only the inventory of servers and the default.
 //
-// Secrets (passwords) are never stored here — they live in the OS keyring (see
-// internal/secrets).
+// Secrets (passwords) are never stored here — they live in whichever secret
+// store the server names (see internal/secrets). This file records only that
+// store's name, in the per-server secret_store field.
 package config
 
 import (

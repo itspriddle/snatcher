@@ -5,8 +5,8 @@ A modern, scriptable CLI for the Transmission BitTorrent client.
 `snatcher` talks to a Transmission server over its RPC interface and exposes
 every operation as a clean, composable command. Output is built for both humans
 (aligned tables on a terminal) and scripts (`--json` and `gh`-style `--jq`
-filters), and your server password never touches disk — it lives in the OS
-keyring.
+filters), and your server password never goes in the config file — by default
+it lives in the OS keyring.
 
 > **Status:** alpha. The CLI is functional and stable; the TUI and Prowlarr
 > search integration described in [`docs/vision.md`](docs/vision.md) are on the
@@ -21,9 +21,10 @@ keyring.
 - **Three output modes, fixed precedence:** `--jq` → `--json` → plaintext. JSON
   field names are a stable scripting contract.
 - **Safe by default.** Non-secret config is JSON under XDG; the password is
-  stored only in the OS keyring (macOS Keychain / Linux Secret Service), keyed
-  by server URL. Server-derived strings are sanitized of terminal escape
-  sequences on human output.
+  kept in a secret store keyed by server URL — the OS keyring (macOS Keychain /
+  Linux Secret Service) unless you explicitly opt in to the plaintext file
+  store. Server-derived strings are sanitized of terminal escape sequences on
+  human output.
 - **Power-user escape hatch.** `snatcher api` issues arbitrary RPC methods,
   modeled on `gh api`.
 

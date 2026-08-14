@@ -16,7 +16,7 @@ import (
 
 // serverShowResult is the JSON shape emitted by "server show": the local
 // connection settings, the live server identity, and the live session settings.
-// The password is never included; only whether a keyring secret exists. The
+// The password is never included; only whether a secret is stored. The
 // identity fields and the settings array are omitted entirely when they were not
 // fetched (--local, or an unconfigured first run), so the offline payload is
 // exactly the connection block.
@@ -78,7 +78,7 @@ var serverShowFields = []serverShowField{
 
 // newServerShowCmd builds "server show [alias]", the single read command for a
 // server: its local connection settings (name, URL, username, resolved config
-// path, whether a keyring secret exists, whether it is the default), its live
+// path, whether a secret is stored, whether it is the default), its live
 // identity (version, rpc semver, negotiated protocol), and every live session
 // setting. It shows the named server, or the configured default when the alias is
 // omitted. It never reveals the secret value.

@@ -29,7 +29,7 @@ func NewServerCmd() *cobra.Command {
 		},
 	}
 
-	// Named-server registry (local config + keyring).
+	// Named-server registry (local config + the server's secret store).
 	cmd.AddCommand(newServerAddCmd())
 	cmd.AddCommand(newServerListCmd())
 	cmd.AddCommand(newServerDefaultCmd())
