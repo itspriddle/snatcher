@@ -470,7 +470,8 @@ func TestServerAddStoreNoneRefusesAPassword(t *testing.T) {
 
 // TestServerAddStoreMatrix walks every combination of store mode, password, and
 // keyring reachability, asserting the exit status, whether config.json was
-// written, and whether the plaintext file store was created. "keyring
+// written, which store it records, and whether the plaintext file store was
+// created. "keyring
 // unreachable" is the headless-Linux box: the file and none modes must be
 // indifferent to it, and only the keyring mode with a password to store may
 // fail.
@@ -551,6 +552,11 @@ func TestServerAddStoreMatrix(t *testing.T) {
 			require.NoError(t, loadErr)
 			assert.Equal(t, serverURL, cfg.Servers["host:9091"].URL)
 
+			// The store written to is the store recorded. A config naming a
+			// different one leaves the password unreachable on the next run —
+			// and, under "file", an orphaned plaintext credential on disk.
+			assert.Equal(t, tc.store, cfg.Servers["host:9091"].SecretStore)
+
 			if tc.wantSecretsFile {
 				require.FileExists(t, secretsPath)
 
@@ -612,6 +618,114 @@ func TestServerAddWritesNothingWhenPasswordHasNowhereToGo(t *testing.T) {
 
 	// The refusal must not have created the plaintext store as a side effect.
 	assert.NoFileExists(t, secretsPath)
+}
+
+// TestServerAddRefusesAWorldReadableFileStore pins the third answer a store can
+// give: not "no entry", not "unavailable", but a genuine error. A secrets.json
+// left readable by anyone is the realistic case — FileStore.load refuses it
+// rather than trusting or rewriting it — and "server add" must surface that
+// error as it stands, naming the file and the mode, instead of folding it into
+// the unavailable advice (which would tell an operator to install a secret
+// service they already have) or swallowing it and writing anyway.
+func TestServerAddRefusesAWorldReadableFileStore(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	keyring.MockInit()
+
+	// A secrets file already holding another server's password, widened to 0644
+	// by a careless editor, a restore from backup, or a permissive umask.
+	require.NoError(t, os.MkdirAll(filepath.Dir(secretsPath), 0o700))
+	require.NoError(t, os.WriteFile(secretsPath, []byte("{\n  \"http://other:9091/rpc\": \"hunter1\"\n}\n"), 0o600))
+	require.NoError(t, os.Chmod(secretsPath, 0o644))
+
+	before, readErr := os.ReadFile(secretsPath)
+	require.NoError(t, readErr)
+
+	out, errOut, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", "http://host:9091/rpc",
+		"--username", "alice",
+		"--password-stdin",
+		"--store", "file",
+	)
+	require.Error(t, err)
+
+	// The store's own diagnosis reaches the operator: which file, the mode it
+	// has, and the mode it must have.
+	msg := err.Error()
+	assert.Contains(t, msg, secretsPath)
+	assert.Contains(t, msg, "0644")
+	assert.Contains(t, msg, "0600")
+	assert.NotContains(t, msg, "install or start an OS secret service")
+	assert.NotContains(t, msg+out+errOut, "dbus-launch")
+
+	// Nothing is written: no server registered, and the widened file is left
+	// exactly as it was rather than quietly rewritten at 0600.
+	assert.NoFileExists(t, cfgPath)
+
+	after, readErr := os.ReadFile(secretsPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, string(before), string(after))
+
+	info, statErr := os.Stat(secretsPath)
+	require.NoError(t, statErr)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+}
+
+// TestServerAddProbesTheStoreBeforeDroppingTheOldSecret is what the up-front
+// probe buys on a genuine store error: the abort has to happen before the
+// pre-clear, or moving a working server to a store that turns out to be
+// unusable deletes the password it already had and puts nothing in its place.
+// The write path repeats the same permission check, so only the ordering
+// distinguishes a probed store from an unprobed one.
+func TestServerAddProbesTheStoreBeforeDroppingTheOldSecret(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const serverURL = "http://host:9091/rpc"
+
+	keyring.MockInit()
+
+	// A working keyring-backed server.
+	_, _, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", serverURL,
+		"--username", "alice",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+
+	before, readErr := os.ReadFile(cfgPath)
+	require.NoError(t, readErr)
+
+	// The file store it is being moved to cannot be read.
+	require.NoError(t, os.MkdirAll(filepath.Dir(secretsPath), 0o700))
+	require.NoError(t, os.WriteFile(secretsPath, []byte("{}\n"), 0o600))
+	require.NoError(t, os.Chmod(secretsPath, 0o644))
+
+	_, _, err = runServer(t, "hunter3\n",
+		"add",
+		"--config", cfgPath,
+		"--url", serverURL,
+		"--username", "alice",
+		"--password-stdin",
+		"--store", "file",
+	)
+	require.Error(t, err)
+
+	// The server is exactly as it was: same config, same password, still usable.
+	after, readErr := os.ReadFile(cfgPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, string(before), string(after))
+
+	stored, getErr := secrets.Get(serverURL)
+	require.NoError(t, getErr)
+	assert.Equal(t, "hunter2", stored)
 }
 
 func TestServerAddFileStoreReportsPlaintextLocation(t *testing.T) {
