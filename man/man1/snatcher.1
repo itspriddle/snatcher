@@ -637,6 +637,17 @@ This affects plaintext only:
 always emits the full object and
 .B \-\-jq
 selects fields itself.
+.IP
+A magnet URI reproduces the torrent's announce URLs in its
+.B tr=
+parameters, and a private tracker's announce URL commonly embeds a per-user
+passkey, so treat
+.B magnet_link
+output as a credential: do not paste it verbatim into a public issue report or a
+pastebin. Nothing is redacted \(em that would break the scripting contract \(em
+so the redaction is yours to do. See
+.B "snatcher torrent trackers"
+for the same caution on the announce URLs themselves.
 .RE
 .TP
 .B snatcher torrent files \fR[\fIoptions\fR] \fIid | hash\fR
@@ -720,10 +731,20 @@ Download priority for the selected files. One of
 .BR low ", " normal ", " high .
 .TP
 .B \-\-wanted
-Download the selected files.
+Download the selected files. This is a switch, not a boolean setting:
+.B \-\-wanted=false
+is not a way to mark a file unwanted. It reads as "not given", so an invocation
+carrying only that fails with the "nothing to change" error and writes nothing.
+Use
+.B \-\-unwanted
+to deselect a file.
 .TP
 .B \-\-unwanted
 Do not download the selected files. Mutually exclusive with
+.BR \-\-wanted ,
+and a switch in the same way:
+.B \-\-unwanted=false
+is not a way to mark a file wanted; use
 .BR \-\-wanted .
 .TP
 .BR \-\-fields " " \fIlist\fR
@@ -800,7 +821,18 @@ are neutralized of terminal control sequences in the plaintext output;
 .B \-\-json
 and
 .B \-\-jq
-emit them verbatim. Besides the common options:
+emit them verbatim.
+.IP
+A private tracker's announce URL commonly embeds a per-user passkey, and
+.B announce
+is one of the default columns, so treat this output as a credential: do not
+paste it verbatim into a public issue report or a pastebin. Nothing is redacted
+\(em that would break the scripting contract \(em so the redaction is yours to
+do. The same applies to
+.BR "snatcher torrent show \-\-fields magnet_link" ,
+whose
+.B tr=
+parameters reproduce these URLs. Besides the common options:
 .RS
 .TP
 .BR \-\-fields " " \fIlist\fR

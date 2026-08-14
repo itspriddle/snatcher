@@ -727,6 +727,36 @@ func TestFilesUpdateRequiresAFieldFlag(t *testing.T) {
 	}
 }
 
+// TestFilesUpdateWantedFalseIsNotUnwanted pins the switch semantics of --wanted
+// and --unwanted. They are read by value, not through Flags().Changed, so
+// "--wanted=false" reads as "not given" and falls into the "nothing to change"
+// error rather than marking the file unwanted. That is deliberate: reading them
+// the way --priority is read would make "--wanted=false" write *wanted*, the
+// opposite mutation. A later consistency refactor must not silently invert this.
+func TestFilesUpdateWantedFalseIsNotUnwanted(t *testing.T) {
+	cases := []struct {
+		name string
+		flag string
+	}{
+		{"wanted=false", "--wanted=false"},
+		{"unwanted=false", "--unwanted=false"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+			defer closeSrv()
+
+			out, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "0", tc.flag)
+			require.Error(t, err)
+			assert.Equal(t, "nothing to change: provide --priority, --wanted, or --unwanted", err.Error())
+			assert.Empty(t, out)
+
+			assert.Zero(t, stub.count("torrent-set"), "a false switch never writes")
+		})
+	}
+}
+
 func TestFilesUpdateRejectsInvalidPriority(t *testing.T) {
 	cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
 	defer closeSrv()
