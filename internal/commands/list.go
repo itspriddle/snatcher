@@ -15,13 +15,18 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// listColumn describes a single rendered column: its header, how a torrent's
-// value is derived, its alignment, whether the Name-style truncation applies on
-// a TTY, and whether the rendered cell carries untrusted, server-derived text
-// that must be neutralized of terminal control sequences before display.
-type listColumn struct {
+// column describes a single rendered column of a row of type T: its header, how
+// a row's value is derived, its alignment, whether the Name-style truncation
+// applies on a TTY, and whether the rendered cell carries untrusted,
+// server-derived text that must be neutralized of terminal control sequences
+// before display.
+//
+// The type parameter is what lets one renderer serve every row shape the CLI
+// prints — torrents, torrent details, files, peers, trackers — instead of each
+// command growing its own copy of the TTY/piped/truncation logic.
+type column[T any] struct {
 	header     string
-	value      func(transmission.Torrent) string
+	value      func(T) string
 	rightAlign bool
 	truncate   bool
 	// sanitize marks columns whose value comes from the remote server or
@@ -32,11 +37,12 @@ type listColumn struct {
 	sanitize bool
 }
 
-// listFields is the field registry: it maps a selectable --fields key to the
-// column that renders it. It is the single source of truth for headers,
-// accessors, and alignment, shared by both the TTY aligned output and the piped
-// tab-separated output. New columns are added here.
-var listFields = map[string]listColumn{
+// listFields is the list command's field registry: it maps a selectable
+// --fields key to the column that renders it. It is the single source of truth
+// for headers, accessors, and alignment, shared by both the TTY aligned output
+// and the piped tab-separated output. New list columns are added here; other
+// commands own their own registries with their own key names.
+var listFields = map[string]column[transmission.Torrent]{
 	"id": {header: "ID", rightAlign: true, value: func(t transmission.Torrent) string {
 		return fmt.Sprintf("%d", t.ID)
 	}},
@@ -100,11 +106,12 @@ var allFieldKeys = []string{
 	"eta", "peers", "added", "download_dir", "error", "labels",
 }
 
-// validFieldKeys returns every selectable --fields key in sorted order, for the
-// error message listing the valid keys.
-func validFieldKeys() string {
-	keys := make([]string, 0, len(listFields))
-	for k := range listFields {
+// validFieldKeys returns every selectable --fields key of the given registry in
+// sorted order, for the error message listing the valid keys. Each command
+// passes its own registry, so the error names only that command's keys.
+func validFieldKeys[T any](registry map[string]column[T]) string {
+	keys := make([]string, 0, len(registry))
+	for k := range registry {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
@@ -112,11 +119,12 @@ func validFieldKeys() string {
 	return strings.Join(keys, ", ")
 }
 
-// parseFields resolves a --fields value into the ordered columns to render. An
-// empty value selects defaults (list passes defaultFieldKeys, info passes the
-// full allFieldKeys). An unknown key returns an error listing the valid keys.
-// Keys are matched case-insensitively after trimming whitespace.
-func parseFields(spec string, defaults []string) ([]listColumn, error) {
+// parseFields resolves a --fields value into the ordered columns to render,
+// looked up in the calling command's own registry. An empty spec selects the
+// given defaults (list passes defaultFieldKeys, show passes the full
+// allFieldKeys). An unknown key returns an error listing the registry's valid
+// keys. Keys are matched case-insensitively after trimming whitespace.
+func parseFields[T any](registry map[string]column[T], defaults []string, spec string) ([]column[T], error) {
 	keys := defaults
 	if strings.TrimSpace(spec) != "" {
 		keys = nil
@@ -125,19 +133,19 @@ func parseFields(spec string, defaults []string) ([]listColumn, error) {
 			if key == "" {
 				continue
 			}
-			if _, ok := listFields[key]; !ok {
-				return nil, fmt.Errorf("invalid field %q: valid fields are %s", strings.TrimSpace(raw), validFieldKeys())
+			if _, ok := registry[key]; !ok {
+				return nil, fmt.Errorf("invalid field %q: valid fields are %s", strings.TrimSpace(raw), validFieldKeys(registry))
 			}
 			keys = append(keys, key)
 		}
 		if len(keys) == 0 {
-			return nil, fmt.Errorf("no fields selected: valid fields are %s", validFieldKeys())
+			return nil, fmt.Errorf("no fields selected: valid fields are %s", validFieldKeys(registry))
 		}
 	}
 
-	cols := make([]listColumn, len(keys))
+	cols := make([]column[T], len(keys))
 	for i, key := range keys {
-		cols[i] = listFields[key]
+		cols[i] = registry[key]
 	}
 
 	return cols, nil
@@ -179,7 +187,7 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			columns, err := parseFields(fieldsFlag, defaultFieldKeys)
+			columns, err := parseFields(listFields, defaultFieldKeys, fieldsFlag)
 			if err != nil {
 				return err
 			}
@@ -238,26 +246,27 @@ func jsonTorrents(torrents []transmission.Torrent) []transmission.Torrent {
 	return torrents
 }
 
-// writeListPlaintext renders torrents in the appropriate plaintext mode for the
+// writeListPlaintext renders rows in the appropriate plaintext mode for the
 // command's output: an aligned, header-and-truncation table on a TTY, or plain
 // tab-separated, full-value, header-less rows when piped or when NO_COLOR is set.
-func writeListPlaintext(cmd *cobra.Command, torrents []transmission.Torrent, columns []listColumn) {
+func writeListPlaintext[T any](cmd *cobra.Command, rows []T, columns []column[T]) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {
-		writeListTable(out, torrents, columns, terminalWidth(out))
+		writeListTable(out, rows, columns, terminalWidth(out))
 		return
 	}
 
-	writeListPiped(out, torrents, columns)
+	writeListPiped(out, rows, columns)
 }
 
-// cellValue renders a column's value for a torrent, neutralizing terminal
-// control sequences for columns whose text is untrusted, server-derived
-// (sanitize). It is the single rendering seam shared by the table and piped
-// paths so both apply the same protection; the JSON/jq paths never call it.
-func cellValue(col listColumn, t transmission.Torrent) string {
-	v := col.value(t)
+// cellValue renders a column's value for a row, neutralizing terminal control
+// sequences for columns whose text is untrusted, server-derived (sanitize). It
+// is the single rendering seam shared by the table, piped, and vertical-block
+// paths so all of them apply the same protection; the JSON/jq paths never call
+// it.
+func cellValue[T any](col column[T], row T) string {
+	v := col.value(row)
 	if col.sanitize {
 		v = output.SanitizeTerminal(v)
 	}
@@ -267,11 +276,11 @@ func cellValue(col listColumn, t transmission.Torrent) string {
 
 // writeListPiped writes plain, tab-separated, full-value rows with no header —
 // the stable scripting contract. An empty list writes nothing.
-func writeListPiped(w io.Writer, torrents []transmission.Torrent, columns []listColumn) {
-	for _, t := range torrents {
+func writeListPiped[T any](w io.Writer, rows []T, columns []column[T]) {
+	for _, row := range rows {
 		cells := make([]string, len(columns))
 		for i, col := range columns {
-			cells[i] = cellValue(col, t)
+			cells[i] = cellValue(col, row)
 		}
 
 		_, _ = fmt.Fprintln(w, strings.Join(cells, "\t"))
@@ -282,13 +291,13 @@ func writeListPiped(w io.Writer, torrents []transmission.Torrent, columns []list
 // columns right-aligned and text columns left-aligned, truncating truncatable
 // columns (Name) with an ellipsis so rows fit width. An empty list writes a
 // friendly "No torrents." line. A width of 0 disables truncation.
-func writeListTable(w io.Writer, torrents []transmission.Torrent, columns []listColumn, width int) {
-	if len(torrents) == 0 {
+func writeListTable[T any](w io.Writer, rows []T, columns []column[T], width int) {
+	if len(rows) == 0 {
 		_, _ = fmt.Fprintln(w, "No torrents.")
 		return
 	}
 
-	nameLimit := nameColumnLimit(torrents, columns, width)
+	nameLimit := nameColumnLimit(rows, columns, width)
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 
@@ -298,10 +307,10 @@ func writeListTable(w io.Writer, torrents []transmission.Torrent, columns []list
 	}
 	_, _ = fmt.Fprintln(tw, strings.Join(headers, "\t"))
 
-	for _, t := range torrents {
+	for _, row := range rows {
 		cells := make([]string, len(columns))
 		for i, col := range columns {
-			cell := cellValue(col, t)
+			cell := cellValue(col, row)
 			if col.truncate && nameLimit > 0 {
 				cell = truncate(cell, nameLimit)
 			}
@@ -313,8 +322,8 @@ func writeListTable(w io.Writer, torrents []transmission.Torrent, columns []list
 
 		// Right-aligned cells are prefixed with a tab above; join the rest with
 		// tabs and strip the doubled tab that the prefix introduces.
-		row := strings.ReplaceAll(strings.Join(cells, "\t"), "\t\t", "\t")
-		_, _ = fmt.Fprintln(tw, row)
+		line := strings.ReplaceAll(strings.Join(cells, "\t"), "\t\t", "\t")
+		_, _ = fmt.Fprintln(tw, line)
 	}
 
 	_ = tw.Flush()
@@ -324,7 +333,7 @@ func writeListTable(w io.Writer, torrents []transmission.Torrent, columns []list
 // occupy so the widest row fits within width. It returns 0 (no truncation) when
 // the width is unknown or already roomy enough. Only the first truncatable
 // column is considered.
-func nameColumnLimit(torrents []transmission.Torrent, columns []listColumn, width int) int {
+func nameColumnLimit[T any](rows []T, columns []column[T], width int) int {
 	if width <= 0 {
 		return 0
 	}
@@ -342,8 +351,8 @@ func nameColumnLimit(torrents []transmission.Torrent, columns []listColumn, widt
 		}
 
 		colWidth := len(col.header)
-		for _, t := range torrents {
-			if cellWidth := len([]rune(cellValue(col, t))); cellWidth > colWidth {
+		for _, row := range rows {
+			if cellWidth := len([]rune(cellValue(col, row))); cellWidth > colWidth {
 				colWidth = cellWidth
 			}
 		}
@@ -366,8 +375,8 @@ func nameColumnLimit(torrents []transmission.Torrent, columns []listColumn, widt
 
 	// Don't truncate when the longest name already fits.
 	longest := len(columns[nameIndex].header)
-	for _, t := range torrents {
-		if w := len([]rune(cellValue(columns[nameIndex], t))); w > longest {
+	for _, row := range rows {
+		if w := len([]rune(cellValue(columns[nameIndex], row))); w > longest {
 			longest = w
 		}
 	}

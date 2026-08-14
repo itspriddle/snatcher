@@ -11,6 +11,34 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
+// detailFields is the show command's field registry, keyed by the same
+// selectable --fields keys as list and rendering the same headers, alignment,
+// and sanitization — the 15 list columns are promoted rather than restated, so
+// there is exactly one definition of each.
+var detailFields = promote(listFields)
+
+// promote lifts a Torrent column registry into a TorrentDetail one by wrapping
+// each accessor to read the embedded Torrent. TorrentDetail is a superset of
+// Torrent, so every column that renders a torrent renders a detail unchanged;
+// promoting keeps the shared columns defined once instead of duplicating
+// fifteen accessors that would then have to be kept in step by hand.
+func promote(registry map[string]column[transmission.Torrent]) map[string]column[transmission.TorrentDetail] {
+	promoted := make(map[string]column[transmission.TorrentDetail], len(registry))
+	for key, col := range registry {
+		promoted[key] = column[transmission.TorrentDetail]{
+			header:     col.header,
+			rightAlign: col.rightAlign,
+			truncate:   col.truncate,
+			sanitize:   col.sanitize,
+			value: func(d transmission.TorrentDetail) string {
+				return col.value(d.Torrent)
+			},
+		}
+	}
+
+	return promoted
+}
+
 // NewShowCmd builds the "show" command, which dials the backend, resolves a
 // single torrent by numeric id or 40-character info-hash, and renders its full
 // set of fields. The output honors the same precedence as list: --jq filters
@@ -43,7 +71,7 @@ func NewShowCmd() *cobra.Command {
 				return err
 			}
 
-			columns, err := parseFields(fieldsFlag, allFieldKeys)
+			columns, err := parseFields(detailFields, allFieldKeys, fieldsFlag)
 			if err != nil {
 				return err
 			}
@@ -66,7 +94,7 @@ func NewShowCmd() *cobra.Command {
 				return output.JSON(cmd.OutOrStdout(), match)
 			}
 
-			writeShowPlaintext(cmd, match.Torrent, columns)
+			writeShowPlaintext(cmd, match, columns)
 
 			return nil
 		},
@@ -128,18 +156,20 @@ func resolveTorrentID(cmd *cobra.Command, backend *transmission.Client, serverUR
 	return 0, fmt.Errorf("no torrent matched: %s", arg)
 }
 
-// writeShowPlaintext renders one torrent's fields as a vertical "key: value"
-// block. On a TTY the labels are column-aligned via tabwriter; when piped or
-// when NO_COLOR is set, each line is "key<TAB>value" (header-less, scripting-
+// writeShowPlaintext renders one row's fields as a vertical "key: value" block.
+// On a TTY the labels are column-aligned via tabwriter; when piped or when
+// NO_COLOR is set, each line is "key<TAB>value" (header-less, scripting-
 // stable). Sanitizable fields pass through cellValue's SanitizeTerminal in both
-// paths; the JSON/jq paths never reach here.
-func writeShowPlaintext(cmd *cobra.Command, t transmission.Torrent, columns []listColumn) {
+// paths; the JSON/jq paths never reach here. A column's rightAlign and truncate
+// are inert on this path — they exist so one column[T] serves both the vertical
+// block and the table renderer.
+func writeShowPlaintext[T any](cmd *cobra.Command, row T, columns []column[T]) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 		for _, col := range columns {
-			_, _ = fmt.Fprintf(tw, "%s:\t%s\n", col.header, cellValue(col, t))
+			_, _ = fmt.Fprintf(tw, "%s:\t%s\n", col.header, cellValue(col, row))
 		}
 		_ = tw.Flush()
 
@@ -147,6 +177,6 @@ func writeShowPlaintext(cmd *cobra.Command, t transmission.Torrent, columns []li
 	}
 
 	for _, col := range columns {
-		_, _ = fmt.Fprintf(out, "%s\t%s\n", col.header, cellValue(col, t))
+		_, _ = fmt.Fprintf(out, "%s\t%s\n", col.header, cellValue(col, row))
 	}
 }
