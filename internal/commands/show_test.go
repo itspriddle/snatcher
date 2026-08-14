@@ -15,6 +15,8 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/itspriddle/snatcher/internal/config"
+	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // Two 40-character SHA1 info-hashes used by the show fixtures so the hash
@@ -27,7 +29,8 @@ const (
 
 // bespokeShowResponse is a torrent-get payload covering two torrents with
 // distinct ids and full 40-char hashes, used to exercise the show command's
-// id and hash resolution.
+// id and hash resolution. Torrent 1 also carries every detail-only scalar so
+// the show registry's non-list columns have something to render.
 const bespokeShowResponse = `{
 	"arguments": {"torrents": [
 		{
@@ -43,7 +46,21 @@ const bespokeShowResponse = `{
 			"eta": 3600,
 			"downloadDir": "/downloads",
 			"labels": ["linux"],
-			"magnetLink": "magnet:?xt=urn:btih:` + infoHash1 + `"
+			"magnetLink": "magnet:?xt=urn:btih:` + infoHash1 + `",
+			"comment": "Ubuntu release",
+			"creator": "mktorrent 1.1",
+			"dateCreated": 1700000000,
+			"isPrivate": true,
+			"pieceCount": 8192,
+			"pieceSize": 262144,
+			"downloadedEver": 1073741824,
+			"uploadedEver": 536870912,
+			"corruptEver": 1024,
+			"haveValid": 1073741824,
+			"secondsDownloading": 3661,
+			"secondsSeeding": 7200,
+			"recheckProgress": 0.25,
+			"metadataPercentComplete": 1.0
 		},
 		{
 			"id": 2,
@@ -202,7 +219,7 @@ func TestShowResolvesByID(t *testing.T) {
 
 	// Piped plaintext is a header-less "key<TAB>value" block, one line per field.
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	require.Len(t, lines, len(allFieldKeys), "one line per registry field")
+	require.Len(t, lines, len(detailFieldKeys), "one line per default field")
 
 	fields := showFields(t, out)
 	assert.Equal(t, "1", fields["ID"])
@@ -458,6 +475,113 @@ func TestShowNotConfigured(t *testing.T) {
 	_, _, err := runShow(t, "--config", cfgPath, "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
+}
+
+// TestShowRendersDetailScalars asserts the detail-only fields — the ones a list
+// Torrent does not carry — are rendered in the plaintext block, so they are
+// readable without piping through --json.
+func TestShowRendersDetailScalars(t *testing.T) {
+	cfgPath, closeSrv := showConfigPath(t, bespokeShowResponse)
+	defer closeSrv()
+
+	out, _, err := runShow(t, "--config", cfgPath, "1")
+	require.NoError(t, err)
+
+	fields := showFields(t, out)
+	assert.Equal(t, "Ubuntu release", fields["Comment"])
+	assert.Equal(t, "mktorrent 1.1", fields["Creator"])
+	assert.Equal(t, output.Date(1700000000), fields["Created"])
+	assert.Equal(t, "yes", fields["Private"])
+	assert.Equal(t, "8192", fields["Pieces"])
+	assert.Equal(t, "256.0 KiB", fields["Piece Size"])
+	assert.Equal(t, "1.0 GiB", fields["Downloaded Ever"])
+	assert.Equal(t, "512.0 MiB", fields["Uploaded Ever"])
+	assert.Equal(t, "1.0 KiB", fields["Corrupt Ever"])
+	assert.Equal(t, "1.0 GiB", fields["Have Valid"])
+	assert.Equal(t, "1h 1m 1s", fields["Downloading Time"])
+	assert.Equal(t, "2h", fields["Seeding Time"])
+	assert.Equal(t, "25%", fields["Recheck"])
+	assert.Equal(t, "100%", fields["Metadata"])
+
+	assert.NotContains(t, fields, "Magnet Link", "magnet_link is opt-in, never in the default block")
+}
+
+// TestShowDefaultFieldOrder asserts the rendered line order is exactly
+// detailFieldKeys: list's 15 fields in list's order, then the detail scalars,
+// with magnet_link absent.
+func TestShowDefaultFieldOrder(t *testing.T) {
+	cfgPath, closeSrv := showConfigPath(t, bespokeShowResponse)
+	defer closeSrv()
+
+	out, _, err := runShow(t, "--config", cfgPath, "1")
+	require.NoError(t, err)
+
+	want := make([]string, len(detailFieldKeys))
+	for i, key := range detailFieldKeys {
+		want[i] = detailFields[key].header
+	}
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	got := make([]string, len(lines))
+	for i, line := range lines {
+		key, _, ok := strings.Cut(line, "\t")
+		require.True(t, ok, "each plaintext line is key<TAB>value: %q", line)
+		got[i] = key
+	}
+
+	assert.Equal(t, want, got)
+	assert.Equal(t, allFieldKeys, detailFieldKeys[:len(allFieldKeys)], "list's fields come first, in list order")
+	assert.NotContains(t, detailFieldKeys, "magnet_link", "magnet_link is excluded from the default set")
+}
+
+// TestShowMagnetLinkField asserts "--fields magnet_link" prints the magnet URI
+// and nothing else on both plaintext paths. This is the CLI equivalent of the
+// TUI's "y m" yank-magnet key, so the output has to stay a single clean line
+// that a shell can capture verbatim.
+func TestShowMagnetLinkField(t *testing.T) {
+	magnet := "magnet:?xt=urn:btih:" + infoHash1
+
+	cfgPath, closeSrv := showConfigPath(t, bespokeShowResponse)
+	defer closeSrv()
+
+	// Piped path, end to end through the command.
+	out, _, err := runShow(t, "--config", cfgPath, "1", "--fields", "magnet_link")
+	require.NoError(t, err)
+	assert.Equal(t, "Magnet Link\t"+magnet+"\n", out, "piped output is exactly the magnet line")
+
+	// TTY path. isTTY needs a real terminal, so the TTY writer is exercised
+	// directly, as the list tests do for writeListTable.
+	cols, err := parseFields(detailFields, detailFieldKeys, "magnet_link")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeShowBlock(&buf, transmission.TorrentDetail{MagnetLink: magnet}, cols)
+	assert.Equal(t, "Magnet Link:  "+magnet+"\n", buf.String(), "TTY output is exactly the magnet line")
+}
+
+// TestDetailFieldsAreShowOnly asserts the registry boundary in both directions:
+// show accepts every detail key, and list rejects them with an error naming only
+// list's own keys.
+func TestDetailFieldsAreShowOnly(t *testing.T) {
+	cfgPath, closeSrv := showConfigPath(t, bespokeShowResponse)
+	defer closeSrv()
+
+	t.Run("show accepts every detail key", func(t *testing.T) {
+		out, _, err := runShow(t, "--config", cfgPath, "1", "--fields", strings.Join(allDetailFieldKeys, ","))
+		require.NoError(t, err)
+
+		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+		assert.Len(t, lines, len(allDetailFieldKeys), "one line per selectable field, magnet_link included")
+	})
+
+	t.Run("list rejects the detail-only keys", func(t *testing.T) {
+		for _, key := range []string{"magnet_link", "comment", "piece_count", "seconds_seeding"} {
+			_, err := parseFields(listFields, defaultFieldKeys, key)
+			require.Error(t, err, key)
+			assert.Equal(t, `invalid field "`+key+`": valid fields are `+validFieldKeys(listFields), err.Error(),
+				"list's error lists only list's own keys")
+		}
+	})
 }
 
 // showFields parses the piped "key<TAB>value" plaintext block into a map keyed

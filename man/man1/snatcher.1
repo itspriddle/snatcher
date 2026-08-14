@@ -609,10 +609,23 @@ filters that object. Besides the common options:
 .TP
 .BR \-\-fields " " \fIlist\fR
 Comma-separated fields to show in the plaintext output, in the given order.
-When omitted the full field set is shown. Available fields:
+When omitted every field except
+.B magnet_link
+is shown. Available fields:
 .BR id ", " hash ", " name ", " status ", " done ", " size ", " down ,
 .BR up ", " ratio ", " eta ", " peers ", " added ", " download_dir ,
-.BR error ", " labels .
+.BR error ", " labels ", " comment ", " creator ", " date_created ,
+.BR is_private ", " piece_count ", " piece_size ", " downloaded_ever ,
+.BR uploaded_ever ", " corrupt_ever ", " have_valid ,
+.BR seconds_downloading ", " seconds_seeding ", " recheck_progress ,
+.BR metadata_percent_complete ", " magnet_link .
+.IP
+.B magnet_link
+is opt-in: it is selectable but excluded from the default set, because a magnet
+URI is a single long line that would dominate the block. Select it on its own
+to print just the magnet URI, e.g.
+.BR "snatcher torrent show \-\-fields magnet_link 3" .
+.IP
 This affects plaintext only:
 .B \-\-json
 always emits the full object and
