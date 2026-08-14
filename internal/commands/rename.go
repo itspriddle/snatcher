@@ -92,6 +92,13 @@ func NewRenameCmd() *cobra.Command {
 				return fmt.Errorf("new name must not be empty")
 			}
 
+			// A directory path completed by a shell arrives with a trailing
+			// slash, which the server can never match: Transmission compares
+			// <path> exactly against the torrent's name or a file subpath. Trim
+			// it once, here, so the root check and the call itself both see the
+			// value the server will actually be asked about.
+			path = strings.TrimSuffix(path, "/")
+
 			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
@@ -106,9 +113,8 @@ func NewRenameCmd() *cobra.Command {
 			}
 
 			// The torrent root is the torrent's own name, for both single- and
-			// multi-file torrents. A trailing slash is tolerated so a directory
-			// path completed by a shell still hits the gate.
-			root := strings.TrimSuffix(path, "/") == before.Name
+			// multi-file torrents.
+			root := path == before.Name
 
 			if root && !yes {
 				confirmed, err := confirmRootRename(cmd, before.Name, newName)

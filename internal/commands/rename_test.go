@@ -411,6 +411,45 @@ func TestRenameRootTrailingSlashIsStillRoot(t *testing.T) {
 	assert.False(t, ok, "the rename method must not be called behind the gate")
 }
 
+// TestRenameRootTrailingSlashIsTrimmedOnTheWire guards that the slash a shell
+// completes a directory path with is trimmed before the call, not just before
+// the root check. Transmission matches <path> exactly against the torrent name
+// or a file subpath, so a stray slash would make every confirmed rename fail
+// server-side, and would leak into the reported path as well.
+func TestRenameRootTrailingSlashIsTrimmedOnTheWire(t *testing.T) {
+	t.Run("plaintext", func(t *testing.T) {
+		cfgPath, stub, closeSrv := renameConfigPath(t, "")
+		defer closeSrv()
+
+		out, _, err := runRename(t, "--config", cfgPath, "--yes", "1", "Ubuntu 24.04/", "ubuntu-24.04")
+		require.NoError(t, err)
+		assert.Equal(t, "Renamed torrent Ubuntu 24.04 to ubuntu-24.04\n", out,
+			"the plaintext line reports the trimmed path")
+
+		body, ok := stub.renameRequest()
+		require.True(t, ok, "the rename method was called")
+		assert.Contains(t, body, `"path":"Ubuntu 24.04"`, "the wire carries the trimmed path")
+		assert.Contains(t, body, `"name":"ubuntu-24.04"`)
+	})
+
+	t.Run("json", func(t *testing.T) {
+		cfgPath, stub, closeSrv := renameConfigPath(t, "")
+		defer closeSrv()
+
+		out, _, err := runRename(t, "--config", cfgPath, "--yes", "--json", "1", "Ubuntu 24.04/", "ubuntu-24.04")
+		require.NoError(t, err)
+
+		body, ok := stub.renameRequest()
+		require.True(t, ok, "the rename method was called")
+		assert.Contains(t, body, `"path":"Ubuntu 24.04"`, "the wire carries the trimmed path")
+
+		got := decodeRenameResult(t, out)
+		assert.True(t, got.Root, "the rename targeted the torrent root")
+		assert.Equal(t, "Ubuntu 24.04", got.Path, "the reported path is the trimmed one")
+		assert.Equal(t, "ubuntu-24.04", got.Torrent.Name, "the torrent name is post-rename truth")
+	})
+}
+
 // TestRenameRootWithoutYesRefusesWhenNotATTY guards the gate's non-interactive
 // branch: with stdin not a terminal the command refuses rather than prompting,
 // and renames nothing.
