@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -726,6 +727,88 @@ func TestServerAddProbesTheStoreBeforeDroppingTheOldSecret(t *testing.T) {
 	stored, getErr := secrets.Get(serverURL)
 	require.NoError(t, getErr)
 	assert.Equal(t, "hunter2", stored)
+}
+
+// TestReadPathsRefuseAWorldReadableFileStore is the read-path counterpart to
+// TestServerAddRefusesAWorldReadableFileStore: the same third answer a store can
+// give — not "no entry", not "unavailable", but a genuine error — arriving at
+// "server ping", "server list", and "server show" instead of at "server add".
+//
+// Each of those paths deliberately tolerates an unreachable store and carries
+// on, and the regression to guard against is a genuine error being folded into
+// that branch. dial would connect with an empty password, turning a file
+// permissions problem into an authentication failure blamed on the server; the
+// two reporting commands would answer secret_stored false for a password that is
+// sitting on disk, which is the reassuring direction to be wrong in. All three
+// must abort with the store's own diagnosis instead.
+func TestReadPathsRefuseAWorldReadableFileStore(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	secretsPath := stateDir(t)
+
+	keyring.MockInit()
+	resetStoreUnavailableWarning(t)
+
+	// A stub that records whether it was reached at all: the abort has to happen
+	// while resolving the password, so nothing may ever dial it.
+	var requests atomic.Int64
+	stub := transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"session_get": `{"jsonrpc": "2.0", "result": {"version": "4.1.0", "rpc_version_semver": "6.0.0"}, "id": 1}`,
+		},
+	}.handler()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		stub(w, r)
+	}))
+	defer srv.Close()
+
+	// This server's password really is stored — in a file anyone can read.
+	entries, marshalErr := json.Marshal(map[string]string{srv.URL: "hunter2"})
+	require.NoError(t, marshalErr)
+	require.NoError(t, os.MkdirAll(filepath.Dir(secretsPath), 0o700))
+	require.NoError(t, os.WriteFile(secretsPath, entries, 0o600))
+	require.NoError(t, os.Chmod(secretsPath, 0o644))
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"test": {URL: srv.URL, Username: "alice", SecretStore: "file"}},
+		DefaultServer: "test",
+	}, cfgPath))
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "ping reads the password", args: []string{"ping", "--config", cfgPath, "--json"}},
+		{name: "list reports secret status", args: []string{"list", "--config", cfgPath, "--json"}},
+		{name: "show reports secret status", args: []string{"show", "--config", cfgPath, "--local", "--json"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out, errOut, err := runServer(t, "", tc.args...)
+			require.Error(t, err)
+
+			// The store's own diagnosis reaches the operator, not the unavailable
+			// advice: someone told to install a secret service would never think
+			// to look at the file's mode.
+			msg := err.Error()
+			assert.Contains(t, msg, secretsPath)
+			assert.Contains(t, msg, "0644")
+			assert.Contains(t, msg, "0600")
+			assert.NotContains(t, msg, "install or start an OS secret service")
+			assert.NotContains(t, msg+out+errOut, "dbus-launch")
+
+			// Tolerating it instead would render a result and warn; neither
+			// stream carries anything.
+			assert.Empty(t, out)
+			assert.Empty(t, errOut)
+		})
+	}
+
+	assert.Zero(t, requests.Load(), "the password could not be read, so no request may reach the server")
 }
 
 func TestServerAddFileStoreReportsPlaintextLocation(t *testing.T) {
