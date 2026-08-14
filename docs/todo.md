@@ -24,8 +24,8 @@ one. The "unblocks" line on each milestone says which pane is waiting.
 
 1. ~~**M1** keyring bug - blocks real use on headless Linux today~~ **done**
 2. **M2**, **M3** detail-pane surface + rename - unblocks TUI detail pane
-3. **M4** client config - unblocks TUI settings window, needed before the
-   settings window is built, not after
+3. ~~**M4** client config - unblocks TUI settings window, needed before the
+   settings window is built, not after~~ **done**
 4. **M5**-**M7** small helpers - cheap, each unblocks a keybinding
 5. **M8** Prowlarr - the only genuinely new backend; largest by far
 6. **M9** hygiene pass before the TUI starts
@@ -156,7 +156,7 @@ outright rather than prompting when stdin is not a terminal.
 
 ---
 
-## M4. Client config (`snatcher config`)
+## M4. Client config (`snatcher config`) - **done**
 
 **Unblocks:** the TUI settings window's General and Polling tabs, plus the
 `--theme` / `--no-nerd-font` root flags from the vision's alpha CLI.
@@ -179,6 +179,29 @@ they must be reachable from the CLI - not written only by the settings window.
 
 **Done when:** every field the settings window's General/Polling tabs will
 render has a `config` key, and the flag/config/default precedence is tested.
+
+**Shipped.** `config.json` grew a top-level `client` section holding six keys -
+`theme`, `nerd_font`, `poll_interval`, `list_columns`, `list_sort`, and
+`list_reverse` - each an optional field, so an explicitly stored `false` stays
+distinct from an absent key. `config.Save` now writes atomically (temp file at
+0600 in the target's own directory, then a rename) and preserves keys it does
+not model, both at the top level and inside `client`, so the file stays the
+hand-editable, operator-owned artifact it was. `snatcher config
+list|get|set|unset` addresses those keys by dotted name (`client.theme`)
+through one registry in `internal/commands/config.go` that owns each key's
+default, accessor, and validator: an unknown key or an invalid value is an
+error naming what is accepted and leaves the file untouched, and `set`/`unset`
+resolve only the key they are asked to touch, so a bad hand-edit is always
+repairable from the CLI. `--config` moved from ~30 local declarations into
+`commands.AddGlobalFlags`, joined there by persistent `--theme` and
+`--no-nerd-font` with `SNATCHER_THEME` and `SNATCHER_NO_NERD_FONT` as their
+environment companions; resolution is **flag > env > config > default**, a bad
+value at any rung is an error naming that rung, and `config list` reports which
+rung each value came from. The three list keys are load-bearing: `torrent list`
+uses them whenever `--fields`, `--sort`, or `--reverse` is not passed, and an
+explicitly passed flag wins even when it equals the flag's own default.
+`theme`, `nerd_font`, and `poll_interval` are stored and validated but
+store-only - nothing renders them until the TUI does.
 
 ---
 
