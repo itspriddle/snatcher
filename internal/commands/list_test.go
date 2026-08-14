@@ -199,7 +199,7 @@ func TestWriteListTableAligned(t *testing.T) {
 
 	var buf bytes.Buffer
 	// width 0 disables truncation so the full names show.
-	writeListTable(&buf, torrents, cols, 0)
+	writeListTable(&buf, torrents, cols, 0, "No torrents.")
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -225,7 +225,7 @@ func TestWriteListTableEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	writeListTable(&buf, nil, cols, 80)
+	writeListTable(&buf, nil, cols, 80, "No torrents.")
 
 	assert.Equal(t, "No torrents.", strings.TrimSpace(buf.String()))
 }
@@ -240,7 +240,7 @@ func TestWriteListTableSanitizesControlChars(t *testing.T) {
 
 	var buf bytes.Buffer
 	// width 0 disables truncation so the full (sanitized) name shows.
-	writeListTable(&buf, torrents, cols, 0)
+	writeListTable(&buf, torrents, cols, 0, "No torrents.")
 
 	out := buf.String()
 	assert.NotContains(t, out, "\x1b", "raw ESC must not reach the table output")
@@ -367,7 +367,7 @@ func TestWriteListTableTruncatesName(t *testing.T) {
 
 	var buf bytes.Buffer
 	// A narrow width forces the Name column to truncate with an ellipsis.
-	writeListTable(&buf, torrents, cols, 40)
+	writeListTable(&buf, torrents, cols, 40, "No torrents.")
 
 	out := buf.String()
 	assert.Contains(t, out, "…", "long name is truncated with an ellipsis")

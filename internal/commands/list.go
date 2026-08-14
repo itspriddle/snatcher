@@ -217,7 +217,7 @@ func NewListCmd() *cobra.Command {
 				return output.JSON(cmd.OutOrStdout(), jsonTorrents(torrents))
 			}
 
-			writeListPlaintext(cmd, torrents, columns)
+			writeListPlaintext(cmd, torrents, columns, "No torrents.")
 
 			return nil
 		},
@@ -249,11 +249,13 @@ func jsonTorrents(torrents []transmission.Torrent) []transmission.Torrent {
 // writeListPlaintext renders rows in the appropriate plaintext mode for the
 // command's output: an aligned, header-and-truncation table on a TTY, or plain
 // tab-separated, full-value, header-less rows when piped or when NO_COLOR is set.
-func writeListPlaintext[T any](cmd *cobra.Command, rows []T, columns []column[T]) {
+// empty is the friendly line the TTY path prints for an empty collection (e.g.
+// "No torrents.", "No files."); the piped path prints nothing either way.
+func writeListPlaintext[T any](cmd *cobra.Command, rows []T, columns []column[T], empty string) {
 	out := cmd.OutOrStdout()
 
 	if isTTY(out) {
-		writeListTable(out, rows, columns, terminalWidth(out))
+		writeListTable(out, rows, columns, terminalWidth(out), empty)
 		return
 	}
 
@@ -289,11 +291,12 @@ func writeListPiped[T any](w io.Writer, rows []T, columns []column[T]) {
 
 // writeListTable writes a whitespace-aligned table with a header row, numeric
 // columns right-aligned and text columns left-aligned, truncating truncatable
-// columns (Name) with an ellipsis so rows fit width. An empty list writes a
-// friendly "No torrents." line. A width of 0 disables truncation.
-func writeListTable[T any](w io.Writer, rows []T, columns []column[T], width int) {
+// columns (Name) with an ellipsis so rows fit width. An empty list writes the
+// caller's friendly empty line ("No torrents.", "No files.", …), which each
+// command names for its own row type. A width of 0 disables truncation.
+func writeListTable[T any](w io.Writer, rows []T, columns []column[T], width int, empty string) {
 	if len(rows) == 0 {
-		_, _ = fmt.Fprintln(w, "No torrents.")
+		_, _ = fmt.Fprintln(w, empty)
 		return
 	}
 

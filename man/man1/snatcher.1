@@ -550,7 +550,7 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR add ", " show ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
+.BR add ", " show ", " files ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
@@ -631,6 +631,38 @@ This affects plaintext only:
 always emits the full object and
 .B \-\-jq
 selects fields itself.
+.RE
+.TP
+.B snatcher torrent files \fR[\fIoptions\fR] \fIid | hash\fR
+List the files inside a single torrent, identified by its numeric id or
+40-character SHA1 info-hash. Exactly one selector is required, so a bare
+.B snatcher torrent files
+is an error, not a no-op. On a terminal the output is an aligned table with a
+header; when piped (or when
+.B NO_COLOR
+is set) it is tab-separated, full-value rows with no header \(em a stable
+scripting contract. A torrent with no files prints
+.B "No files."
+on a terminal and nothing when piped. With
+.B \-\-json
+the files are emitted as an array in torrent order, so an element's array
+position is its
+.B index
+column.
+.IP
+File indices are
+.BR 0 -based
+and torrent-relative: the
+.B index
+column is the file's position within this torrent, counting from zero, and is
+the same index space the per-file selection and priority settings use. Besides
+the common options:
+.RS
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order. When omitted every column
+is shown. Available columns:
+.BR index ", " name ", " size ", " done ", " percent ", " priority ", " wanted .
 .RE
 .TP
 .B snatcher torrent list \fR[\fIoptions\fR]
