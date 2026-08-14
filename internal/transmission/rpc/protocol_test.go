@@ -2454,6 +2454,7 @@ func assertDetail(t *testing.T, got TorrentDetail) {
 	assert.Equal(t, "http://tracker.example/announce", got.Trackers[0].Announce)
 	assert.Equal(t, "tracker.example", got.Trackers[0].Host)
 	assert.Equal(t, "example", got.Trackers[0].Sitename)
+	assert.Equal(t, 2, got.Trackers[0].Tier)
 	assert.Equal(t, 1, got.Trackers[0].AnnounceState)
 	assert.Equal(t, 42, got.Trackers[0].SeederCount)
 	assert.Equal(t, 7, got.Trackers[0].LeecherCount)
@@ -2520,6 +2521,7 @@ func TestJSONRPCProtocolTorrentGetDetail(t *testing.T) {
 					"announce": "http://tracker.example/announce",
 					"host": "tracker.example",
 					"sitename": "example",
+					"tier": 2,
 					"announce_state": 1,
 					"seeder_count": 42,
 					"leecher_count": 7,
@@ -2605,6 +2607,7 @@ func TestBespokeProtocolTorrentGetDetail(t *testing.T) {
 					"announce": "http://tracker.example/announce",
 					"host": "tracker.example",
 					"sitename": "example",
+					"tier": 2,
 					"announceState": 1,
 					"seederCount": 42,
 					"leecherCount": 7,
@@ -2652,6 +2655,60 @@ func TestBespokeProtocolTorrentGetDetail(t *testing.T) {
 	assert.Contains(t, fields, "trackerStats")
 	assert.Contains(t, fields, "pieces")
 	assert.Contains(t, fields, "magnetLink")
+}
+
+// TestTorrentGetDetailTrackerTierOmitted confirms a tracker entry with no "tier"
+// key decodes to 0 without error in both schemes. Tier is spelled "tier" in the
+// snake_case and the camelCase response alike, so a server that omits it (rather
+// than one that spells it differently) is the only failure mode worth covering.
+func TestTorrentGetDetailTrackerTierOmitted(t *testing.T) {
+	cases := []struct {
+		name     string
+		body     string
+		protocol Protocol
+	}{
+		{
+			name: "jsonrpc",
+			body: `{
+				"jsonrpc": "2.0",
+				"result": {"torrents": [{
+					"id": 7,
+					"tracker_stats": [{"announce": "http://tracker.example/announce"}]
+				}]},
+				"id": 1
+			}`,
+			protocol: jsonrpcProtocol{},
+		},
+		{
+			name: "bespoke",
+			body: `{
+				"arguments": {"torrents": [{
+					"id": 7,
+					"trackerStats": [{"announce": "http://tracker.example/announce"}]
+				}]},
+				"result": "success",
+				"tag": 1
+			}`,
+			protocol: bespokeProtocol{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			details, err := tc.protocol.TorrentGetDetail(context.Background(), NewTransport(srv.URL), []any{int64(7)})
+			require.NoError(t, err)
+			require.Len(t, details, 1)
+			require.Len(t, details[0].Trackers, 1)
+
+			assert.Equal(t, "http://tracker.example/announce", details[0].Trackers[0].Announce)
+			assert.Equal(t, 0, details[0].Trackers[0].Tier)
+		})
+	}
 }
 
 // TestDecodePiecesBitfield covers the base64 bitfield decoder's bit order, the

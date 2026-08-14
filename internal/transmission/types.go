@@ -91,6 +91,13 @@ func StatusFromTransmission(status, errorCode int, errorString string) Status {
 	return rpc.StatusFromTransmission(status, errorCode, errorString)
 }
 
+// AnnounceState maps a Tracker's raw AnnounceState int to a lowercase name
+// ("inactive", "waiting", "queued", "active"). An unrecognized value renders as
+// its decimal integer.
+func AnnounceState(state int) string {
+	return rpc.AnnounceState(state)
+}
+
 // FileChanges is the set of per-file selection and priority changes applied by
 // SetFiles. Each field is a list of file indices (matching the order of
 // TorrentDetail.Files); only the non-empty fields are written, and an empty

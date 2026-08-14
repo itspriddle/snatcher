@@ -481,7 +481,13 @@ type Tracker struct {
 	// Sitename is the tracker's short site name.
 	Sitename string `json:"sitename"`
 
-	// AnnounceState is the numeric announce state.
+	// Tier is the tracker's tier, per BEP 12: trackers in the same tier are
+	// tried in random order, and a lower tier is tried before a higher one.
+	Tier int `json:"tier"`
+
+	// AnnounceState is the numeric announce state (Transmission's
+	// tr_tracker_state). The package-level AnnounceState function maps it to a
+	// human-readable name.
 	AnnounceState int `json:"announce_state"`
 
 	// SeederCount is the number of seeders the tracker reports (-1 = unknown).
@@ -1042,6 +1048,7 @@ type jsonrpcDetailTracker struct {
 	Announce           string `json:"announce"`
 	Host               string `json:"host"`
 	Sitename           string `json:"sitename"`
+	Tier               int    `json:"tier"`
 	AnnounceState      int    `json:"announce_state"`
 	SeederCount        int    `json:"seeder_count"`
 	LeecherCount       int    `json:"leecher_count"`
@@ -2184,6 +2191,7 @@ type bespokeDetailTracker struct {
 	Announce           string `json:"announce"`
 	Host               string `json:"host"`
 	Sitename           string `json:"sitename"`
+	Tier               int    `json:"tier"`
 	AnnounceState      int    `json:"announceState"`
 	SeederCount        int    `json:"seederCount"`
 	LeecherCount       int    `json:"leecherCount"`

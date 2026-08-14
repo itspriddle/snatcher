@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -172,5 +173,38 @@ func StatusFromTransmission(status, errorCode int, errorString string) Status {
 		return StatusSeeding
 	default:
 		return StatusStopped
+	}
+}
+
+// Transmission's per-tracker announce state values, carried on
+// Tracker.AnnounceState. Neither RPC spec enumerates them — they are
+// tr_tracker_state in libtransmission/transmission.h, which the specs cite as
+// the source of the trackerStats fields — so they are named here to record where
+// the mapping came from.
+const (
+	trackerInactive = 0
+	trackerWaiting  = 1
+	trackerQueued   = 2
+	trackerActive   = 3
+)
+
+// AnnounceState maps a tracker's raw announce-state int to a lowercase name.
+// Unlike Status, this stays a plain int on the wire type: the numeric value is
+// the JSON scripting contract, and this mapping only exists for plaintext
+// rendering. An unrecognized value renders as its decimal integer rather than a
+// wrong label, so a state added by a future Transmission is visible instead of
+// silently mislabeled "inactive".
+func AnnounceState(state int) string {
+	switch state {
+	case trackerInactive:
+		return "inactive"
+	case trackerWaiting:
+		return "waiting"
+	case trackerQueued:
+		return "queued"
+	case trackerActive:
+		return "active"
+	default:
+		return strconv.Itoa(state)
 	}
 }

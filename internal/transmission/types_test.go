@@ -155,6 +155,25 @@ func TestStatusConstantValues(t *testing.T) {
 	assert.Equal(t, transmission.StatusError, transmission.Status(7))
 }
 
+// TestAnnounceState covers the tr_tracker_state mapping, including the fallback
+// that renders an unrecognized state as its decimal integer rather than
+// mislabeling it as one of the four known states.
+func TestAnnounceState(t *testing.T) {
+	cases := map[int]string{
+		0:  "inactive",
+		1:  "waiting",
+		2:  "queued",
+		3:  "active",
+		4:  "4",
+		99: "99",
+		-1: "-1",
+	}
+
+	for state, want := range cases {
+		assert.Equal(t, want, transmission.AnnounceState(state), "announce state %d", state)
+	}
+}
+
 // TestTorrentJSONContract locks the stable scripting surface: the json field
 // names and that Status serializes as its canonical lowercase slug.
 func TestTorrentJSONContract(t *testing.T) {
@@ -258,7 +277,7 @@ func TestTorrentDetailJSONContract(t *testing.T) {
 	tracker, ok := got["trackers"].([]any)[0].(map[string]any)
 	require.True(t, ok)
 	for _, key := range []string{
-		"announce", "host", "sitename", "announce_state", "seeder_count",
+		"announce", "host", "sitename", "tier", "announce_state", "seeder_count",
 		"leecher_count", "download_count", "last_announce_result",
 		"next_announce_time",
 	} {
