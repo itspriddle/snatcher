@@ -70,10 +70,15 @@ const bespokeTrackersResponse = `{
 	"tag": 1
 }`
 
-// bespokeTrackersSanitizeResponse is a torrent-get payload whose announce URL and
-// last announce result carry terminal control sequences. Announce URLs come from
-// the torrent's own metadata, and the announce result is text the tracker chose —
-// neither is authored by the operator.
+// bespokeTrackersSanitizeResponse is a torrent-get payload whose announce URL,
+// host, sitename, and last announce result all carry terminal control sequences.
+// Announce URLs come from the torrent's own metadata, the host and sitename are
+// derived from them by the server, and the announce result is text the tracker
+// chose — none is authored by the operator.
+//
+// Every column trackerFields marks sanitize is represented here, so removing any
+// one of those flags fails TestTrackersSanitizesHumanOutputNotJSON rather than
+// passing unnoticed against a clean fixture value.
 const bespokeTrackersSanitizeResponse = `{
 	"arguments": {"torrents": [
 		{
@@ -84,8 +89,8 @@ const bespokeTrackersSanitizeResponse = `{
 			"trackerStats": [
 				{
 					"announce": "https://\u001b[2Jevil\u0007.example.com/announce",
-					"host": "https://evil.example.com",
-					"sitename": "evil",
+					"host": "https://\u001b[2Jevilhost\u0007.example.com",
+					"sitename": "\u001b[31mevilsite\u0007",
 					"tier": 0,
 					"announceState": 3,
 					"seederCount": 1,
@@ -275,19 +280,24 @@ func TestTrackersTableAligned(t *testing.T) {
 // TestTrackersSanitizesHumanOutputNotJSON asserts the sanitize boundary on both
 // plaintext paths (piped and TTY table) while leaving the structured --json
 // contract byte-for-byte intact. An announce URL comes from the torrent's
-// metadata and the last announce result is text the tracker chose; neither is
-// authored by the operator.
+// metadata, the host and sitename are derived from it, and the last announce
+// result is text the tracker chose; none is authored by the operator.
+//
+// Every sanitized column is selected on both paths, so a dropped sanitize flag
+// fails here instead of hiding behind a column the run never renders.
 func TestTrackersSanitizesHumanOutputNotJSON(t *testing.T) {
 	cfgPath, closeSrv := showConfigPath(t, bespokeTrackersSanitizeResponse)
 	defer closeSrv()
 
-	// Piped plaintext, end to end through the command, with last_result selected
-	// alongside the default announce column.
-	piped, _, err := runTrackers(t, "--config", cfgPath, "1", "--fields", "announce,last_result")
+	// Piped plaintext, end to end through the command, with every sanitized column
+	// selected: announce is a default, host, sitename, and last_result are opt-in.
+	piped, _, err := runTrackers(t, "--config", cfgPath, "1", "--fields", "announce,host,sitename,last_result")
 	require.NoError(t, err)
 	assert.NotContains(t, piped, "\x1b", "raw ESC must not reach the piped output")
 	assert.NotContains(t, piped, "\x07", "raw BEL must not reach the piped output")
 	assert.Contains(t, piped, "https://[2Jevil.example.com/announce", "visible announce text survives sanitization")
+	assert.Contains(t, piped, "https://[2Jevilhost.example.com", "visible host text survives sanitization")
+	assert.Contains(t, piped, "[31mevilsite", "visible sitename text survives sanitization")
 	assert.Contains(t, piped, "[31mtracker gone", "visible last-result text survives sanitization")
 
 	// TTY table path, exercised directly.
@@ -297,8 +307,8 @@ func TestTrackersSanitizesHumanOutputNotJSON(t *testing.T) {
 	var buf bytes.Buffer
 	writeListTable(&buf, []transmission.Tracker{{
 		Announce:           "https://\x1b[2Jevil\x07.example.com/announce",
-		Host:               "https://evil.example.com",
-		Sitename:           "evil",
+		Host:               "https://\x1b[2Jevilhost\x07.example.com",
+		Sitename:           "\x1b[31mevilsite\x07",
 		LastAnnounceResult: "\x1b[31mtracker gone\x07",
 	}}, cols, 0, "No trackers.")
 
@@ -306,6 +316,8 @@ func TestTrackersSanitizesHumanOutputNotJSON(t *testing.T) {
 	assert.NotContains(t, table, "\x1b", "raw ESC must not reach the table output")
 	assert.NotContains(t, table, "\x07", "raw BEL must not reach the table output")
 	assert.Contains(t, table, "https://[2Jevil.example.com/announce")
+	assert.Contains(t, table, "https://[2Jevilhost.example.com")
+	assert.Contains(t, table, "[31mevilsite")
 	assert.Contains(t, table, "[31mtracker gone")
 
 	// JSON is a structured contract and is never sanitized.
@@ -314,12 +326,18 @@ func TestTrackersSanitizesHumanOutputNotJSON(t *testing.T) {
 
 	var got []struct {
 		Announce           string `json:"announce"`
+		Host               string `json:"host"`
+		Sitename           string `json:"sitename"`
 		LastAnnounceResult string `json:"last_announce_result"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(raw), &got))
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Announce, "\x1b", "JSON announce keeps the raw ESC (unsanitized)")
 	assert.Contains(t, got[0].Announce, "\x07", "JSON announce keeps the raw BEL")
+	assert.Contains(t, got[0].Host, "\x1b", "JSON host keeps the raw ESC")
+	assert.Contains(t, got[0].Host, "\x07", "JSON host keeps the raw BEL")
+	assert.Contains(t, got[0].Sitename, "\x1b", "JSON sitename keeps the raw ESC")
+	assert.Contains(t, got[0].Sitename, "\x07", "JSON sitename keeps the raw BEL")
 	assert.Contains(t, got[0].LastAnnounceResult, "\x1b", "JSON last_announce_result keeps the raw ESC")
 	assert.Contains(t, got[0].LastAnnounceResult, "\x07", "JSON last_announce_result keeps the raw BEL")
 }

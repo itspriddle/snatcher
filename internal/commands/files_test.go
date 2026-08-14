@@ -407,6 +407,27 @@ func TestFilePriorityUnknownValue(t *testing.T) {
 	assert.Equal(t, "-2", filePriority(-2))
 }
 
+// TestPluralizeFiles pins both branches of the count noun. No fixture torrent
+// carries exactly one file, so the singular branch is otherwise never reached and
+// the helper could return "1 files" with the whole suite green.
+func TestPluralizeFiles(t *testing.T) {
+	cases := []struct {
+		count int
+		want  string
+	}{
+		{0, "0 files"},
+		{1, "1 file"},
+		{2, "2 files"},
+		{3, "3 files"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			assert.Equal(t, tc.want, pluralizeFiles(tc.count))
+		})
+	}
+}
+
 // filesUpdateStub emulates a Transmission server for the files update command:
 // it answers torrent-get with the fixture torrents filtered by the requested ids
 // (so a hash selector resolves the way it would against a real server, and the

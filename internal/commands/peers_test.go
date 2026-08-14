@@ -60,12 +60,17 @@ const bespokePeersResponse = `{
 	"tag": 1
 }`
 
-// bespokePeersSanitizeResponse is a torrent-get payload whose peer client string
-// and flag string carry terminal control sequences, and whose client string also
-// ends in U+202E (RLO) — the direction override that would visually swap the
-// Down, Up, and Encrypted cells rendered to its right on the same aligned row.
-// Both fields are chosen by an arbitrary swarm member — any peer can claim any
-// client string — so they are the most hostile text the CLI renders.
+// bespokePeersSanitizeResponse is a torrent-get payload whose peer address,
+// client string, and flag string all carry terminal control sequences, and whose
+// client string also ends in U+202E (RLO) — the direction override that would
+// visually swap the Down, Up, and Encrypted cells rendered to its right on the
+// same aligned row. All three are reported by an arbitrary swarm member — any
+// peer can claim any client string — so they are the most hostile text the CLI
+// renders.
+//
+// Every column peerFields marks sanitize is represented here, so removing any one
+// of those flags fails TestPeersSanitizesHumanOutputNotJSON rather than passing
+// unnoticed against a clean fixture value.
 const bespokePeersSanitizeResponse = `{
 	"arguments": {"torrents": [
 		{
@@ -75,7 +80,7 @@ const bespokePeersSanitizeResponse = `{
 			"status": 4,
 			"peers": [
 				{
-					"address": "203.0.113.7",
+					"address": "\u001b[2J203.0.113.7\u0007",
 					"port": 51413,
 					"clientName": "\u001b[2Jevil\u0007Client\u202e",
 					"progress": 0.25,
@@ -255,8 +260,12 @@ func TestPeersTableAligned(t *testing.T) {
 
 // TestPeersSanitizesHumanOutputNotJSON asserts the sanitize boundary on both
 // plaintext paths (piped and TTY table) while leaving the structured --json
-// contract byte-for-byte intact. A peer's client string and flag string are
-// attacker-controlled: any peer in the swarm can set them to whatever it likes.
+// contract byte-for-byte intact. A peer's address, client string, and flag string
+// are attacker-controlled: any peer in the swarm can set them to whatever it
+// likes, and the address is whatever the server reports for the connection.
+//
+// The fixture carries a control sequence in every column peerFields marks
+// sanitize, so dropping any one of those flags fails here.
 func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 	cfgPath, closeSrv := showConfigPath(t, bespokePeersSanitizeResponse)
 	defer closeSrv()
@@ -267,6 +276,7 @@ func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 	assert.NotContains(t, piped, "\x1b", "raw ESC must not reach the piped output")
 	assert.NotContains(t, piped, "\x07", "raw BEL must not reach the piped output")
 	assert.NotContains(t, piped, "\u202e", "no direction override reaches the piped row")
+	assert.Contains(t, piped, "[2J203.0.113.7", "visible address text survives sanitization")
 	assert.Contains(t, piped, "[2JevilClient", "visible client text survives sanitization")
 	assert.Contains(t, piped, "[31mUD", "visible flag text survives sanitization")
 
@@ -276,7 +286,7 @@ func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	writeListTable(&buf, []transmission.Peer{{
-		Address: "203.0.113.7",
+		Address: "\x1b[2J203.0.113.7\x07",
 		Client:  "\x1b[2Jevil\x07Client\u202e",
 		FlagStr: "\x1b[31mUD\x07",
 	}}, cols, 0, "No peers.")
@@ -285,6 +295,7 @@ func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 	assert.NotContains(t, table, "\x1b", "raw ESC must not reach the table output")
 	assert.NotContains(t, table, "\x07", "raw BEL must not reach the table output")
 	assert.NotContains(t, table, "\u202e", "no direction override reaches the table row")
+	assert.Contains(t, table, "[2J203.0.113.7")
 	assert.Contains(t, table, "[2JevilClient")
 	assert.Contains(t, table, "[31mUD")
 
@@ -293,11 +304,14 @@ func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	var got []struct {
+		Address string `json:"address"`
 		Client  string `json:"client"`
 		FlagStr string `json:"flag_str"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(raw), &got))
 	require.Len(t, got, 1)
+	assert.Contains(t, got[0].Address, "\x1b", "JSON address keeps the raw ESC (unsanitized)")
+	assert.Contains(t, got[0].Address, "\x07", "JSON address keeps the raw BEL")
 	assert.Contains(t, got[0].Client, "\x1b", "JSON client keeps the raw ESC (unsanitized)")
 	assert.Contains(t, got[0].Client, "\x07", "JSON client keeps the raw BEL")
 	assert.Contains(t, got[0].Client, "\u202e", "JSON client keeps the raw direction override")
