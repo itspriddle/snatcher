@@ -1,10 +1,17 @@
-// Package secrets stores snatcher credentials in the OS keyring (macOS Keychain
-// / Linux secret-service) rather than on disk, so passwords are never written
-// in plaintext.
+// Package secrets stores snatcher credentials outside the config file. The
+// default store is the OS keyring (macOS Keychain / Linux secret-service),
+// driven by the package-level Set, Get, and Delete functions.
 //
 // Secrets are keyed by server URL under a single fixed service name, leaving
 // room for multiple servers later. The non-secret config (server URL, username)
 // lives in internal/config; only the password lives here.
+//
+// FileStore is the second, opt-in store: a JSON file at mode 0600 for machines
+// with no OS keyring, where the keyring path can only ever return
+// ErrUnavailable. It holds passwords in plaintext by design, which is
+// meaningfully less safe than the OS keyring — anything running as that user,
+// and any backup of the home directory, can read them. Nothing selects it
+// automatically; it is used only when an operator explicitly asks for it.
 //
 // Every provider failure is classified into exactly one of three conditions:
 // ErrNotFound (the store works, this URL has no entry), ErrUnavailable (there
