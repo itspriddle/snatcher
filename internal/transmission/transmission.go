@@ -222,6 +222,27 @@ func (b *Client) MoveTorrents(ctx context.Context, sel Selector, location string
 	return mapError(b.client.TorrentSetLocation(ctx, sel.RPCIDs(), location, move))
 }
 
+// RenamePath renames the file or directory at the torrent-relative path to name,
+// returning the server's echo of what it renamed. Renaming a torrent's root path
+// renames the torrent itself, so callers with a blast radius to manage should
+// gate that case themselves. Unlike every other mutation here the RPC is
+// single-torrent by design: sel must name exactly one torrent, and an All
+// selector or a multi-token one is rejected before anything reaches the wire.
+// RPC failures are mapped to the sentinels.
+func (b *Client) RenamePath(ctx context.Context, sel Selector, path, name string) (RenameResult, error) {
+	ids := sel.RPCIDs()
+	if sel.All || len(ids) != 1 {
+		return RenameResult{}, fmt.Errorf("rename requires exactly one torrent id or hash")
+	}
+
+	result, err := b.client.TorrentRenamePath(ctx, ids, path, name)
+	if err != nil {
+		return RenameResult{}, mapError(err)
+	}
+
+	return result, nil
+}
+
 // SetTorrents writes per-torrent fields on the torrents matched by sel. The
 // changes map is keyed by kebab-case field key with typed values; each key is
 // translated to the snake_case rpc key (a mechanical "-"->"_" replacement,

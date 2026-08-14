@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/itspriddle/snatcher/internal/transmission/rpc"
@@ -1144,6 +1145,149 @@ func TestBackendMoveTorrentsMapsTransportError(t *testing.T) {
 	b := New(srv.URL)
 
 	err := b.MoveTorrents(context.Background(), Selector{IDs: []int64{1}}, "/data/media", true)
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.NotErrorIs(t, err, ErrAuth)
+}
+
+func TestBackendRenamePath(t *testing.T) {
+	tests := []struct {
+		name       string
+		rpcVersion string
+		sel        Selector
+		response   string
+		wantMethod string
+		wantIDs    string
+		want       RenameResult
+	}{
+		{
+			name:       "jsonrpc by id",
+			rpcVersion: "6.0.0",
+			sel:        Selector{IDs: []int64{2}},
+			response:   `{"jsonrpc": "2.0", "result": {"id": 2, "path": "debian/disk.iso", "name": "debian.iso"}, "id": 1}`,
+			wantMethod: `"method":"torrent_rename_path"`,
+			wantIDs:    `"ids":[2]`,
+			want:       RenameResult{ID: 2, Path: "debian/disk.iso", Name: "debian.iso"},
+		},
+		{
+			name:       "bespoke by hash",
+			rpcVersion: "",
+			sel:        Selector{Hashes: []string{"cafebabe"}},
+			response:   `{"arguments": {"id": 7, "path": "debian", "name": "debian-13"}, "result": "success", "tag": 1}`,
+			wantMethod: `"method":"torrent-rename-path"`,
+			wantIDs:    `"ids":["cafebabe"]`,
+			want:       RenameResult{ID: 7, Path: "debian", Name: "debian-13"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured string
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get(sessionIDHeader) == "" {
+					if tt.rpcVersion != "" {
+						w.Header().Set(rpcVersionHeader, tt.rpcVersion)
+					}
+					w.Header().Set(sessionIDHeader, "session-token")
+					w.WriteHeader(http.StatusConflict)
+					return
+				}
+
+				body, _ := io.ReadAll(r.Body)
+				captured = string(body)
+				_, _ = w.Write([]byte(tt.response))
+			}))
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			result, err := b.RenamePath(context.Background(), tt.sel, tt.want.Path, tt.want.Name)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result)
+
+			assert.Contains(t, captured, tt.wantMethod)
+			assert.Contains(t, captured, tt.wantIDs)
+			assert.Contains(t, captured, fmt.Sprintf(`"path":%q`, tt.want.Path))
+			assert.Contains(t, captured, fmt.Sprintf(`"name":%q`, tt.want.Name))
+		})
+	}
+}
+
+// TestBackendRenamePathRejectsNonSingleSelector verifies the single-torrent
+// guard. torrent-rename-path targets exactly one torrent, and an omitted ids
+// argument would mean "every torrent", so an All selector or a multi-token one is
+// refused before anything reaches the wire — defense in depth for direct callers
+// (the future TUI), on top of the command layer's ParseSelector(args, false).
+func TestBackendRenamePathRejectsNonSingleSelector(t *testing.T) {
+	tests := []struct {
+		name string
+		sel  Selector
+	}{
+		{name: "all", sel: Selector{All: true}},
+		{name: "empty", sel: Selector{}},
+		{name: "two ids", sel: Selector{IDs: []int64{1, 2}}},
+		{name: "id and hash", sel: Selector{IDs: []int64{1}, Hashes: []string{"deadbeef"}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requests atomic.Int32
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+			}))
+			defer srv.Close()
+
+			b := New(srv.URL)
+
+			_, err := b.RenamePath(context.Background(), tt.sel, "debian", "debian-13")
+			require.ErrorContains(t, err, "exactly one torrent")
+			assert.Equal(t, int32(0), requests.Load())
+		})
+	}
+}
+
+func TestBackendRenamePathMapsRPCError(t *testing.T) {
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "",
+		responses: map[string]string{
+			"torrent-rename-path": `{"result": "no such file or directory", "tag": 1}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.RenamePath(context.Background(), Selector{IDs: []int64{1}}, "debian", "debian-13")
+	require.ErrorIs(t, err, ErrServer)
+	require.ErrorIs(t, err, rpc.ErrRPC)
+	assert.ErrorContains(t, err, "no such file or directory")
+}
+
+func TestBackendRenamePathMapsAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.RenamePath(context.Background(), Selector{IDs: []int64{1}}, "debian", "debian-13")
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotErrorIs(t, err, ErrUnreachable)
+}
+
+func TestBackendRenamePathMapsTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := New(srv.URL)
+
+	_, err := b.RenamePath(context.Background(), Selector{IDs: []int64{1}}, "debian", "debian-13")
 	require.ErrorIs(t, err, ErrUnreachable)
 	assert.NotErrorIs(t, err, ErrAuth)
 }

@@ -29,11 +29,11 @@ var ErrUnsupported = errors.New("transmission: unsupported server version")
 
 // The domain types below are the single canonical set. The wire-decoded shapes
 // (Torrent, TorrentDetail, File, Peer, Tracker, Stats, StatsSnapshot,
-// SessionSettings, ServerInfo, PortTest, FreeSpace) are owned by the rpc client
-// package (it decodes them off the wire and carries the curated output
-// projection); they are aliased here so consumers see one domain model under
-// transmission.* with no conversion. Status is the derived lifecycle enum, also
-// owned by rpc since the canonical Torrent carries it.
+// SessionSettings, ServerInfo, PortTest, FreeSpace, RenameResult) are owned by
+// the rpc client package (it decodes them off the wire and carries the curated
+// output projection); they are aliased here so consumers see one domain model
+// under transmission.* with no conversion. Status is the derived lifecycle enum,
+// also owned by rpc since the canonical Torrent carries it.
 
 // ServerInfo is the description of a connected server.
 type ServerInfo = rpc.ServerInfo
@@ -49,6 +49,10 @@ type PortTest = rpc.PortTestResult
 
 // FreeSpace is the result of a free-space query on a download path.
 type FreeSpace = rpc.FreeSpaceResult
+
+// RenameResult is the server's echo of a completed rename: the torrent id, the
+// path it renamed, and the new name.
+type RenameResult = rpc.RenameResult
 
 // SessionSettings is the snapshot of a server's configurable session settings.
 type SessionSettings = rpc.SessionSettings

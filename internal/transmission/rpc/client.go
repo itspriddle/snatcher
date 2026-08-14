@@ -244,6 +244,25 @@ func (c *Client) TorrentSetLocation(ctx context.Context, ids []any, location str
 	return proto.TorrentSetLocation(ctx, c.transport, ids, location, move)
 }
 
+// TorrentRenamePath detects the protocol (once) and renames the file or
+// directory at the torrent-relative path to name, returning the server's echo of
+// what it renamed. Unlike the other mutations, ids must name exactly one torrent:
+// the RPC is single-torrent by design, and an omitted ids would mean "every
+// torrent", so a slice of any other length is rejected here rather than sent.
+// Renaming a torrent's root path renames the torrent itself.
+func (c *Client) TorrentRenamePath(ctx context.Context, ids []any, path, name string) (RenameResult, error) {
+	if len(ids) != 1 {
+		return RenameResult{}, fmt.Errorf("rpc: %s requires exactly one torrent id, got %d", methodTorrentRenamePathBespoke, len(ids))
+	}
+
+	proto, err := c.detect(ctx)
+	if err != nil {
+		return RenameResult{}, err
+	}
+
+	return proto.TorrentRenamePath(ctx, c.transport, ids, path, name)
+}
+
 // TorrentSet detects the protocol (once) and writes per-torrent fields on the
 // selected torrents. settings is a snake_case-keyed map of canonical field keys
 // to typed values; the negotiated protocol translates the keys to its wire

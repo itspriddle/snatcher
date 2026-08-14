@@ -450,6 +450,109 @@ func TestClientTorrentSetLocationDispatchesThroughNegotiatedProtocol(t *testing.
 	assert.Contains(t, captured, `"move":false`)
 }
 
+func TestClientTorrentRenamePathDispatchesThroughNegotiatedProtocol(t *testing.T) {
+	t.Run("jsonrpc", func(t *testing.T) {
+		var captured string
+
+		// The CSRF probe carries a 6.0.0 header, so the client negotiates JSON-RPC
+		// 2.0 and TorrentRenamePath sends the snake_case method name.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(sessionIDHeader) == "" {
+				w.Header().Set(rpcVersionHeader, "6.0.0")
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+
+			body, _ := io.ReadAll(r.Body)
+			captured = string(body)
+			_, _ = w.Write([]byte(`{
+				"jsonrpc": "2.0",
+				"result": {"id": 2, "path": "debian/disk.iso", "name": "debian.iso"},
+				"id": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		c := NewClient(srv.URL)
+
+		result, err := c.TorrentRenamePath(context.Background(), []any{int64(2)}, "debian/disk.iso", "debian.iso")
+		require.NoError(t, err)
+		assert.Equal(t, RenameResult{ID: 2, Path: "debian/disk.iso", Name: "debian.iso"}, result)
+		assert.Contains(t, captured, `"method":"torrent_rename_path"`)
+		assert.Contains(t, captured, `"ids":[2]`)
+		assert.Contains(t, captured, `"path":"debian/disk.iso"`)
+		assert.Contains(t, captured, `"name":"debian.iso"`)
+	})
+
+	t.Run("bespoke", func(t *testing.T) {
+		var captured string
+
+		// The CSRF probe carries no rpc-version header, so the client negotiates
+		// bespoke and TorrentRenamePath sends the kebab-case method name.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(sessionIDHeader) == "" {
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+
+			body, _ := io.ReadAll(r.Body)
+			captured = string(body)
+			_, _ = w.Write([]byte(`{
+				"arguments": {"id": 2, "path": "debian", "name": "debian-13"},
+				"result": "success",
+				"tag": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		c := NewClient(srv.URL)
+
+		result, err := c.TorrentRenamePath(context.Background(), []any{"deadbeef"}, "debian", "debian-13")
+		require.NoError(t, err)
+		assert.Equal(t, RenameResult{ID: 2, Path: "debian", Name: "debian-13"}, result)
+		assert.Contains(t, captured, `"method":"torrent-rename-path"`)
+		assert.Contains(t, captured, `"ids":["deadbeef"]`)
+		assert.Contains(t, captured, `"path":"debian"`)
+		assert.Contains(t, captured, `"name":"debian-13"`)
+	})
+}
+
+// TestClientTorrentRenamePathRequiresExactlyOneID verifies the single-torrent
+// guard: the RPC targets exactly one torrent, and an omitted ids array would
+// mean "every torrent", so anything other than one id is refused client-side —
+// without so much as a detection probe reaching the server.
+func TestClientTorrentRenamePathRequiresExactlyOneID(t *testing.T) {
+	tests := []struct {
+		name string
+		ids  []any
+	}{
+		{name: "nil", ids: nil},
+		{name: "empty", ids: []any{}},
+		{name: "two", ids: []any{int64(1), "deadbeef"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requests atomic.Int32
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.Header().Set(sessionIDHeader, "session-token")
+				w.WriteHeader(http.StatusConflict)
+			}))
+			defer srv.Close()
+
+			c := NewClient(srv.URL)
+
+			_, err := c.TorrentRenamePath(context.Background(), tt.ids, "debian", "debian-13")
+			require.ErrorContains(t, err, "exactly one torrent id")
+			assert.Equal(t, int32(0), requests.Load())
+		})
+	}
+}
+
 func TestClientTorrentSetDispatchesThroughNegotiatedProtocol(t *testing.T) {
 	t.Run("jsonrpc", func(t *testing.T) {
 		var captured string
