@@ -1770,6 +1770,14 @@ type jsonrpcRenamePathResult struct {
 // empty: unlike the other mutations here, an omitted ids would mean "every
 // torrent", and this method accepts exactly one.
 func (jsonrpcProtocol) TorrentRenamePath(ctx context.Context, t transport, ids []any, path, name string) (RenameResult, error) {
+	// A nil slice marshals to null, and Transmission reads anything that is not a
+	// list/int/string the same way it reads a missing key: every torrent. Send a
+	// real empty list so the never-omit-ids rule holds on the wire, not just in
+	// the params map.
+	if ids == nil {
+		ids = []any{}
+	}
+
 	req := jsonrpcRequest{
 		JSONRPC: "2.0",
 		Method:  methodTorrentRenamePathJSONRPC,
@@ -2886,6 +2894,14 @@ type bespokeRenamePathArguments struct {
 // empty: unlike the other mutations here, an omitted ids would mean "every
 // torrent", and this method accepts exactly one.
 func (bespokeProtocol) TorrentRenamePath(ctx context.Context, t transport, ids []any, path, name string) (RenameResult, error) {
+	// A nil slice marshals to null, and Transmission reads anything that is not a
+	// list/int/string the same way it reads a missing key: every torrent. Send a
+	// real empty list so the never-omit-ids rule holds on the wire, not just in
+	// the arguments map.
+	if ids == nil {
+		ids = []any{}
+	}
+
 	req := bespokeRequest{
 		Method:    methodTorrentRenamePathBespoke,
 		Arguments: map[string]any{"ids": ids, "path": path, "name": name},

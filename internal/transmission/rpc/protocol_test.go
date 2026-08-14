@@ -1380,7 +1380,10 @@ func TestProtocolTorrentRenamePathNeverOmitsIDs(t *testing.T) {
 	// torrents". Renaming accepts exactly one torrent, so that idiom must not be
 	// copied here: ids stays on the wire even when the caller supplies none, and
 	// the server rejects the request rather than renaming a path in every torrent.
-	t.Run("jsonrpc keeps the ids key", func(t *testing.T) {
+	// The value matters as much as the key — a nil slice would marshal to null,
+	// which the server reads as "all torrents" just like a missing key — so these
+	// assert on an empty list, not merely on the key's presence.
+	t.Run("jsonrpc sends an empty ids list", func(t *testing.T) {
 		var rawBody []byte
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1399,10 +1402,10 @@ func TestProtocolTorrentRenamePathNeverOmitsIDs(t *testing.T) {
 
 		params, ok := gotBody["params"].(map[string]any)
 		require.True(t, ok, "params is an object")
-		assert.Contains(t, params, "ids", "ids is never omitted, an omitted ids means all torrents")
+		assert.Equal(t, []any{}, params["ids"], "ids is an empty list, never null or omitted, both of which mean all torrents")
 	})
 
-	t.Run("bespoke keeps the ids key", func(t *testing.T) {
+	t.Run("bespoke sends an empty ids list", func(t *testing.T) {
 		var rawBody []byte
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1421,7 +1424,7 @@ func TestProtocolTorrentRenamePathNeverOmitsIDs(t *testing.T) {
 
 		args, ok := gotBody["arguments"].(map[string]any)
 		require.True(t, ok, "arguments is an object")
-		assert.Contains(t, args, "ids", "ids is never omitted, an omitted ids means all torrents")
+		assert.Equal(t, []any{}, args["ids"], "ids is an empty list, never null or omitted, both of which mean all torrents")
 	})
 }
 
