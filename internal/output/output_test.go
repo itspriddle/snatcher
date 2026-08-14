@@ -130,11 +130,16 @@ func TestSanitizeTerminal(t *testing.T) {
 		{"c1 controls", "a\u0085b", "ab"},
 		{"empty", "", ""},
 
-		// U+200B-U+200F: zero-width and invisible direction marks.
+		// Bidi marks and the zero-width space that hides beside them.
+		{"arabic letter mark", "a\u061cb", "ab"},
 		{"zero width space", "a\u200bb", "ab"},
-		{"zero width joiner", "a\u200db", "ab"},
+		{"left to right mark", "a\u200eb", "ab"},
 		{"right to left mark", "a\u200fb", "ab"},
-		{"whole zero width range", "a\u200b\u200c\u200d\u200e\u200fb", "ab"},
+
+		// U+2028/U+2029: a line separator inside a name forges an extra record
+		// in the header-less tab-separated piped contract.
+		{"line separator", "a\u2028b", "ab"},
+		{"paragraph separator", "a\u2029b", "ab"},
 
 		// U+202A-U+202E: bidi embeddings and overrides.
 		{"left to right embedding", "a\u202ab", "ab"},
@@ -148,11 +153,20 @@ func TestSanitizeTerminal(t *testing.T) {
 		{"pop directional isolate", "a\u2069b", "ab"},
 		{"whole isolate range", "a\u2066\u2067\u2068\u2069b", "ab"},
 
-		// The runes neighboring the new ranges stay untouched.
-		{"hair space below the zero width range", "a\u200ab", "a\u200ab"},
-		{"hyphen above the zero width range", "a\u2010b", "a\u2010b"},
+		// The runes neighboring the stripped ranges stay untouched.
+		{"arabic semicolon below the arabic letter mark", "a\u061bb", "a\u061bb"},
+		{"hair space below the direction marks", "a\u200ab", "a\u200ab"},
+		{"hyphen above the direction marks", "a\u2010b", "a\u2010b"},
+		{"hyphenation point below the separators", "a\u2027b", "a\u2027b"},
 		{"narrow no-break space above the override range", "a\u202fb", "a\u202fb"},
 		{"superscript zero above the isolate range", "a\u2070b", "a\u2070b"},
+
+		// The invisible characters that carry no reordering power are kept:
+		// dropping them would corrupt required orthography for no security gain.
+		{"zero width non-joiner", "a\u200cb", "a\u200cb"},
+		{"zero width joiner", "a\u200db", "a\u200db"},
+		{"word joiner", "a\u2060b", "a\u2060b"},
+		{"zero width no-break space", "a\ufeffb", "a\ufeffb"},
 	}
 
 	for _, tt := range tests {
@@ -170,6 +184,11 @@ func TestSanitizeTerminal(t *testing.T) {
 // reverses the display order of everything after it, so an unsanitized cell
 // would visually swap the Down, Up, and Encrypted cells rendered to its right
 // on the same aligned "snatcher torrent peers" row.
+//
+// It covers the format-control half of the problem only. Per SanitizeTerminal's
+// doc, a strong RTL run carrying no controls at all still reorders the neutral
+// cells beside it, and that residual is not something sanitizing can remove.
+// The command-level counterpart is TestPeersSanitizesHumanOutputNotJSON.
 func TestSanitizeTerminalDefeatsBidiRowSpoofing(t *testing.T) {
 	const hostileClient = "qBittorrent 4.6\u202e"
 
@@ -202,6 +221,9 @@ func TestSanitizeTerminalPreservesLegitimateText(t *testing.T) {
 		{"emoji", "🚀 📦 ✅"},
 		{"combining marks", "e\u0301 a\u0300 n\u0303"},
 		{"rtl script without controls", "مرحبا بالعالم"},
+		{"persian word form with zwnj", "می\u200cخواهم"},
+		{"devanagari conjunct with zwj", "क्\u200dष"},
+		{"family emoji zwj sequence", "👨\u200d👩\u200d👧"},
 		{"mixed", "Ubuntu 24.04 — 日本語 🚀"},
 		{"symbols and punctuation", "«quoted» — 50 % ± 3 … ✓"},
 	}

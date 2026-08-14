@@ -178,20 +178,32 @@ func Date(unix int64) string {
 // server-derived strings (torrent names, labels, errors, download dirs, peer
 // client strings) before they reach a human/plaintext render path. It removes
 // C0 control bytes (0x00–0x1F, including ESC 0x1B), the DEL byte (0x7F), C1
-// control runes (0x80–0x9F), and the Unicode bidirectional and invisible
-// format controls (see isTerminalControl), so a maliciously crafted torrent
-// name or peer client string cannot inject ANSI escapes that clear the screen,
-// move the cursor, or spoof output, nor reverse the visual order of a rendered
-// row. Tabs, carriage returns, and newlines are C0 controls and are therefore
-// stripped too, which also keeps tab-separated and line-oriented output columns
-// intact.
+// control runes (0x80–0x9F), the Unicode line and paragraph separators
+// (U+2028/U+2029), and Unicode's bidirectional format controls (see
+// isTerminalControl), so a maliciously crafted torrent name or peer client
+// string cannot inject ANSI escapes that clear the screen, move the cursor, or
+// spoof output, cannot forge a record in the tab-separated piped contract, and
+// cannot reverse the visual order of a rendered row. Tabs, carriage returns,
+// and newlines are C0 controls and are therefore stripped too, which also keeps
+// tab-separated and line-oriented output columns intact.
 //
-// Legitimate printable text and Unicode (including accented Latin, CJK, emoji,
-// and wide or combining characters) pass through untouched. The original string
-// is returned unchanged when it contains no control characters, so the common
-// case avoids any allocation. SanitizeTerminal must NOT be applied to
-// --json/--jq output, which is a structured contract that consumers handle
-// themselves.
+// Legitimate text passes through untouched: accented Latin, CJK, wide and
+// combining characters, emoji including their ZWJ sequences, and the
+// zero-width joiner and non-joiner that Persian, Arabic, and Indic orthography
+// depend on. The filter drops invisible characters only where they can reorder
+// or forge a line, never merely for being invisible.
+//
+// The guarantee is scoped to format controls. A strong right-to-left run —
+// Arabic or Hebrew text carrying no controls at all — still reorders the
+// neutral characters beside it (digits, "%", "MiB/s") when a terminal lays out
+// an aligned row, and stripping RTL script is not an option. Sanitizing removes
+// every way an *invisible* character can reorder a row; it does not make every
+// row visually unambiguous.
+//
+// The original string is returned unchanged when it contains no control
+// characters, so the common case avoids any allocation. SanitizeTerminal must
+// NOT be applied to --json/--jq output, which is a structured contract that
+// consumers handle themselves.
 func SanitizeTerminal(s string) string {
 	if !strings.ContainsFunc(s, isTerminalControl) {
 		return s
@@ -210,30 +222,48 @@ func SanitizeTerminal(s string) string {
 }
 
 // isTerminalControl reports whether r is one of the runes SanitizeTerminal
-// removes: a C0 control (0x00–0x1F), DEL (0x7F), a C1 control (0x80–0x9F), or a
-// Unicode bidirectional/invisible format control.
+// removes: a C0 control (0x00–0x1F), DEL (0x7F), a C1 control (0x80–0x9F), the
+// Unicode line and paragraph separators (U+2028/U+2029), or one of Unicode's
+// bidirectional format controls — U+061C (ALM), U+200B (ZWSP), U+200E/U+200F
+// (LRM/RLM), U+202A–U+202E (the embeddings and overrides), and U+2066–U+2069
+// (the isolates). Those are exactly the runes with the Bidi_Control property,
+// plus the zero-width space that hides beside them.
 //
-// The Unicode ranges matter because a terminal honors them the way a browser
+// The bidi controls matter because a terminal honors them the way a browser
 // does. U+202E (RLO) reverses the display order of everything after it, so a
 // peer-supplied client string ending in RLO would visually swap the Down, Up,
 // and Encrypted cells that follow it on the same aligned row — spoofing values
 // snatcher itself rendered. The isolate controls U+2066–U+2069 do the same
 // inside a bounded run, U+202A–U+202D are the older embedding/override forms,
-// and U+200B–U+200F are zero-width and invisible: they either hide themselves
-// inside a name or (LRM/RLM) nudge the surrounding direction. None of them
-// carries meaning snatcher needs to render, so all are dropped rather than
-// escaped.
+// and the marks (ALM/LRM/RLM) nudge the direction of the neutral characters
+// around them. None of them carries meaning snatcher needs to render, so all
+// are dropped rather than escaped.
 //
-// The one legitimate casualty is U+200D (ZWJ): dropping it splits an emoji ZWJ
-// sequence into its component glyphs. That is accepted — an invisible joiner in
-// a server-supplied string is far more often a hiding place than a family
-// emoji, and every other kind of non-ASCII text (accented Latin, CJK,
-// standalone emoji, combining marks) is untouched.
+// U+2028 and U+2029 are dropped for a program's benefit rather than the eye's.
+// snatcher's piped plaintext is header-less tab-separated rows, so a line
+// separator inside a server-derived string forges an entire extra record for
+// any consumer that splits on Unicode line breaks (Python's str.splitlines,
+// older JavaScript JSON parsers). Every other character such a consumer treats
+// as a break — \v, \f, 0x1C–0x1E, and U+0085 — already falls under C0/C1, so
+// leaving these two would have been an arbitrary hole.
+//
+// The invisible set stops there and is deliberately not "every invisible
+// format character". U+200C (ZWNJ) and U+200D (ZWJ) are kept: they are required
+// orthography — Persian and Arabic word forms, and conjunct versus chillu
+// selection in Devanagari, Bengali, Tamil, Malayalam, and Sinhala — and a ZWJ
+// sequence is what makes a family emoji a single glyph. U+2060 (word joiner)
+// and U+FEFF (ZWNBSP) are knowingly excluded on the same reasoning. None of the
+// four has any reordering power, so dropping them would corrupt legitimate
+// names on every plaintext path for no security gain.
 func isTerminalControl(r rune) bool {
 	switch {
 	case r < 0x20, r == 0x7F, r >= 0x80 && r <= 0x9F:
 		return true
-	case r >= 0x200B && r <= 0x200F: // ZWSP, ZWNJ, ZWJ, LRM, RLM
+	case r == 0x061C: // ALM
+		return true
+	case r == 0x200B, r == 0x200E, r == 0x200F: // ZWSP, LRM, RLM
+		return true
+	case r == 0x2028, r == 0x2029: // LINE SEPARATOR, PARAGRAPH SEPARATOR
 		return true
 	case r >= 0x202A && r <= 0x202E: // LRE, RLE, PDF, LRO, RLO
 		return true

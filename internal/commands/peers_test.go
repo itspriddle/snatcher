@@ -61,9 +61,11 @@ const bespokePeersResponse = `{
 }`
 
 // bespokePeersSanitizeResponse is a torrent-get payload whose peer client string
-// and flag string carry terminal control sequences. Both are chosen by an
-// arbitrary swarm member — any peer can claim any client string — so they are the
-// most hostile text the CLI renders.
+// and flag string carry terminal control sequences, and whose client string also
+// ends in U+202E (RLO) — the direction override that would visually swap the
+// Down, Up, and Encrypted cells rendered to its right on the same aligned row.
+// Both fields are chosen by an arbitrary swarm member — any peer can claim any
+// client string — so they are the most hostile text the CLI renders.
 const bespokePeersSanitizeResponse = `{
 	"arguments": {"torrents": [
 		{
@@ -75,7 +77,7 @@ const bespokePeersSanitizeResponse = `{
 				{
 					"address": "203.0.113.7",
 					"port": 51413,
-					"clientName": "\u001b[2Jevil\u0007Client",
+					"clientName": "\u001b[2Jevil\u0007Client\u202e",
 					"progress": 0.25,
 					"rateToClient": 1024,
 					"rateToPeer": 0,
@@ -264,6 +266,7 @@ func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, piped, "\x1b", "raw ESC must not reach the piped output")
 	assert.NotContains(t, piped, "\x07", "raw BEL must not reach the piped output")
+	assert.NotContains(t, piped, "\u202e", "no direction override reaches the piped row")
 	assert.Contains(t, piped, "[2JevilClient", "visible client text survives sanitization")
 	assert.Contains(t, piped, "[31mUD", "visible flag text survives sanitization")
 
@@ -274,13 +277,14 @@ func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 	var buf bytes.Buffer
 	writeListTable(&buf, []transmission.Peer{{
 		Address: "203.0.113.7",
-		Client:  "\x1b[2Jevil\x07Client",
+		Client:  "\x1b[2Jevil\x07Client\u202e",
 		FlagStr: "\x1b[31mUD\x07",
 	}}, cols, 0, "No peers.")
 
 	table := buf.String()
 	assert.NotContains(t, table, "\x1b", "raw ESC must not reach the table output")
 	assert.NotContains(t, table, "\x07", "raw BEL must not reach the table output")
+	assert.NotContains(t, table, "\u202e", "no direction override reaches the table row")
 	assert.Contains(t, table, "[2JevilClient")
 	assert.Contains(t, table, "[31mUD")
 
@@ -296,6 +300,7 @@ func TestPeersSanitizesHumanOutputNotJSON(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Client, "\x1b", "JSON client keeps the raw ESC (unsanitized)")
 	assert.Contains(t, got[0].Client, "\x07", "JSON client keeps the raw BEL")
+	assert.Contains(t, got[0].Client, "\u202e", "JSON client keeps the raw direction override")
 	assert.Contains(t, got[0].FlagStr, "\x1b", "JSON flag_str keeps the raw ESC")
 	assert.Contains(t, got[0].FlagStr, "\x07", "JSON flag_str keeps the raw BEL")
 }
