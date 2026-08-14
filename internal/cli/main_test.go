@@ -18,12 +18,11 @@ const (
 // in, before any test observes it, the same way internal/commands' TestMain
 // does.
 //
-// The root command validates both appearance settings ahead of every command,
-// walking the registry theme-first, so a developer with an invalid
-// SNATCHER_THEME exported would see the invalid-environment case below fail on
-// the wrong variable: the theme is rejected before SNATCHER_NO_NERD_FONT is ever
-// read. Neither variable may steer a result here; a test that wants one sets it
-// itself with t.Setenv.
+// The tests below run whole commands through the real tree, and the commands
+// that read an appearance setting report — or reject — whichever rung supplied
+// it. A developer with SNATCHER_THEME exported would steer those results, and
+// an invalid one would fail them outright. Neither variable may decide anything
+// here; a test that wants one sets it itself with t.Setenv.
 func TestMain(m *testing.M) {
 	for _, key := range []string{envTheme, envNoNerdFont} {
 		if err := os.Unsetenv(key); err != nil {

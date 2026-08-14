@@ -10,6 +10,15 @@ import (
 )
 
 // NewRootCmd creates and returns the root cobra command.
+//
+// The tree deliberately declares no PersistentPreRunE. The two appearance
+// settings — --theme / --no-nerd-font and their environment companions — are
+// checked where they are read, by the commands that resolve them, rather than
+// ahead of every command in the tree. A stale SNATCHER_THEME left exported in a
+// shell profile must not fail "snatcher torrent list", which never renders a
+// theme, nor "snatcher config unset client.theme", which is the command that
+// repairs it. An invalid value at any rung is still an error naming that rung
+// wherever the setting is actually consumed.
 func NewRootCmd() *cobra.Command {
 	var showVersion bool
 
@@ -17,13 +26,6 @@ func NewRootCmd() *cobra.Command {
 		Use:   "snatcher",
 		Short: "Transmission BitTorrent CLI client",
 		Long:  "Transmission BitTorrent CLI client\n\nA modern CLI/TUI for managing BitTorrent clients, Transmission first.",
-		// Checked ahead of every command, at every depth: a bad --theme or
-		// SNATCHER_NO_NERD_FONT is an error naming what is accepted, rather than a
-		// value silently ignored by the commands that do not read it. No
-		// subcommand declares its own persistent pre-run, so this one always runs.
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			return commands.ValidateGlobalSettings(cmd)
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), version.FullVersion())

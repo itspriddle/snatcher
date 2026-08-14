@@ -195,28 +195,33 @@ func TestNerdFontOverrideRungs(t *testing.T) {
 // TestOverridesRejectInvalidValues pins that a bad value at either rung is an
 // error naming that rung and what is accepted — never a silent fall through to
 // the config file, which would leave an operator wondering why their override
-// did nothing.
+// did nothing. The rejection happens as the override is resolved, which is what
+// carries it to every command that reads the setting and to no other.
 func TestOverridesRejectInvalidValues(t *testing.T) {
 	tests := []struct {
 		name     string
+		override func(*cobra.Command) (*clientOverride, error)
 		envName  string
 		envValue string
 		args     []string
 		wantErr  []string
 	}{
 		{
-			name:    "flag theme",
-			args:    []string{"--theme", "solarized"},
-			wantErr: []string{"--theme", `"solarized"`, "not a known theme", "dracula"},
+			name:     "flag theme",
+			override: themeOverride,
+			args:     []string{"--theme", "solarized"},
+			wantErr:  []string{"--theme", `"solarized"`, "not a known theme", "dracula"},
 		},
 		{
 			name:     "env theme",
+			override: themeOverride,
 			envName:  envTheme,
 			envValue: "solarized",
 			wantErr:  []string{envTheme, `"solarized"`, "not a known theme", "dracula"},
 		},
 		{
 			name:     "env nerd font",
+			override: nerdFontOverride,
 			envName:  envNoNerdFont,
 			envValue: "yes-please",
 			wantErr:  []string{envNoNerdFont, `"yes-please"`, "not a boolean", "true or false"},
@@ -229,7 +234,7 @@ func TestOverridesRejectInvalidValues(t *testing.T) {
 				t.Setenv(tt.envName, tt.envValue)
 			}
 
-			err := ValidateGlobalSettings(globalFlagCmd(t, tt.args...))
+			_, err := tt.override(globalFlagCmd(t, tt.args...))
 			require.Error(t, err)
 
 			for _, want := range tt.wantErr {
@@ -239,17 +244,18 @@ func TestOverridesRejectInvalidValues(t *testing.T) {
 	}
 }
 
-// TestValidateGlobalSettingsAcceptsAnUnconfiguredInvocation checks the ordinary
-// case — no flags, no variables — costs nothing, since the hook runs ahead of
-// every command.
-func TestValidateGlobalSettingsAcceptsAnUnconfiguredInvocation(t *testing.T) {
-	assert.NoError(t, ValidateGlobalSettings(globalFlagCmd(t)))
-}
+// TestOverridesIgnoreUnregisteredFlags covers a command built standalone, with
+// none of the tree-wide flags on it: reading a flag nothing registered must be
+// "no opinion" rather than a panic, the same answer configFlag gives.
+func TestOverridesIgnoreUnregisteredFlags(t *testing.T) {
+	orphan := &cobra.Command{Use: "orphan"}
 
-// TestValidateGlobalSettingsIgnoresUnregisteredFlags covers a command built
-// standalone, with none of the tree-wide flags on it: reading a flag nothing
-// registered must be "no opinion" rather than a panic, the same answer
-// configFlag gives.
-func TestValidateGlobalSettingsIgnoresUnregisteredFlags(t *testing.T) {
-	assert.NoError(t, ValidateGlobalSettings(&cobra.Command{Use: "orphan"}))
+	for name, override := range map[string]func(*cobra.Command) (*clientOverride, error){
+		flagTheme:      themeOverride,
+		flagNoNerdFont: nerdFontOverride,
+	} {
+		got, err := override(orphan)
+		require.NoError(t, err, "--%s must not fail on a command that never registered it", name)
+		assert.Nil(t, got, "--%s must have no opinion when it is registered nowhere", name)
+	}
 }

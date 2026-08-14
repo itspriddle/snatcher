@@ -85,7 +85,14 @@ over
 over the config file, over the built-in default;
 .B snatcher config list
 reports which rung supplied each value. An invalid value at any rung is an
-error naming that rung, on every command, never a silent fallback.
+error naming that rung, never a silent fallback, on every command that reads
+the setting \(em today that is
+.BR "config list" " and " "config get" .
+A command that renders neither is unaffected, so a stale
+.B SNATCHER_THEME
+cannot fail the
+.B config
+commands that would repair it.
 .TP
 .B \-\-version
 Print version information and exit. Valid on
@@ -1562,11 +1569,12 @@ flag takes precedence. A value that is not a boolean is an error naming the
 variable, never a silent fallback.
 .IP
 Neither variable changes any output today \(em nothing renders a theme or a
-glyph until the TUI exists \(em but both are resolved and checked on every
-command, and
+glyph until the TUI exists \(em but both are resolved and checked by the
+commands that read them, and
 .B snatcher config list
 reports a setting they supply with the source
 .BR env .
+A command that reads neither ignores them entirely, invalid value and all.
 .TP
 .B NO_COLOR
 When set to a non-empty value, forces

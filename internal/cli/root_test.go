@@ -39,43 +39,77 @@ func emptyConfig(t *testing.T) string {
 	return path
 }
 
-// TestRootRejectsAnInvalidGlobalSettingEverywhere pins that the appearance
-// settings are checked ahead of every command, not only the ones that read
-// them. Until the TUI exists nothing renders a theme, so without this hook a
-// typo would be accepted in silence by all but two commands.
-func TestRootRejectsAnInvalidGlobalSettingEverywhere(t *testing.T) {
+// TestRootChecksAnAppearanceSettingOnlyWhereItIsRead pins the blast radius of
+// an invalid override: it fails the commands that read the setting and nothing
+// else. A stale SNATCHER_THEME in a shell profile is a plausible accident, and
+// until the TUI exists nothing renders a theme at all, so letting it fail the
+// whole CLI — the "config" commands that repair it most of all — would trade a
+// cosmetic typo for an unusable tool.
+func TestRootChecksAnAppearanceSettingOnlyWhereItIsRead(t *testing.T) {
 	cfgPath := emptyConfig(t)
 
-	t.Run("flag on the root command", func(t *testing.T) {
-		_, err := runRoot(t, "--theme", "solarized", "--version")
+	t.Setenv(envTheme, "solarized")
+
+	t.Run("a command that never reads it", func(t *testing.T) {
+		_, err := runRoot(t, "server", "list", "--config", cfgPath)
+		assert.NoError(t, err)
+	})
+
+	t.Run("torrent list reports its own failure, not the theme's", func(t *testing.T) {
+		// No server is configured, so this cannot succeed; what matters is that
+		// it gets as far as saying so instead of being turned away by a setting
+		// it never reads.
+		_, err := runRoot(t, "torrent", "list", "--config", cfgPath)
+		require.Error(t, err)
+
+		assert.Contains(t, err.Error(), "not configured")
+		assert.NotContains(t, err.Error(), envTheme)
+	})
+
+	t.Run("the flag rung is equally narrow", func(t *testing.T) {
+		_, err := runRoot(t, "server", "list", "--config", cfgPath, "--theme", "solarized")
+		assert.NoError(t, err)
+	})
+
+	t.Run("config set repairs the file", func(t *testing.T) {
+		_, err := runRoot(t, "config", "set", "client.theme", "nord", "--config", cfgPath)
+		require.NoError(t, err)
+
+		stored, readErr := os.ReadFile(cfgPath)
+		require.NoError(t, readErr)
+		assert.Contains(t, string(stored), "nord")
+	})
+
+	t.Run("config unset repairs the file", func(t *testing.T) {
+		_, err := runRoot(t, "config", "unset", "client.theme", "--config", cfgPath)
+		require.NoError(t, err)
+
+		stored, readErr := os.ReadFile(cfgPath)
+		require.NoError(t, readErr)
+		assert.NotContains(t, string(stored), "nord")
+	})
+
+	t.Run("a command that does read it still rejects the value", func(t *testing.T) {
+		_, err := runRoot(t, "config", "get", "client.theme", "--config", cfgPath)
+		require.Error(t, err)
+
+		assert.Contains(t, err.Error(), envTheme)
+		assert.Contains(t, err.Error(), "not a known theme")
+	})
+
+	t.Run("and names the flag when the flag supplied it", func(t *testing.T) {
+		_, err := runRoot(t, "config", "list", "--config", cfgPath, "--theme", "chartreuse")
 		require.Error(t, err)
 
 		assert.Contains(t, err.Error(), "--theme")
 		assert.Contains(t, err.Error(), "not a known theme")
 	})
-
-	t.Run("flag on a command that never reads it", func(t *testing.T) {
-		_, err := runRoot(t, "server", "list", "--config", cfgPath, "--theme", "solarized")
-		require.Error(t, err)
-
-		assert.Contains(t, err.Error(), "--theme")
-	})
-
-	t.Run("environment variable on a command that never reads it", func(t *testing.T) {
-		t.Setenv(envNoNerdFont, "yes-please")
-
-		_, err := runRoot(t, "server", "list", "--config", cfgPath)
-		require.Error(t, err)
-
-		assert.Contains(t, err.Error(), envNoNerdFont)
-		assert.Contains(t, err.Error(), "not a boolean")
-	})
 }
 
-// TestRootAcceptsValidGlobalSettings checks the hook costs an ordinary
-// invocation nothing, including one that passes the flags it does not yet
-// render. Both environment companions are already out of the way — TestMain
-// unsets them for the whole package.
+// TestRootAcceptsValidGlobalSettings checks the two appearance flags are
+// accepted at every depth even though nothing renders them yet, so passing one
+// is never an error on a command that ignores it. Both environment companions
+// are already out of the way — TestMain unsets them for the whole package.
 func TestRootAcceptsValidGlobalSettings(t *testing.T) {
 	out, err := runRoot(t, "--theme", "dracula", "--no-nerd-font", "--version")
 	require.NoError(t, err)
@@ -83,16 +117,18 @@ func TestRootAcceptsValidGlobalSettings(t *testing.T) {
 	assert.NotEmpty(t, out)
 }
 
-// TestRootDeclaresNoCompetingPersistentPreRun guards the assumption the hook
-// rests on: cobra runs only the closest PersistentPreRunE, so a subcommand that
-// declared its own would silently skip the root's check.
-func TestRootDeclaresNoCompetingPersistentPreRun(t *testing.T) {
+// TestRootDeclaresNoPersistentPreRun pins the absence deliberately: a check
+// hung off the root's persistent pre-run runs ahead of every command in the
+// tree, which is precisely the blast radius the appearance settings must not
+// have. Validation belongs with the command that reads the value.
+func TestRootDeclaresNoPersistentPreRun(t *testing.T) {
 	var walk func(cmd *cobra.Command)
 
 	walk = func(cmd *cobra.Command) {
+		assert.Nil(t, cmd.PersistentPreRunE, "%s declares a persistent pre-run, which runs ahead of every command below it", cmd.CommandPath())
+		assert.Nil(t, cmd.PersistentPreRun, "%s declares a persistent pre-run, which runs ahead of every command below it", cmd.CommandPath())
+
 		for _, sub := range cmd.Commands() {
-			assert.Nil(t, sub.PersistentPreRunE, "%s declares a persistent pre-run that would shadow the root's", sub.CommandPath())
-			assert.Nil(t, sub.PersistentPreRun, "%s declares a persistent pre-run that would shadow the root's", sub.CommandPath())
 			walk(sub)
 		}
 	}

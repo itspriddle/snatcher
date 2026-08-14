@@ -20,6 +20,11 @@ const (
 	// settings that decide how snatcher draws itself. Nothing renders either one
 	// yet: they resolve and validate so the forthcoming TUI consumes a settled
 	// contract rather than inventing one.
+	//
+	// Both are checked where they are read — resolveClientSetting validates each
+	// rung as it resolves it — and nowhere else. Checking them ahead of every
+	// command instead would let a stale SNATCHER_THEME in a shell profile fail
+	// the whole CLI, including the "config" commands that repair it.
 	flagTheme      = "theme"
 	flagNoNerdFont = "no-nerd-font"
 )
@@ -71,30 +76,6 @@ func configFlag(cmd *cobra.Command) string {
 	}
 
 	return f.Value.String()
-}
-
-// ValidateGlobalSettings checks the client settings the command line and the
-// environment supply for this invocation. internal/cli runs it ahead of every
-// command, so a typo in --theme or SNATCHER_NO_NERD_FONT is an error naming
-// what is accepted rather than a value quietly ignored by the commands that do
-// not read it — which, until the TUI exists, is every command but "config list"
-// and "config get".
-//
-// Only the two rungs above the config file are checked here. A value hand-edited
-// into the file is deliberately left alone: rejecting it at this level would
-// fail "snatcher config set", the one command that can repair it.
-func ValidateGlobalSettings(cmd *cobra.Command) error {
-	for _, def := range clientKeyRegistry {
-		if def.override == nil {
-			continue
-		}
-
-		if _, err := def.override(cmd); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // clientOverride is a client setting supplied from above the config file, paired
