@@ -53,7 +53,7 @@ func NewMoveCmd() *cobra.Command {
 				return fmt.Errorf("location must not be empty")
 			}
 
-			backend, serverURL, err := dial(configPath, server)
+			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
 			}

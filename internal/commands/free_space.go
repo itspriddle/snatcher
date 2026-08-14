@@ -35,7 +35,7 @@ func NewFreeSpaceCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, serverURL, err := dial(configPath, server)
+			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
 			}

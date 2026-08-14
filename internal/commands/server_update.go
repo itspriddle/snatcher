@@ -57,7 +57,7 @@ func newServerUpdateCmd() *cobra.Command {
 				return fmt.Errorf("nothing to update: provide at least one setting flag")
 			}
 
-			backend, serverURL, err := dial(configPath, server)
+			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
 			}
@@ -113,7 +113,7 @@ func newServerResetCmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath, server)
+			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
 			}

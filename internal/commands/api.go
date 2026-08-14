@@ -102,7 +102,7 @@ func NewAPICmd() *cobra.Command {
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath, server)
+			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
 			}

@@ -65,7 +65,7 @@ func NewAddCmd() *cobra.Command {
 				return errors.New("specify at least one file, url, or magnet link")
 			}
 
-			backend, _, err := dial(configPath, server)
+			backend, _, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
 			}

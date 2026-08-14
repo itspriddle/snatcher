@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -20,6 +21,39 @@ import (
 	"github.com/itspriddle/snatcher/internal/secrets"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
+
+// storeUnavailableRemedy names the fix in every unavailable-store warning. It
+// deliberately names no provider internals: an operator needs to know that no
+// OS secret service answered, not which helper binary the provider looked for.
+const storeUnavailableRemedy = "Install or start an OS secret service to store passwords."
+
+// storeUnavailableWarned guards warnStoreUnavailableOnce, so the warning dial
+// emits fires once per process rather than once per call. A future polling
+// client dials repeatedly and must not spam stderr.
+var storeUnavailableWarned atomic.Bool
+
+// warnStoreUnavailable writes a one-line stderr note that no OS secret store
+// could be reached, what that means for the command in hand (consequence), and
+// how to fix it.
+func warnStoreUnavailable(cmd *cobra.Command, consequence string) {
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: the OS secret store could not be reached; %s. %s\n", consequence, storeUnavailableRemedy)
+}
+
+// warnStoreUnavailableOnce is warnStoreUnavailable, emitted at most once for
+// the lifetime of the process.
+func warnStoreUnavailableOnce(cmd *cobra.Command, consequence string) {
+	if storeUnavailableWarned.CompareAndSwap(false, true) {
+		warnStoreUnavailable(cmd, consequence)
+	}
+}
+
+// secretAbsent reports whether a secrets error means there is no stored secret
+// to act on: either the store answered and holds no entry for that URL, or
+// there is no reachable store at all. Both leave a pre-clear with nothing to
+// do, so callers continue instead of aborting.
+func secretAbsent(err error) bool {
+	return errors.Is(err, secrets.ErrNotFound) || errors.Is(err, secrets.ErrUnavailable)
+}
 
 // newServerAddCmd builds "server add", which stores the server URL and username
 // in config and the password in the OS keyring. The password is read from a
@@ -71,9 +105,9 @@ func newServerAddCmd() *cobra.Command {
 			// When updating an existing alias to a different URL, drop the old URL's
 			// keyring entry so no orphaned secret is left behind. Scope this to the
 			// alias being changed; other servers' secrets are untouched. A missing
-			// entry is fine.
+			// entry — or no reachable store to hold one — is fine.
 			if prev, ok := cfg.Servers[alias]; ok && prev.URL != "" && prev.URL != serverURL {
-				if err := secrets.Delete(prev.URL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+				if err := secrets.Delete(prev.URL); err != nil && !secretAbsent(err) {
 					return err
 				}
 			}
@@ -93,8 +127,11 @@ func newServerAddCmd() *cobra.Command {
 			// An empty password means "no stored secret" (e.g. a server with auth
 			// disabled). Don't write an empty keyring entry; drop any existing one
 			// for this URL so a previously stored password isn't silently reused.
+			// An unreachable store is not a failure here: there is no password to
+			// store, and nothing can read a stale secret back out of a store that
+			// cannot be reached either.
 			if password == "" {
-				if err := secrets.Delete(serverURL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+				if err := secrets.Delete(serverURL); err != nil && !secretAbsent(err) {
 					return err
 				}
 
@@ -159,7 +196,7 @@ func newServerListCmd() *cobra.Command {
 				return err
 			}
 
-			results, err := serverListResults(cfg)
+			results, err := serverListResults(cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -187,18 +224,29 @@ func newServerListCmd() *cobra.Command {
 
 // serverListResults builds the per-server result rows for "server list", sorted
 // by alias, querying the keyring for whether each server's secret is stored.
-func serverListResults(cfg config.Config) ([]serverListResult, error) {
+//
+// An unreachable secret store does not fail the listing: the rows are still
+// emitted with secret_stored false and a single stderr note explains that the
+// status could not be determined. Reporting false for "cannot tell" keeps the
+// JSON and plaintext column shapes unchanged.
+func serverListResults(cmd *cobra.Command, cfg config.Config) ([]serverListResult, error) {
 	names := cfg.Names()
 	results := make([]serverListResult, 0, len(names))
+
+	storeUnavailable := false
 
 	for _, name := range names {
 		srv := cfg.Servers[name]
 
 		secretStored := false
 		if srv.URL != "" {
-			if _, err := secrets.Get(srv.URL); err == nil {
+			_, err := secrets.Get(srv.URL)
+			switch {
+			case err == nil:
 				secretStored = true
-			} else if !errors.Is(err, secrets.ErrNotFound) {
+			case errors.Is(err, secrets.ErrUnavailable):
+				storeUnavailable = true
+			case !errors.Is(err, secrets.ErrNotFound):
 				return nil, err
 			}
 		}
@@ -210,6 +258,10 @@ func serverListResults(cfg config.Config) ([]serverListResult, error) {
 			SecretStored: secretStored,
 			IsDefault:    name == cfg.DefaultServer,
 		})
+	}
+
+	if storeUnavailable {
+		warnStoreUnavailable(cmd, `secret status could not be determined and is reported as "no"`)
 	}
 
 	return results, nil
@@ -331,7 +383,7 @@ func newServerPingCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, serverURL, err := dial(configPath, firstArg(args))
+			backend, serverURL, err := dial(cmd, configPath, firstArg(args))
 			if err != nil {
 				return err
 			}
@@ -401,8 +453,15 @@ func newServerRemoveCmd() *cobra.Command {
 				return resolveServerError(cfg, alias, err)
 			}
 
+			// An unreachable store must not strand the config entry: the server is
+			// removed either way, with a note that a secret may survive in a store
+			// snatcher cannot reach to delete it from.
 			if srv.URL != "" {
-				if err := secrets.Delete(srv.URL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+				err := secrets.Delete(srv.URL)
+				switch {
+				case errors.Is(err, secrets.ErrUnavailable):
+					warnStoreUnavailable(cmd, fmt.Sprintf("a stored password for %s may remain", output.SanitizeTerminal(srv.URL)))
+				case err != nil && !errors.Is(err, secrets.ErrNotFound):
 					return err
 				}
 			}
@@ -448,11 +507,12 @@ func firstArg(args []string) string {
 // dial loads config (honoring configPath), resolves which named server to use,
 // reads that server's password from the keyring, and constructs the concrete
 // *transmission.Client. It returns the client and the resolved server URL. It is
-// the single seam where commands construct the client.
+// the single seam where commands construct the client. cmd supplies the stderr
+// stream for the unavailable-store warning.
 //
 // Server selection precedence is: the server argument (the --server flag) >
 // the SNATCHER_SERVER environment variable > the configured default server.
-func dial(configPath, server string) (*transmission.Client, string, error) {
+func dial(cmd *cobra.Command, configPath, server string) (*transmission.Client, string, error) {
 	cfg, configured, err := loadConfig(configPath)
 	if err != nil {
 		return nil, "", err
@@ -471,8 +531,15 @@ func dial(configPath, server string) (*transmission.Client, string, error) {
 		return nil, "", resolveServerError(cfg, server, err)
 	}
 
+	// An unreachable store is not fatal on a read path: the server may not need
+	// auth at all, and if it does the request fails later with the transmission
+	// auth error, which already says what to do. secrets.Get yields an empty
+	// password alongside its error, so the client is built without one.
 	password, err := secrets.Get(srv.URL)
-	if err != nil && !errors.Is(err, secrets.ErrNotFound) {
+	switch {
+	case errors.Is(err, secrets.ErrUnavailable):
+		warnStoreUnavailableOnce(cmd, "connecting without a stored password")
+	case err != nil && !errors.Is(err, secrets.ErrNotFound):
 		return nil, "", err
 	}
 

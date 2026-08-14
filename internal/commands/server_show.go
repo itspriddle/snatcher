@@ -150,7 +150,7 @@ func newServerShowCmd() *cobra.Command {
 				return err
 			}
 
-			result, configured, err := loadServerShowResult(configPath, firstArg(args))
+			result, configured, err := loadServerShowResult(cmd, configPath, firstArg(args))
 			if err != nil {
 				return err
 			}
@@ -159,7 +159,7 @@ func newServerShowCmd() *cobra.Command {
 			// connection block rather than a resolve error.
 			live := configured && !local
 			if live {
-				backend, serverURL, err := dial(configPath, firstArg(args))
+				backend, serverURL, err := dial(cmd, configPath, firstArg(args))
 				if err != nil {
 					return err
 				}
@@ -204,7 +204,10 @@ func newServerShowCmd() *cobra.Command {
 // (or the configured default). It reports whether a server is configured at all;
 // on a first run with no servers it returns an empty, unconfigured result rather
 // than a resolve error, so "server show" stays informative before setup.
-func loadServerShowResult(configPath, alias string) (serverShowResult, bool, error) {
+//
+// An unreachable secret store does not fail the read: secret_stored is reported
+// false with a single stderr note, matching "server list".
+func loadServerShowResult(cmd *cobra.Command, configPath, alias string) (serverShowResult, bool, error) {
 	resolvedPath, err := resolveConfigPath(configPath)
 	if err != nil {
 		return serverShowResult{}, false, err
@@ -226,9 +229,13 @@ func loadServerShowResult(configPath, alias string) (serverShowResult, bool, err
 
 	secretStored := false
 	if srv.URL != "" {
-		if _, err := secrets.Get(srv.URL); err == nil {
+		_, err := secrets.Get(srv.URL)
+		switch {
+		case err == nil:
 			secretStored = true
-		} else if !errors.Is(err, secrets.ErrNotFound) {
+		case errors.Is(err, secrets.ErrUnavailable):
+			warnStoreUnavailable(cmd, `secret status could not be determined and is reported as "no"`)
+		case !errors.Is(err, secrets.ErrNotFound):
 			return serverShowResult{}, false, err
 		}
 	}

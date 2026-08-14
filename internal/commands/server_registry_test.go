@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,32 @@ import (
 	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/secrets"
 )
+
+// errDBusLaunchMissing is the failure a headless Linux box produces on every
+// keyring call: go-keyring asks D-Bus for a session bus, D-Bus shells out to
+// dbus-launch, and the lookup fails. Reproduced as the real *exec.Error rather
+// than a message string, since that is what internal/secrets classifies on, and
+// because its rendered text is what must never reach a user.
+var errDBusLaunchMissing = &exec.Error{Name: "dbus-launch", Err: exec.ErrNotFound}
+
+// mockStoreUnavailable points the keyring provider at a mock that fails every
+// call, simulating a box with no reachable secret store, and restores the
+// working in-memory mock afterwards.
+func mockStoreUnavailable(t *testing.T) {
+	t.Helper()
+
+	keyring.MockInitWithError(errDBusLaunchMissing)
+	t.Cleanup(keyring.MockInit)
+}
+
+// resetStoreUnavailableWarning clears dial's once-per-process warning guard so
+// a test observes the warning independently of whichever tests ran before it.
+func resetStoreUnavailableWarning(t *testing.T) {
+	t.Helper()
+
+	storeUnavailableWarned.Store(false)
+	t.Cleanup(func() { storeUnavailableWarned.Store(false) })
+}
 
 // sessionIDHeader and rpcVersionHeader mirror the CSRF/version headers the rpc
 // transport handles. They are duplicated here (the rpc constants are
@@ -848,6 +875,269 @@ func TestServerRemoveWhenNothingStored(t *testing.T) {
 	_, _, err := runServer(t, "", "remove", "--config", cfgPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no servers configured")
+}
+
+func TestServerAddEmptyPasswordSucceedsWhenStoreUnavailable(t *testing.T) {
+	mockStoreUnavailable(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	// The reported bug: the empty-password pre-clear aborted the whole command on
+	// a box with no reachable secret store. There is no password to persist, so
+	// the server must still be registered.
+	out, errOut, err := runServer(t, "",
+		"add",
+		"--config", cfgPath,
+		"--url", "http://host:9091/transmission/rpc",
+		"--username", "alice",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, out, "no password stored")
+	assert.NotContains(t, out+errOut, "dbus-launch")
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	srv := cfg.Servers["host:9091"]
+	assert.Equal(t, "http://host:9091/transmission/rpc", srv.URL)
+	assert.Equal(t, "alice", srv.Username)
+	assert.Equal(t, "host:9091", cfg.DefaultServer)
+}
+
+func TestServerAddRekeyToleratesUnavailableStore(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const oldURL = "http://old:9091/transmission/rpc"
+	const newURL = "http://new:9091/transmission/rpc"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"seedbox": {URL: oldURL, Username: "alice"}},
+		DefaultServer: "seedbox",
+	}, cfgPath))
+
+	// Repointing an alias at a new URL runs the old URL's pre-clear too; an
+	// unreachable store must not abort that path either.
+	mockStoreUnavailable(t)
+
+	_, errOut, err := runServer(t, "",
+		"add",
+		"--config", cfgPath,
+		"--name", "seedbox",
+		"--url", newURL,
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+	assert.NotContains(t, errOut, "dbus-launch")
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, newURL, cfg.Servers["seedbox"].URL)
+}
+
+func TestServerRemoveToleratesUnavailableStore(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/rpc"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"host:9091": {URL: url, Username: "bob"}},
+		DefaultServer: "host:9091",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+
+	out, errOut, err := runServer(t, "", "remove", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Removed server")
+
+	// The config entry is gone even though the secret could not be deleted, and
+	// the note says so without naming a provider internal.
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Empty(t, cfg.Servers)
+	assert.Empty(t, cfg.DefaultServer)
+
+	assert.Contains(t, errOut, "secret store could not be reached")
+	assert.Contains(t, errOut, "may remain")
+	assert.Contains(t, errOut, "OS secret service")
+	assert.NotContains(t, errOut, "dbus-launch")
+}
+
+func TestServerListToleratesUnavailableStore(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const localURL = "http://local:9091/transmission/rpc"
+	const seedboxURL = "http://seedbox:9091/transmission/rpc"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: localURL, Username: "alice"},
+			"seedbox": {URL: seedboxURL, Username: "bob"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+
+	out, errOut, err := runServer(t, "", "list", "--config", cfgPath)
+	require.NoError(t, err)
+
+	// The column shape is unchanged: unknown secret status renders as "no".
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "local\t"+localURL+"\talice\tno\tyes", lines[0])
+	assert.Equal(t, "seedbox\t"+seedboxURL+"\tbob\tno\tno", lines[1])
+
+	// One note for the whole listing, not one per server.
+	assert.Equal(t, 1, strings.Count(errOut, "secret store could not be reached"))
+	assert.Contains(t, errOut, "could not be determined")
+	assert.NotContains(t, errOut, "dbus-launch")
+}
+
+func TestServerListJSONToleratesUnavailableStore(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://local:9091/transmission/rpc"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"local": {URL: url, Username: "alice"}},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+
+	out, errOut, err := runServer(t, "", "list", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var results []serverListResult
+	require.NoError(t, json.Unmarshal([]byte(out), &results))
+	require.Len(t, results, 1)
+	assert.False(t, results[0].SecretStored)
+
+	// The note is stderr-only, so --json stdout stays a clean structured payload.
+	assert.NotContains(t, out, "secret store")
+	assert.Contains(t, errOut, "secret store could not be reached")
+}
+
+func TestServerShowToleratesUnavailableStore(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/rpc"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"host": {URL: url, Username: "alice"}},
+		DefaultServer: "host",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+
+	out, errOut, err := runServer(t, "", "show", "--config", cfgPath, "--local", "--json")
+	require.NoError(t, err)
+
+	var result serverShowResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Equal(t, url, result.ServerURL)
+	assert.False(t, result.SecretStored)
+
+	assert.Contains(t, errOut, "secret store could not be reached")
+	assert.NotContains(t, errOut, "dbus-launch")
+}
+
+func TestDialToleratesUnavailableStore(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/rpc"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"host": {URL: url, Username: "alice"}},
+		DefaultServer: "host",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	cmd := NewServerCmd()
+	var errOut bytes.Buffer
+	cmd.SetErr(&errOut)
+
+	// dial must hand back a usable client rather than aborting: the server may
+	// not require auth at all, and if it does the request fails later with the
+	// existing auth error.
+	backend, dialedURL, err := dial(cmd, cfgPath, "")
+	require.NoError(t, err)
+	require.NotNil(t, backend)
+	assert.Equal(t, url, dialedURL)
+
+	assert.Contains(t, errOut.String(), "secret store could not be reached")
+	assert.Contains(t, errOut.String(), "OS secret service")
+	assert.NotContains(t, errOut.String(), "dbus-launch")
+}
+
+func TestDialWarnsOnceWhenStoreUnavailable(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"host": {URL: "http://host:9091/rpc"}},
+		DefaultServer: "host",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	cmd := NewServerCmd()
+	var errOut bytes.Buffer
+	cmd.SetErr(&errOut)
+
+	for range 3 {
+		_, _, err := dial(cmd, cfgPath, "")
+		require.NoError(t, err)
+	}
+
+	// A future polling client dials on every tick; the warning must not repeat.
+	assert.Equal(t, 1, strings.Count(errOut.String(), "secret store could not be reached"))
+}
+
+func TestServerPingReachesTransportWhenStoreUnavailable(t *testing.T) {
+	keyring.MockInit()
+	srv := httptest.NewServer(transmissionStub{
+		rpcVersionHeader: "6.0.0",
+		responses: map[string]string{
+			"session_get": `{
+				"jsonrpc": "2.0",
+				"result": {"version": "4.1.0 (ae226418eb)", "rpc_version_semver": "6.0.0"},
+				"id": 1
+			}`,
+		},
+	}.handler())
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"test": {URL: srv.URL, Username: "alice"}},
+		DefaultServer: "test",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	// A completed round-trip proves ping got past dial and reached the transport
+	// instead of failing on the unreadable store.
+	out, errOut, err := runServer(t, "", "ping", "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var result serverPingResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.True(t, result.Connected)
+	assert.Equal(t, "4.1.0 (ae226418eb)", result.Version)
+
+	assert.Contains(t, errOut, "secret store could not be reached")
+	assert.NotContains(t, out+errOut, "dbus-launch")
 }
 
 // TestServerRegistrySubcommands is a compile-time guard that NewServerCmd wires

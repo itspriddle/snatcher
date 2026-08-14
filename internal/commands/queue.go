@@ -105,7 +105,7 @@ func newQueueMoveCmd(verb, short, long, action string, move queueMove) *cobra.Co
 				return err
 			}
 
-			backend, serverURL, err := dial(configPath, server)
+			backend, serverURL, err := dial(cmd, configPath, server)
 			if err != nil {
 				return err
 			}
