@@ -550,7 +550,7 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR add ", " show ", " files ", " peers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
+.BR add ", " show ", " files ", " peers ", " trackers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
@@ -755,6 +755,51 @@ Comma-separated columns to show, in the given order. When omitted every column
 is shown. Available columns:
 .BR address ", " port ", " client ", " progress ", " down ", " up ,
 .BR encrypted ", " status .
+.RE
+.TP
+.B snatcher torrent trackers \fR[\fIoptions\fR] \fIid | hash\fR
+List a single torrent's trackers and their per-tracker announce stats,
+identified by its numeric id or 40-character SHA1 info-hash. Exactly one
+selector is required, so a bare
+.B snatcher torrent trackers
+is an error, not a no-op. On a terminal the output is an aligned table with a
+header; when piped (or when
+.B NO_COLOR
+is set) it is tab-separated, full-value rows with no header \(em a stable
+scripting contract. A torrent with no trackers prints
+.B "No trackers."
+on a terminal and nothing when piped. With
+.B \-\-json
+the trackers are emitted as an array in the server's order.
+.IP
+The
+.B state
+column names the announce state
+.RB ( inactive ", " waiting ", " queued ", " active );
+.B \-\-json
+emits the underlying integer. Transmission reports
+.B \-1
+for a seeder, leecher, or download count it has not scraped yet; those render as
+.B \-
+in the plaintext columns and stay
+.B \-1
+in
+.BR \-\-json .
+Announce URLs, hosts, site names, and last announce results come from the
+torrent's metadata or from the tracker itself, not from the operator, so they
+are neutralized of terminal control sequences in the plaintext output;
+.B \-\-json
+and
+.B \-\-jq
+emit them verbatim. Besides the common options:
+.RS
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order. The default set is
+.BR announce ", " tier ", " state ", " next_announce ", " seeders ,
+.BR leechers ", " downloads .
+Also available, but not shown by default:
+.BR host ", " sitename ", " last_result .
 .RE
 .TP
 .B snatcher torrent list \fR[\fIoptions\fR]

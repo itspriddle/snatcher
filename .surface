@@ -6,6 +6,7 @@ ARG snatcher torrent move 0 id|hash
 ARG snatcher torrent move 1 location
 ARG snatcher torrent peers 0 id|hash
 ARG snatcher torrent show 0 id|hash
+ARG snatcher torrent trackers 0 id|hash
 CMD snatcher
 CMD snatcher api
 CMD snatcher server
@@ -40,6 +41,7 @@ CMD snatcher torrent remove
 CMD snatcher torrent show
 CMD snatcher torrent start
 CMD snatcher torrent stop
+CMD snatcher torrent trackers
 CMD snatcher torrent update
 CMD snatcher torrent verify
 FLAG snatcher --version type=bool
@@ -224,6 +226,11 @@ FLAG snatcher torrent stop --config type=string
 FLAG snatcher torrent stop --jq type=string
 FLAG snatcher torrent stop --json type=bool
 FLAG snatcher torrent stop --server type=string
+FLAG snatcher torrent trackers --config type=string
+FLAG snatcher torrent trackers --fields type=string
+FLAG snatcher torrent trackers --jq type=string
+FLAG snatcher torrent trackers --json type=bool
+FLAG snatcher torrent trackers --server type=string
 FLAG snatcher torrent update --all type=bool
 FLAG snatcher torrent update --clear-labels type=bool
 FLAG snatcher torrent update --clear-trackers type=bool
