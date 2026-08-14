@@ -604,6 +604,122 @@ func TestServerAddFileStoreReportsPlaintextLocation(t *testing.T) {
 	assert.Contains(t, out, "0600")
 }
 
+// TestServerAddClearsSecretWhenStoreChanges pins the pre-clear on a store
+// change, not only a URL change. Re-adding the same server with a different
+// store used to report the new choice while leaving the old plaintext password
+// readable in secrets.json — output contradicting the disk after an explicit
+// opt-out.
+func TestServerAddClearsSecretWhenStoreChanges(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	tests := []struct {
+		name       string
+		store      string
+		password   string
+		wantOutHas string
+	}{
+		{name: "file to none", store: "none", wantOutHas: "no password stored"},
+		{name: "file to keyring", store: "keyring", password: "hunter3", wantOutHas: "Saved credentials"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envSecretStore, "")
+			secretsPath := stateDir(t)
+			cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+			keyring.MockInit()
+			resetStoreUnavailableWarning(t)
+
+			// The server starts out opted into the plaintext file store.
+			_, _, err := runServer(t, "hunter2\n",
+				"add",
+				"--config", cfgPath,
+				"--url", serverURL,
+				"--username", "alice",
+				"--password-stdin",
+				"--store", "file",
+			)
+			require.NoError(t, err)
+			require.FileExists(t, secretsPath)
+
+			fileStore, storeErr := secrets.NewFileStore("")
+			require.NoError(t, storeErr)
+			stored, getErr := fileStore.Get(serverURL)
+			require.NoError(t, getErr)
+			require.Equal(t, "hunter2", stored)
+
+			stdin := tc.password
+			if stdin != "" {
+				stdin += "\n"
+			}
+
+			out, _, err := runServer(t, stdin,
+				"add",
+				"--config", cfgPath,
+				"--url", serverURL,
+				"--username", "alice",
+				"--password-stdin",
+				"--store", tc.store,
+			)
+			require.NoError(t, err)
+			assert.Contains(t, out, tc.wantOutHas)
+
+			// Nothing is left behind in the store the server just moved off.
+			_, getErr = fileStore.Get(serverURL)
+			require.ErrorIs(t, getErr, secrets.ErrNotFound)
+
+			cfg, loadErr := config.Load(cfgPath)
+			require.NoError(t, loadErr)
+			assert.Equal(t, tc.store, cfg.Servers["host:9091"].SecretStore)
+
+			if tc.password != "" {
+				keyringStored, keyringErr := secrets.Get(serverURL)
+				require.NoError(t, keyringErr)
+				assert.Equal(t, tc.password, keyringStored)
+			}
+		})
+	}
+}
+
+func TestServerAddDropsTheSecretWhenSavingConfigFails(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	t.Setenv(envSecretStore, "")
+	stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	keyring.MockInit()
+
+	// A hand-edited config whose default_server names nothing: it loads (the
+	// servers map is empty, so the check does not apply) but fails to save once
+	// this add puts a server in the map. The secret has been written by then.
+	broken := `{"servers":{},"default_server":"ghost"}`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(broken), 0o600))
+
+	_, _, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", serverURL,
+		"--username", "alice",
+		"--password-stdin",
+		"--store", "file",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default_server")
+
+	// The save failed, so nothing on disk names this server — its password must
+	// not be left behind in plaintext for a server that does not exist.
+	after, readErr := os.ReadFile(cfgPath)
+	require.NoError(t, readErr)
+	assert.JSONEq(t, broken, string(after))
+
+	store, storeErr := secrets.NewFileStore("")
+	require.NoError(t, storeErr)
+	_, getErr := store.Get(serverURL)
+	require.ErrorIs(t, getErr, secrets.ErrNotFound)
+}
+
 func TestKeyringModeNeverTouchesFileStore(t *testing.T) {
 	t.Setenv(envSecretStore, "")
 	secretsPath := stateDir(t)

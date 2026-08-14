@@ -128,21 +128,8 @@ func newServerAddCmd() *cobra.Command {
 				return err
 			}
 
-			// When updating an existing alias to a different URL, drop the old URL's
-			// secret so no orphaned entry is left behind. Scope this to the alias
-			// being changed; other servers' secrets are untouched. A missing entry —
-			// or no reachable store to hold one — is fine. The old URL's secret lives
-			// in whichever store that entry named, which is not necessarily the one
-			// the new entry will use.
-			if prev.URL != "" && prev.URL != serverURL {
-				prevStore, err := serverStore(prev)
-				if err != nil {
-					return err
-				}
-
-				if err := prevStore.Delete(prev.URL); err != nil && !secretAbsent(err) {
-					return err
-				}
+			if err := clearPreviousSecret(prev, serverURL, mode); err != nil {
+				return err
 			}
 
 			// The secret is written before config, so a store that still refuses
@@ -160,6 +147,19 @@ func newServerAddCmd() *cobra.Command {
 			}
 
 			if err := config.Save(cfg, configPath); err != nil {
+				// The secret is written first so a store that refuses it cannot
+				// leave a registered server without a password. The cost of that
+				// ordering is this path: the save failed, so the config on disk
+				// never came to name this URL, and the credential — plaintext,
+				// under --store=file — would be stranded for a server that does not
+				// exist. Drop it again, best effort. When the saved config already
+				// pointed this alias at the same URL its secret stays: that entry
+				// is still live, and clearing it would leave a working server
+				// unable to authenticate.
+				if password != "" && prev.URL != serverURL {
+					_ = store.Delete(serverURL)
+				}
+
 				return err
 			}
 
@@ -191,6 +191,46 @@ func newServerAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&storeFlag, "store", "", `where to keep the password: "keyring" (default), "file" (plaintext, mode 0600), or "none"`)
 
 	return cmd
+}
+
+// clearPreviousSecret drops the secret an existing alias used to keep, whenever
+// the entry replacing it no longer points at that secret: either the URL
+// changed, or the store did.
+//
+// Both leave a secret nothing will ever read again. The store change is the
+// sharper case: re-running "server add --store=none" on a server added with
+// --store=file reports that no password is stored while the plaintext password
+// stays readable in secrets.json, so the command's own output contradicts the
+// disk after an explicit opt-out.
+//
+// The old secret lives in whichever store the previous entry resolves to, which
+// is not necessarily the one the new entry uses. This is scoped to the alias
+// being changed; other servers' secrets are untouched. A missing entry — or no
+// reachable store to hold one — is fine.
+func clearPreviousSecret(prev config.Server, serverURL string, mode storeMode) error {
+	if prev.URL == "" {
+		return nil
+	}
+
+	prevMode, err := resolveStoreMode(prev)
+	if err != nil {
+		return err
+	}
+
+	if prev.URL == serverURL && prevMode == mode {
+		return nil
+	}
+
+	prevStore, err := openStore(prevMode)
+	if err != nil {
+		return err
+	}
+
+	if err := prevStore.Delete(prev.URL); err != nil && !secretAbsent(err) {
+		return err
+	}
+
+	return nil
 }
 
 // writeServerSecret persists password for serverURL in store.
