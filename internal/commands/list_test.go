@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 
-	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -81,8 +81,20 @@ func runList(t *testing.T, args ...string) (string, string, error) {
 }
 
 // listConfigPath stands up a transmission stub serving the given torrent-get
-// payload on the bespoke path and writes a config pointing at it.
+// payload on the bespoke path and writes a config pointing at it, with no client
+// section — the shape of an operator's file before the section existed.
 func listConfigPath(t *testing.T, body string) (string, func()) {
+	t.Helper()
+
+	return listConfigWithClient(t, body, "")
+}
+
+// listConfigWithClient is listConfigPath with a client section: clientJSON is
+// the raw JSON body of the config's "client" object, or empty for no section at
+// all. The fixture is raw JSON rather than config.Save output so a test can
+// stage exactly the hand-edit it wants to describe, including one that is
+// structurally valid but semantically nonsense.
+func listConfigWithClient(t *testing.T, body, clientJSON string) (string, func()) {
 	t.Helper()
 
 	keyring.MockInit()
@@ -94,8 +106,13 @@ func listConfigPath(t *testing.T, body string) (string, func()) {
 		},
 	}.handler())
 
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
+	client := ""
+	if clientJSON != "" {
+		client = fmt.Sprintf(`, "client": %s`, clientJSON)
+	}
+
+	cfgPath := writeConfigFile(t, fmt.Sprintf(
+		`{"servers": {"test": {"url": %q}}, "default_server": "test"%s}`, srv.URL, client))
 
 	return cfgPath, srv.Close
 }
@@ -539,4 +556,157 @@ func TestListFilterVocabularyMatchesStatusSlug(t *testing.T) {
 		_, err := transmission.ParseFilter(slug)
 		assert.NoErrorf(t, err, "status slug %q must be an accepted --filter value", slug)
 	}
+}
+
+// US-006: the stored client.list_* settings are what list renders when the
+// matching flag is not passed, which is what makes the config load-bearing
+// rather than write-only.
+
+// listNames returns the name cell of every piped row, in output order.
+func listNames(t *testing.T, out string) []string {
+	t.Helper()
+
+	nameCol := defaultNameColumn(t)
+
+	rows := configRows(t, out)
+	names := make([]string, len(rows))
+	for i, cells := range rows {
+		require.Greater(t, len(cells), nameCol)
+		names[i] = cells[nameCol]
+	}
+
+	return names
+}
+
+func TestListUsesConfiguredColumns(t *testing.T) {
+	// "ID" also pins the case-insensitive match a stored list gets: the same
+	// spelling rule --fields follows, so a hand-edit is not held to a stricter
+	// standard than the flag.
+	cfgPath, closeSrv := listConfigWithClient(t, bespokeListResponse, `{"list_columns": ["ID", "name", "ratio"]}`)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath)
+	require.NoError(t, err)
+
+	rows := configRows(t, out)
+	require.Len(t, rows, 2)
+	require.Len(t, rows[0], 3, "the configured columns replace the built-in default set")
+	assert.Equal(t, "1", rows[0][0])
+	assert.Equal(t, "ubuntu-24.04.iso", rows[0][1])
+	assert.Equal(t, "0.50", rows[0][2])
+}
+
+func TestListUsesConfiguredSortAndReverse(t *testing.T) {
+	cfgPath, closeSrv := listConfigWithClient(t, bespokeListResponse, `{"list_sort": "name", "list_reverse": true}`)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath)
+	require.NoError(t, err)
+
+	// Descending by name, which is neither the queue order the server returns
+	// nor the ascending order an unreversed sort would give.
+	assert.Equal(t, []string{"ubuntu-24.04.iso", "debian.iso"}, listNames(t, out))
+}
+
+// TestListFlagsOutrankConfiguredDefaults pins the precedence, including the case
+// the Changed check exists for: --sort queue and --reverse=false are the flags'
+// own defaults, and passing them explicitly still overrides a stored setting.
+func TestListFlagsOutrankConfiguredDefaults(t *testing.T) {
+	cfgPath, closeSrv := listConfigWithClient(t, bespokeListResponse,
+		`{"list_columns": ["id"], "list_sort": "name", "list_reverse": true}`)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath, "--fields", "name", "--sort", "queue", "--reverse=false")
+	require.NoError(t, err)
+
+	rows := configRows(t, out)
+	require.Len(t, rows, 2)
+	for _, cells := range rows {
+		require.Len(t, cells, 1, "--fields outranks the configured columns")
+	}
+
+	assert.Equal(t, "ubuntu-24.04.iso", rows[0][0], "--sort queue outranks the configured sort field")
+	assert.Equal(t, "debian.iso", rows[1][0], "--reverse=false outranks the configured direction")
+}
+
+// TestListRejectsInvalidStoredSetting checks a nonsense hand-edit is an error
+// naming the config key, so the operator knows the file is what needs fixing —
+// never a silent fall back to the default.
+func TestListRejectsInvalidStoredSetting(t *testing.T) {
+	tests := []struct {
+		name   string
+		client string
+		want   []string
+	}{
+		{
+			name:   "sort field",
+			client: `{"list_sort": "bogus"}`,
+			want:   []string{"client.list_sort", `invalid sort field "bogus"`, "valid sort fields are"},
+		},
+		{
+			name:   "column",
+			client: `{"list_columns": ["id", "bogus"]}`,
+			want:   []string{"client.list_columns", `"bogus" is not a column`, "valid columns are"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, closeSrv := listConfigWithClient(t, bespokeListResponse, tc.client)
+			defer closeSrv()
+
+			_, _, err := runList(t, "--config", cfgPath)
+			require.Error(t, err)
+			for _, want := range tc.want {
+				assert.Contains(t, err.Error(), want)
+			}
+		})
+	}
+}
+
+// TestListWithoutClientSettingsIsUnchanged pins the upgrade guarantee: a config
+// with no client section, and one with an empty client object, both render
+// exactly what list rendered before the section existed.
+func TestListWithoutClientSettingsIsUnchanged(t *testing.T) {
+	plainPath, closePlain := listConfigPath(t, bespokeListResponse)
+	defer closePlain()
+
+	plain, _, err := runList(t, "--config", plainPath)
+	require.NoError(t, err)
+
+	emptyPath, closeEmpty := listConfigWithClient(t, bespokeListResponse, `{}`)
+	defer closeEmpty()
+
+	empty, _, err := runList(t, "--config", emptyPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, plain, empty, "an empty client section changes nothing")
+
+	rows := configRows(t, plain)
+	require.Len(t, rows, 2)
+	require.Len(t, rows[0], len(defaultFieldKeys), "the built-in default column set still applies")
+	assert.Equal(t, []string{"ubuntu-24.04.iso", "debian.iso"}, listNames(t, plain), "the default sort is still queue order")
+}
+
+// TestListConfiguredSortAppliesToStructuredOutput checks the stored defaults
+// reach --json and --jq exactly as the flags do, so a scripted consumer and a
+// human see the same list.
+func TestListConfiguredSortAppliesToStructuredOutput(t *testing.T) {
+	cfgPath, closeSrv := listConfigWithClient(t, bespokeListResponse, `{"list_sort": "name"}`)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath, "--json")
+	require.NoError(t, err)
+
+	var got []struct {
+		Name string `json:"name"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 2)
+	assert.Equal(t, "debian.iso", got[0].Name, "the configured sort field orders JSON output too")
+	assert.Equal(t, "ubuntu-24.04.iso", got[1].Name)
+
+	out, _, err = runList(t, "--config", cfgPath, "--jq", ".[].name")
+	require.NoError(t, err)
+	assert.Equal(t, `"debian.iso"`+"\n"+`"ubuntu-24.04.iso"`, strings.TrimSpace(out))
 }

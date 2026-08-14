@@ -168,10 +168,86 @@ func parseFields[T any](registry map[string]column[T], defaults []string, spec s
 	return cols, nil
 }
 
+// listDefaults are the three answers to "how should list render" that an
+// operator can store in the client config section: which columns, which sort
+// field, and whether to reverse. Each applies only when the corresponding flag
+// was not passed.
+type listDefaults struct {
+	columns []string
+	sort    string
+	reverse bool
+}
+
+// resolveListDefaults reads client.list_columns, client.list_sort, and
+// client.list_reverse for this invocation, falling back to the registry defaults
+// — which are exactly the flag defaults — when nothing is stored. An operator
+// with no client section, or no config file at all, therefore gets the list they
+// got before the section existed.
+//
+// It runs before dialing so a nonsense value hand-edited into the file is
+// reported, naming the config key rather than a flag, without a network round
+// trip first. dial reads the same file again: both reads are of a small local
+// file, and the alternative — threading a loaded config out through the dial
+// seam — would spread config plumbing across every command to serve this one.
+func resolveListDefaults(cmd *cobra.Command) (listDefaults, error) {
+	cfg, _, err := loadConfig(configFlag(cmd))
+	if err != nil {
+		return listDefaults{}, err
+	}
+
+	columns, err := clientSetting[[]string](cmd, cfg, keyListColumns)
+	if err != nil {
+		return listDefaults{}, err
+	}
+
+	sortField, err := clientSetting[string](cmd, cfg, keyListSort)
+	if err != nil {
+		return listDefaults{}, err
+	}
+
+	reverse, err := clientSetting[bool](cmd, cfg, keyListReverse)
+	if err != nil {
+		return listDefaults{}, err
+	}
+
+	return listDefaults{columns: normalizeFieldKeys(columns), sort: sortField, reverse: reverse}, nil
+}
+
+// normalizeFieldKeys lowercases and trims stored column keys to the spelling
+// listFields uses. A stored list is validated case-insensitively, exactly as
+// --fields is, so a hand-edited "Name" is a legitimate setting; parseFields
+// looks its defaults up verbatim and would otherwise report that legitimate
+// setting as a registry mistake.
+func normalizeFieldKeys(keys []string) []string {
+	normalized := make([]string, len(keys))
+	for i, key := range keys {
+		normalized[i] = strings.ToLower(strings.TrimSpace(key))
+	}
+
+	return normalized
+}
+
+// flagOr returns the flag's value when it was explicitly passed, and the
+// configured fallback otherwise. Presence is the flag's Changed state, never a
+// comparison against the flag's zero value, so an explicit "--reverse=false"
+// overrides a stored true instead of reading as an absent flag.
+func flagOr[T any](cmd *cobra.Command, name string, flagValue, configured T) T {
+	if cmd.Flags().Changed(name) {
+		return flagValue
+	}
+
+	return configured
+}
+
 // NewListCmd builds the "list" command, which dials the backend, fetches all
 // torrents, and renders them as an aligned plaintext table on a TTY, as plain
 // tab-separated full-value rows when piped, as JSON (--json), or filtered through
 // jq (--jq).
+//
+// The column set, sort field, and sort direction fall back to the stored
+// client.list_columns, client.list_sort, and client.list_reverse settings when
+// their flags are not passed, so a preference is expressed once with "config
+// set" rather than repeated on every invocation.
 func NewListCmd() *cobra.Command {
 	var (
 		server     string
@@ -197,12 +273,19 @@ func NewListCmd() *cobra.Command {
 				return err
 			}
 
-			sortField, err := transmission.ParseSortField(sortFlag)
+			defaults, err := resolveListDefaults(cmd)
 			if err != nil {
 				return err
 			}
 
-			columns, err := parseFields(listFields, defaultFieldKeys, fieldsFlag)
+			sortField, err := transmission.ParseSortField(flagOr(cmd, "sort", sortFlag, defaults.sort))
+			if err != nil {
+				return err
+			}
+
+			// An empty --fields selects the configured columns, which are
+			// themselves defaultFieldKeys when nothing is stored.
+			columns, err := parseFields(listFields, defaults.columns, fieldsFlag)
 			if err != nil {
 				return err
 			}
@@ -222,7 +305,7 @@ func NewListCmd() *cobra.Command {
 			// mode (table, piped, JSON/jq).
 			torrents = transmission.FilterByStatus(torrents, filter)
 			torrents = transmission.SearchByName(torrents, searchFlag)
-			torrents = transmission.SortTorrents(torrents, sortField, reverse)
+			torrents = transmission.SortTorrents(torrents, sortField, flagOr(cmd, "reverse", reverse, defaults.reverse))
 
 			if jqExpr != "" {
 				return output.JQ(cmd.OutOrStdout(), jsonSlice(torrents), jqExpr)

@@ -909,22 +909,42 @@ Show only torrents whose name contains
 (case-insensitive).
 .TP
 .BR \-\-sort " " \fIfield\fR
-Sort by field (default
-.BR queue ).
-One of
+Sort by field. One of
 .BR queue ", " name ", " added ", " size ", " progress ", " ratio ", " speed .
+Overrides
+.BR client.list_sort ,
+which defaults to
+.BR queue .
 .TP
 .B \-\-reverse
-Reverse the sort order.
+Reverse the sort order. Overrides
+.BR client.list_reverse ,
+which defaults to
+.BR false .
+Pass
+.B \-\-reverse=false
+to override a configured
+.B true
+for one invocation.
 .TP
 .BR \-\-fields " " \fIlist\fR
-Comma-separated columns to show. The default set is
-.BR id , name , status , done , size , down , up , ratio , eta .
-Available columns:
+Comma-separated columns to show. Available columns:
 .BR id ", " hash ", " name ", " status ", " done ", " size ", " down ,
 .BR up ", " ratio ", " eta ", " peers ", " added ", " download_dir ,
 .BR error ", " labels .
+Overrides
+.BR client.list_columns ,
+which defaults to
+.BR id,name,status,done,size,down,up,ratio,eta .
 .RE
+.IP
+Each of
+.BR \-\-sort ", " \-\-reverse ", and " \-\-fields
+takes effect only for the invocation it is passed to; use
+.B snatcher config set
+to change the corresponding
+.B client.*
+key for good.
 .TP
 .B snatcher torrent start \fR[\fIoptions\fR] [\fIid | hash\fR]...
 Start or resume the selected torrents. Besides the common options:
@@ -1701,6 +1721,11 @@ $ theme=$(snatcher config get client.theme)
 # change a setting, then drop it back to its default
 $ snatcher config set client.list_columns id,name,ratio
 $ snatcher config unset client.list_columns
+
+# the list defaults apply with no flags; a flag still wins for one invocation
+$ snatcher config set client.list_sort ratio
+$ snatcher torrent list
+$ snatcher torrent list \-\-sort queue
 
 # override an appearance setting for one invocation, without editing the file
 $ snatcher config list --theme nord

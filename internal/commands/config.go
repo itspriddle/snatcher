@@ -34,6 +34,19 @@ const (
 	sourceDefault = "default"
 )
 
+// The dotted CLI keys, spelled once here so a command that consumes a setting
+// cannot drift from the registry entry that defines it. The registry below
+// remains the source of truth for what each key means; these are only its
+// addresses.
+const (
+	keyTheme        = "client.theme"
+	keyNerdFont     = "client.nerd_font"
+	keyPollInterval = "client.poll_interval"
+	keyListColumns  = "client.list_columns"
+	keyListSort     = "client.list_sort"
+	keyListReverse  = "client.list_reverse"
+)
+
 // clientThemes lists every valid client.theme value. It comes from
 // docs/vision.md; a theme added by the TUI grows this list and nothing else.
 var clientThemes = []string{"default", "dracula", "nord"}
@@ -107,7 +120,7 @@ type clientKeyDef struct {
 // sortedClientKeyDefs.
 var clientKeyRegistry = []clientKeyDef{
 	{
-		key:      "client.theme",
+		key:      keyTheme,
 		def:      "default",
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.Theme) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.Theme, v) },
@@ -115,7 +128,7 @@ var clientKeyRegistry = []clientKeyDef{
 		override: themeOverride,
 	},
 	{
-		key:      "client.nerd_font",
+		key:      keyNerdFont,
 		def:      true,
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.NerdFont) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.NerdFont, v) },
@@ -123,28 +136,28 @@ var clientKeyRegistry = []clientKeyDef{
 		override: nerdFontOverride,
 	},
 	{
-		key:      "client.poll_interval",
+		key:      keyPollInterval,
 		def:      "5s",
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.PollInterval) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.PollInterval, v) },
 		validate: validatePollInterval,
 	},
 	{
-		key:      "client.list_columns",
+		key:      keyListColumns,
 		def:      defaultFieldKeys,
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.ListColumns) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ListColumns, v) },
 		validate: validateListColumns,
 	},
 	{
-		key:      "client.list_sort",
+		key:      keyListSort,
 		def:      string(transmission.SortQueue),
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.ListSort) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ListSort, v) },
 		validate: validateListSort,
 	},
 	{
-		key:      "client.list_reverse",
+		key:      keyListReverse,
 		def:      false,
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.ListReverse) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ListReverse, v) },
@@ -475,6 +488,36 @@ func resolveClientSetting(cmd *cobra.Command, def clientKeyDef, cfg config.Confi
 	}
 
 	return resolveStoredClientKey(def, cfg)
+}
+
+// clientSetting resolves one registry key for this invocation and returns its
+// effective value in the key's natural Go type. It is the seam a command uses to
+// *consume* a setting, as opposed to reporting one: the same flag > env > config
+// > default chain applies, and an invalid stored value is the same error
+// "config get" gives, naming the key so an operator knows to fix the file rather
+// than the command line.
+//
+// key is one of the constants at the top of this file, so an unknown key is a
+// compile-time impossibility rather than a runtime error.
+func clientSetting[T any](cmd *cobra.Command, cfg config.Config, key string) (T, error) {
+	var zero T
+
+	def, err := lookupClientKey(key)
+	if err != nil {
+		return zero, err
+	}
+
+	entry, err := resolveClientSetting(cmd, def, cfg)
+	if err != nil {
+		return zero, err
+	}
+
+	value, err := typedClientValue[T](entry.Value)
+	if err != nil {
+		return zero, fmt.Errorf("config key %s: %w", key, err)
+	}
+
+	return value, nil
 }
 
 // clientEntries resolves every registry key for this invocation, sorted by key.
