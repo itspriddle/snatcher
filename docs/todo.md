@@ -141,6 +141,19 @@ The one item here that needs new RPC-layer work.
 **Done when:** both wire schemes are covered by tests and `torrent rename`
 round-trips against a real server.
 
+**Shipped.** `Protocol.TorrentRenamePath` speaks `torrent_rename_path` on
+JSON-RPC 2.0 and `torrent-rename-path` on the bespoke scheme, always sending
+`ids` - an omitted `ids` would mean every torrent - and decoding the server's
+`id`/`path`/`name` echo into the canonical `RenameResult`.
+`rpc.Client.TorrentRenamePath` refuses anything but exactly one id, and
+`transmission.Client.RenamePath` takes a `Selector`, rejects `--all` and any
+multi-torrent selection before the wire, and maps failures onto the package
+sentinels. `snatcher torrent rename <id|hash> <path> <new-name>` reads the
+torrent's detail before and after the call, so the name it reports is
+post-rename truth, and gates a root-path rename - the one that renames the
+torrent itself - behind a `[y/N]` confirmation with `--yes` to skip, refusing
+outright rather than prompting when stdin is not a terminal.
+
 ---
 
 ## M4. Client config (`snatcher config`)

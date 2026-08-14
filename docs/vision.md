@@ -59,7 +59,7 @@ Use "snatcher [command] --help" for more information about a command.
 - [x] `snatcher torrent show <hash|id> ...` - show torrent info
 - [x] `snatcher torrent files|peers|trackers <hash|id>` - the detail-pane data
 - [x] `snatcher torrent files update ...` - file priority / wanted
-- [ ] `snatcher torrent rename ...` - `torrent-rename-path`
+- [x] `snatcher torrent rename ...` - `torrent-rename-path`
 - [ ] `snatcher config get|set|list|unset` - snatcher's own settings
 - [ ] `snatcher search ["query"] ...` - search for torrents with Prowlarr
     - [ ] `snatcher server add --type=search|prowlarr ...`  /  - set up prowlarr connection
