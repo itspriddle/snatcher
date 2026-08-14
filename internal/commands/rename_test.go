@@ -100,7 +100,12 @@ func (s *renameStub) handler() http.HandlerFunc {
 		case "torrent-get", "torrent_get":
 			_, _ = w.Write(s.torrentsBody(args.IDs))
 		case "torrent-rename-path", "torrent_rename_path":
-			if strings.TrimSuffix(args.Path, "/") == s.name {
+			// Exactly how Transmission matches it: the path is compared
+			// byte-for-byte against the torrent name, with no normalisation. A
+			// stub that trimmed a trailing slash here would keep renaming the
+			// torrent for a path the real server would reject, and the
+			// trailing-slash guard tests would pass on an untrimmed call.
+			if args.Path == s.name {
 				s.name = args.Name
 			}
 			_, _ = w.Write(s.renameBody(args.Path, args.Name))
