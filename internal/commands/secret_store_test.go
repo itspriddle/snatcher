@@ -118,6 +118,50 @@ func TestResolveStoreModeWithoutSecretStoreKeyInConfig(t *testing.T) {
 	assert.Equal(t, storeKeyring, mode)
 }
 
+func TestAddStoreMode(t *testing.T) {
+	tests := []struct {
+		name string
+
+		storeFlag   string
+		flagChanged bool
+		env         string
+		prev        string
+
+		want   storeMode
+		errHas string
+	}{
+		{name: "nothing set defaults to the keyring", want: storeKeyring},
+		{name: "flag alone", storeFlag: "file", flagChanged: true, want: storeFile},
+		{name: "env alone", env: "file", want: storeFile},
+		{name: "previous server's store alone", prev: "file", want: storeFile},
+		{name: "env overrides the previous store", env: "none", prev: "file", want: storeNone},
+		{name: "flag overrides the env", storeFlag: "file", flagChanged: true, env: "none", want: storeFile},
+		{name: "flag overrides both", storeFlag: "keyring", flagChanged: true, env: "file", prev: "none", want: storeKeyring},
+		{name: "invalid flag", storeFlag: "vault", flagChanged: true, errHas: "invalid secret store"},
+		{name: "invalid env", env: "vault", errHas: envSecretStore},
+		{name: "invalid previous store", prev: "vault", errHas: "config secret_store"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envSecretStore, tc.env)
+
+			got, err := addStoreMode(tc.storeFlag, tc.flagChanged, config.Server{
+				URL:         "http://host:9091/rpc",
+				SecretStore: tc.prev,
+			})
+			if tc.errHas != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errHas)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestOpenStore(t *testing.T) {
 	stateDir(t)
 
@@ -212,6 +256,120 @@ func TestServerAddKeepsStoreWhenFlagOmitted(t *testing.T) {
 	require.NoError(t, loadErr)
 	assert.Equal(t, "bob", cfg.Servers["host:9091"].Username)
 	assert.Equal(t, "file", cfg.Servers["host:9091"].SecretStore)
+}
+
+func TestServerAddPersistsResolvedStoreWhenFlagOmitted(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	t.Setenv(envSecretStore, "file")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	// No OS keyring at all, so the password can only have landed in the file
+	// store the environment named.
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	out, errOut, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", serverURL,
+		"--username", "alice",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, out, "plaintext")
+	assert.NotContains(t, out+errOut, "dbus-launch")
+
+	store, storeErr := secrets.NewFileStore("")
+	require.NoError(t, storeErr)
+	password, getErr := store.Get(serverURL)
+	require.NoError(t, getErr)
+	assert.Equal(t, "hunter2", password)
+	require.FileExists(t, secretsPath)
+
+	// The store that took the password is the store recorded with the server,
+	// not the default the flag would have left in place.
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, "file", cfg.Servers["host:9091"].SecretStore)
+
+	// So the next run, with the variable gone, still finds the password instead
+	// of reporting an unreferenced plaintext credential as absent.
+	t.Setenv(envSecretStore, "")
+
+	listOut, _, listErr := runServer(t, "", "list", "--config", cfgPath, "--json")
+	require.NoError(t, listErr)
+
+	var results []serverListResult
+	require.NoError(t, json.Unmarshal([]byte(listOut), &results))
+	require.Len(t, results, 1)
+	assert.True(t, results[0].SecretStored)
+}
+
+func TestServerAddStoreFlagWinsOverEnv(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	// The environment says "none", the command line says "file": a store named
+	// on the command line outranks one exported in a shell, so the password is
+	// stored rather than refused as undiscardable.
+	t.Setenv(envSecretStore, "none")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	out, _, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", serverURL,
+		"--username", "alice",
+		"--password-stdin",
+		"--store", "file",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, out, "plaintext")
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, "file", cfg.Servers["host:9091"].SecretStore)
+
+	store, storeErr := secrets.NewFileStore("")
+	require.NoError(t, storeErr)
+	password, getErr := store.Get(serverURL)
+	require.NoError(t, getErr)
+	assert.Equal(t, "hunter2", password)
+	require.FileExists(t, secretsPath)
+}
+
+func TestServerAddStoreFlagWinsOverEnvWhenItRefuses(t *testing.T) {
+	// The same precedence in the direction that fails: --store=keyring with no
+	// reachable keyring must abort, even though the environment names a store
+	// that would have taken the password.
+	t.Setenv(envSecretStore, "file")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	out, errOut, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", "http://host:9091/transmission/rpc",
+		"--username", "alice",
+		"--password-stdin",
+		"--store", "keyring",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--store=file")
+	assert.NotContains(t, err.Error()+out+errOut, "dbus-launch")
+
+	// The refusal is still atomic, and the file store the environment named was
+	// never written to as a consolation.
+	assert.NoFileExists(t, cfgPath)
+	assert.NoFileExists(t, secretsPath)
 }
 
 func TestServerAddRejectsUnknownStore(t *testing.T) {
@@ -469,6 +627,22 @@ func TestKeyringModeNeverTouchesFileStore(t *testing.T) {
 	_, _, err = runServer(t, "", "list", "--config", cfgPath)
 	require.NoError(t, err)
 	assert.NoFileExists(t, secretsPath)
+}
+
+func TestKeyringModeNeverReadsExistingFileStore(t *testing.T) {
+	secretsPath := stateDir(t)
+
+	// The mixed box: another server opted into the file store, so secrets.json
+	// already exists and holds a password for this very URL (authProbe stores
+	// one). With the keyring unreachable, keyring mode must still send no
+	// password — "never consults the file store" is stronger than "never
+	// creates it", and only the credentials on the wire can tell them apart.
+	user, password := authProbe(t, "keyring", "", "")
+	assert.Equal(t, "alice", user)
+	assert.Empty(t, password)
+
+	// The file the probe wrote was there to be read the whole time.
+	assert.FileExists(t, secretsPath)
 }
 
 func TestServerListReadsResolvedStore(t *testing.T) {

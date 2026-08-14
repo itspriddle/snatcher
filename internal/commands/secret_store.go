@@ -149,20 +149,32 @@ func serverStore(srv config.Server) (secretStore, error) {
 	return openStore(mode)
 }
 
-// storeForPassword resolves and opens the store srv's password belongs in and,
-// when there is a password to store, probes up front that the store can hold
-// one — without writing anything.
+// addStoreMode resolves the store mode "server add" both writes the password to
+// and records with the server.
+//
+// An explicit --store outranks SNATCHER_SECRET_STORE here, unlike every read
+// path: the flag is the more deliberate signal, and letting an exported
+// environment variable quietly overrule it would write the password to one store
+// while saving the name of another. With the flag omitted the usual precedence
+// applies — the environment, then the store the alias already used, then the
+// keyring — and the resolved mode is saved, so a later run resolves the store
+// that actually holds the password even once the variable is gone.
+func addStoreMode(storeFlag string, flagChanged bool, prev config.Server) (storeMode, error) {
+	if flagChanged {
+		return parseStoreMode(storeFlag)
+	}
+
+	return resolveStoreMode(prev)
+}
+
+// storeForPassword opens the store mode names and, when there is a password to
+// store, probes up front that the store can hold one — without writing anything.
 //
 // Probing first is what keeps "server add" atomic. A password with nowhere to go
 // must abort the command, naming every way forward, rather than registering a
 // server that silently has no password. An empty password is not probed at all:
 // there is nothing to persist, so an unreachable store cannot lose anything.
-func storeForPassword(srv config.Server, password string) (secretStore, error) {
-	mode, err := resolveStoreMode(srv)
-	if err != nil {
-		return nil, err
-	}
-
+func storeForPassword(mode storeMode, serverURL, password string) (secretStore, error) {
 	store, err := openStore(mode)
 	if err != nil {
 		return nil, err
@@ -175,14 +187,14 @@ func storeForPassword(srv config.Server, password string) (secretStore, error) {
 	if mode == storeNone {
 		return nil, fmt.Errorf(
 			"the secret store for %q is %q: the password cannot be stored and would be discarded, so nothing was saved; re-run with an empty password, or choose a store with --store=keyring or --store=file",
-			srv.URL, storeNone,
+			serverURL, storeNone,
 		)
 	}
 
 	// A read is the only way to ask "is this store there?" without changing it.
 	// No entry for this URL is the expected answer for a new server and still
 	// proves the store answered.
-	if _, err := store.Get(srv.URL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+	if _, err := store.Get(serverURL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
 		if errors.Is(err, secrets.ErrUnavailable) {
 			return nil, errors.New(storeUnavailableAdvice)
 		}

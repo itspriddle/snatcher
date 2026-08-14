@@ -152,13 +152,18 @@ to
 created with mode 0600 under a 0700 directory; it exists for machines with no
 OS keyring and is less safe than the keyring.
 .B none
-stores nothing at all. The value is saved with the server, so later commands
-use the same store without repeating the option; when it is omitted an existing
-server keeps the store it already had. See also
+stores nothing at all. Whichever store is chosen is both written to and saved
+with the server, so later commands use the same store without repeating the
+option. When the option is omitted the store is resolved the usual way \(em
 .B SNATCHER_SECRET_STORE
-under
-.BR ENVIRONMENT ,
-which overrides it.
+first, then the store the alias already had, then
+.B keyring
+\(em and that result is saved. An explicit
+.B \-\-store
+outranks
+.BR SNATCHER_SECRET_STORE ,
+which is the one place it does; see
+.BR ENVIRONMENT .
 .RE
 .TP
 .B snatcher server list \fR[\fIoptions\fR]
@@ -989,7 +994,12 @@ over the server's
 .B secret_store
 value in the config file, over
 .BR keyring .
-An unrecognized value is an error, never a silent fallback.
+An unrecognized value is an error, never a silent fallback. An explicit
+.B \-\-store
+on
+.B "snatcher server add"
+outranks it, so the store saved with a server is always the one its password
+was written to.
 .TP
 .B SNATCHER_PASSWORD
 Supplies the password for this invocation, ahead of every secret store. When it

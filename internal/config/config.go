@@ -45,8 +45,9 @@ const (
 // by URL (see internal/secrets).
 //
 // SecretStore names which store holds that password. It is written by
-// "server add --store" and read back by every command that needs the password,
-// so a store is chosen once rather than re-passed. An empty value means the
+// "server add" — always the store that add actually wrote to — and read back by
+// every command that needs the password, so a store is chosen once rather than
+// re-passed. An empty value means the
 // default store, so a config file written before the field existed loads
 // unchanged; the valid values and their precedence are owned by the command
 // layer, not by this package.

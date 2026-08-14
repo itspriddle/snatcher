@@ -59,8 +59,9 @@ func secretAbsent(err error) bool {
 // in config and the password in a secret store. The password is read from a
 // hidden TTY prompt or, for scripting, from stdin via --password-stdin.
 //
-// --store picks which store holds the password and is persisted with the
-// server, so later commands resolve the same store without re-passing it.
+// --store picks which store holds the password. Whichever store is resolved is
+// both written to and persisted with the server, so later commands resolve the
+// same store without re-passing the flag.
 func newServerAddCmd() *cobra.Command {
 	var (
 		configPath    string
@@ -108,25 +109,21 @@ func newServerAddCmd() *cobra.Command {
 
 			prev := cfg.Servers[alias]
 
-			// An omitted --store keeps whatever store the alias already used, so
-			// re-running "server add" to change a username does not silently move
-			// the password to a different store.
-			secretStore := prev.SecretStore
-			if cmd.Flags().Changed("store") {
-				mode, err := parseStoreMode(storeFlag)
-				if err != nil {
-					return err
-				}
-				secretStore = string(mode)
+			// One mode decides both where the password is written and what is
+			// saved with the server, so config can never name a store the
+			// password did not go to.
+			mode, err := addStoreMode(storeFlag, cmd.Flags().Changed("store"), prev)
+			if err != nil {
+				return err
 			}
 
-			srv := config.Server{URL: serverURL, Username: username, SecretStore: secretStore}
+			srv := config.Server{URL: serverURL, Username: username, SecretStore: string(mode)}
 
-			// Resolve the store and confirm it can hold the password before
-			// anything is written. A password with nowhere to go must leave config
-			// and every store untouched rather than registering a server that
-			// silently has no password.
-			store, err := storeForPassword(srv, password)
+			// Confirm the store can hold the password before anything is written.
+			// A password with nowhere to go must leave config and every store
+			// untouched rather than registering a server that silently has no
+			// password.
+			store, err := storeForPassword(mode, serverURL, password)
 			if err != nil {
 				return err
 			}
