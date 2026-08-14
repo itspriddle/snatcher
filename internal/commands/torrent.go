@@ -5,13 +5,17 @@ import (
 )
 
 // NewTorrentCmd builds the "torrent" command group, the namespace for every
-// torrent-scoped action: add, show, files, peers, trackers, list, start, stop,
-// verify, reannounce, move, remove, and update. It owns no behavior of its own —
-// a bare "snatcher torrent" prints subcommand help — and re-parents the existing
-// per-command constructors so their full paths become "snatcher torrent <cmd>".
-// It mirrors the settings group's structure (parent command plus AddCommand
-// children), differing only in that bare invocation shows help rather than
-// running a default action.
+// torrent-scoped action. It owns no behavior of its own — a bare "snatcher
+// torrent" prints subcommand help — and re-parents the existing per-command
+// constructors so their full paths become "snatcher torrent <cmd>". It mirrors
+// the settings group's structure (parent command plus AddCommand children),
+// differing only in that bare invocation shows help rather than running a
+// default action.
+//
+// The subcommands are enumerated once, in Long, in the same order as the man
+// page's .SS "torrent" summary line. That list is pinned to the registered set
+// by TestTorrentGroupLongNamesEverySubcommand — neither check-surface nor
+// check-man guards help prose, and this sentence has drifted before.
 func NewTorrentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "torrent",
@@ -19,8 +23,8 @@ func NewTorrentCmd() *cobra.Command {
 		Long: "Manage torrents.\n\n" +
 			"Group of commands for listing, inspecting, adding, controlling, and " +
 			"removing torrents on the server. Run a subcommand (add, show, files, " +
-			"peers, trackers, list, start, stop, verify, reannounce, move, update, " +
-			"remove) to act on torrents.",
+			"peers, trackers, list, start, stop, verify, reannounce, move, queue, " +
+			"remove, update) to act on torrents.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
