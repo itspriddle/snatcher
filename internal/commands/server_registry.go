@@ -203,16 +203,17 @@ func newServerAddCmd() *cobra.Command {
 // stays readable in secrets.json, so the command's own output contradicts the
 // disk after an explicit opt-out.
 //
-// The old secret lives in whichever store the previous entry resolves to, which
-// is not necessarily the one the new entry uses. This is scoped to the alias
-// being changed; other servers' secrets are untouched. A missing entry — or no
-// reachable store to hold one — is fine.
+// The old secret lives in the store the previous entry itself names — not the
+// one SNATCHER_SECRET_STORE points at for this invocation, which would compare
+// and then delete from the wrong store (see recordedStoreMode). This is scoped
+// to the alias being changed; other servers' secrets are untouched. A missing
+// entry — or no reachable store to hold one — is fine.
 func clearPreviousSecret(prev config.Server, serverURL string, mode storeMode) error {
 	if prev.URL == "" {
 		return nil
 	}
 
-	prevMode, err := resolveStoreMode(prev)
+	prevMode, err := recordedStoreMode(prev)
 	if err != nil {
 		return err
 	}
@@ -521,9 +522,13 @@ func newServerPingCmd() *cobra.Command {
 
 // newServerRemoveCmd builds "server remove [alias]", which removes a named server
 // (or the configured default when the alias is omitted): it deletes the server's
-// entry from config, deletes its keyring secret, and persists. When the removed
+// entry from config, deletes its stored secret, and persists. When the removed
 // server was the default, the default is repointed to the sole remaining server
 // if exactly one remains, otherwise it is cleared.
+//
+// The secret is deleted from the store the server itself names, not the one
+// SNATCHER_SECRET_STORE selects for this invocation: removal is cleanup, and the
+// only store worth cleaning is the one holding the password.
 func newServerRemoveCmd() *cobra.Command {
 	var configPath string
 
@@ -555,7 +560,7 @@ func newServerRemoveCmd() *cobra.Command {
 			// removed either way, with a note that a secret may survive in a store
 			// snatcher cannot reach to delete it from.
 			if srv.URL != "" {
-				store, err := serverStore(srv)
+				store, err := recordedStore(srv)
 				if err != nil {
 					return err
 				}

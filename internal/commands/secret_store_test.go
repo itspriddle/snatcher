@@ -118,6 +118,38 @@ func TestResolveStoreModeWithoutSecretStoreKeyInConfig(t *testing.T) {
 	assert.Equal(t, storeKeyring, mode)
 }
 
+func TestRecordedStoreMode(t *testing.T) {
+	tests := []struct {
+		name   string
+		env    string
+		field  string
+		want   storeMode
+		errHas string
+	}{
+		{name: "no field defaults to the keyring", want: storeKeyring},
+		{name: "the field is the answer", field: "file", want: storeFile},
+		{name: "the environment is ignored", env: "none", field: "file", want: storeFile},
+		{name: "the environment cannot supply a mode", env: "file", want: storeKeyring},
+		{name: "the environment cannot rescue an invalid field", env: "file", field: "vault", errHas: "config secret_store"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envSecretStore, tc.env)
+
+			got, err := recordedStoreMode(config.Server{URL: "http://host:9091/rpc", SecretStore: tc.field})
+			if tc.errHas != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errHas)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestAddStoreMode(t *testing.T) {
 	tests := []struct {
 		name string
@@ -682,6 +714,60 @@ func TestServerAddClearsSecretWhenStoreChanges(t *testing.T) {
 	}
 }
 
+// TestServerAddClearsSecretUnderStoreOverride is the pre-clear's half of the
+// same rule "server remove" follows: the store being left is the one the server
+// itself names. With SNATCHER_SECRET_STORE exported, both sides of the
+// comparison used to resolve to the overriding value, so nothing looked like a
+// change and the plaintext password stayed in secrets.json.
+func TestServerAddClearsSecretUnderStoreOverride(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	t.Setenv(envSecretStore, "")
+	secretsPath := stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	keyring.MockInit()
+	resetStoreUnavailableWarning(t)
+
+	_, _, err := runServer(t, "hunter2\n",
+		"add",
+		"--config", cfgPath,
+		"--url", serverURL,
+		"--username", "alice",
+		"--password-stdin",
+		"--store", "file",
+	)
+	require.NoError(t, err)
+	require.FileExists(t, secretsPath)
+
+	fileStore, storeErr := secrets.NewFileStore("")
+	require.NoError(t, storeErr)
+	stored, getErr := fileStore.Get(serverURL)
+	require.NoError(t, getErr)
+	require.Equal(t, "hunter2", stored)
+
+	// The environment moves this add to "none"; the secret it replaces still
+	// lives in the file store the server was registered with.
+	t.Setenv(envSecretStore, "none")
+
+	out, _, err := runServer(t, "",
+		"add",
+		"--config", cfgPath,
+		"--url", serverURL,
+		"--username", "alice",
+		"--password-stdin",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, out, "no password stored")
+
+	_, getErr = fileStore.Get(serverURL)
+	require.ErrorIs(t, getErr, secrets.ErrNotFound)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Equal(t, string(storeNone), cfg.Servers["host:9091"].SecretStore)
+}
+
 func TestServerAddDropsTheSecretWhenSavingConfigFails(t *testing.T) {
 	const serverURL = "http://host:9091/transmission/rpc"
 
@@ -815,6 +901,36 @@ func TestServerRemoveDeletesFromResolvedStore(t *testing.T) {
 	out, _, err := runServer(t, "", "remove", "--config", cfgPath)
 	require.NoError(t, err)
 	assert.Contains(t, out, "Removed server")
+
+	_, getErr := store.Get(url)
+	require.ErrorIs(t, getErr, secrets.ErrNotFound)
+}
+
+// TestServerRemoveIgnoresStoreOverride pins that removal cleans up the store the
+// server itself names. Under SNATCHER_SECRET_STORE=none the delete used to go to
+// the "none" store, which reports "no entry" for everything, so removing a
+// file-backed server printed success with an empty stderr and left the plaintext
+// password readable in secrets.json.
+func TestServerRemoveIgnoresStoreOverride(t *testing.T) {
+	t.Setenv(envSecretStore, "none")
+	stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://host:9091/rpc"
+
+	store, err := secrets.NewFileStore("")
+	require.NoError(t, err)
+	require.NoError(t, store.Set(url, "hunter2"))
+
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"host": {URL: url, Username: "alice", SecretStore: "file"}},
+		DefaultServer: "host",
+	}, cfgPath))
+
+	out, errOut, err := runServer(t, "", "remove", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Removed server")
+	assert.Empty(t, errOut)
 
 	_, getErr := store.Get(url)
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)

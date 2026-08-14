@@ -265,10 +265,16 @@ Accepts
 .BR \-\-config " and " \-\-json .
 .TP
 .B snatcher server remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
-Remove a configured server: delete its keyring secret, drop its entry from the
+Remove a configured server: delete its stored secret, drop its entry from the
 config file, and persist. Removes the named server
 .IR alias ,
-or the configured default when the alias is omitted. When the removed server was
+or the configured default when the alias is omitted. The secret is deleted from
+the store the server itself names
+.RB ( secret_store ),
+not the one
+.B SNATCHER_SECRET_STORE
+selects for this invocation, so an exported override cannot leave a password
+behind in a store nothing points at any more. When the removed server was
 the default, the default is repointed to the sole remaining server if exactly
 one remains, otherwise it is cleared. An unknown alias is rejected. Accepts
 .BR \-\-config .
@@ -1000,7 +1006,12 @@ An unrecognized value is an error, never a silent fallback. An explicit
 on
 .B "snatcher server add"
 outranks it, so the store saved with a server is always the one its password
-was written to.
+was written to. It is also ignored when a secret is deleted rather than read:
+.B "snatcher server remove"
+and the clean-up
+.B "snatcher server add"
+performs when an alias's URL or store changes both act on the store the server
+itself names, since that is where the password to delete actually is.
 .TP
 .B SNATCHER_PASSWORD
 Supplies the password for this invocation, ahead of every secret store. When it

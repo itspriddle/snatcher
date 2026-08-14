@@ -110,16 +110,31 @@ func resolveStoreMode(srv config.Server) (storeMode, error) {
 		return mode, nil
 	}
 
-	if strings.TrimSpace(srv.SecretStore) != "" {
-		mode, err := parseStoreMode(srv.SecretStore)
-		if err != nil {
-			return "", fmt.Errorf("config secret_store: %w", err)
-		}
+	return recordedStoreMode(srv)
+}
 
-		return mode, nil
+// recordedStoreMode returns the store mode srv itself names — its secret_store
+// value, or the keyring when that is omitted — ignoring SNATCHER_SECRET_STORE.
+//
+// This is the mode to use when the question is "where does this server's
+// existing secret live", rather than "which store should this invocation read".
+// "server add" always saves the store it actually wrote the password to, so the
+// server's own value is the authoritative answer, and an exported environment
+// variable pointing somewhere else cannot make a secret move. Honoring the
+// override on a cleanup path would delete from the wrong store and report
+// success while a live password — plaintext, under the file store — stayed on
+// disk.
+func recordedStoreMode(srv config.Server) (storeMode, error) {
+	if strings.TrimSpace(srv.SecretStore) == "" {
+		return storeKeyring, nil
 	}
 
-	return storeKeyring, nil
+	mode, err := parseStoreMode(srv.SecretStore)
+	if err != nil {
+		return "", fmt.Errorf("config secret_store: %w", err)
+	}
+
+	return mode, nil
 }
 
 // openStore builds the store named by mode. Nothing is read or created here;
@@ -138,10 +153,23 @@ func openStore(mode storeMode) (secretStore, error) {
 }
 
 // serverStore resolves srv's store mode and opens that store. Every command
-// that touches a password goes through it, so the mode is resolved the same way
-// everywhere.
+// that reads or writes a password for this invocation goes through it, so the
+// mode is resolved the same way everywhere.
 func serverStore(srv config.Server) (secretStore, error) {
 	mode, err := resolveStoreMode(srv)
+	if err != nil {
+		return nil, err
+	}
+
+	return openStore(mode)
+}
+
+// recordedStore opens the store srv itself names (see recordedStoreMode). It is
+// the counterpart to serverStore for the paths that delete a secret a server
+// already has — "server remove", and "server add" clearing the entry it is
+// replacing — where the only correct target is the store holding the secret.
+func recordedStore(srv config.Server) (secretStore, error) {
+	mode, err := recordedStoreMode(srv)
 	if err != nil {
 		return nil, err
 	}
