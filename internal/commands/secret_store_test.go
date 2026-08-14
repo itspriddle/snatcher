@@ -806,6 +806,99 @@ func TestServerAddDropsTheSecretWhenSavingConfigFails(t *testing.T) {
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
 }
 
+// TestServerAddSaveFailureRollbackMatchesTheRekeyRule pins both halves of the
+// config.Save rollback guard, which must ask the same question the pre-clear
+// asks.
+//
+// It has to fire whenever the add pointed the alias somewhere new — a changed
+// store counts, not only a changed URL. There the pre-clear has already dropped
+// the old secret, so skipping the rollback leaves the previously working server
+// broken and the freshly written password orphaned for good: a later corrective
+// add compares the same store to itself and never clears it.
+//
+// It must not fire otherwise. On a failed username edit the saved config still
+// names this URL and this store, so the password just written is that server's
+// live credential, and deleting it would leave a working server unable to
+// authenticate.
+func TestServerAddSaveFailureRollbackMatchesTheRekeyRule(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	tests := []struct {
+		name       string
+		firstStore string
+		wantStored string // "" means the file store must hold no entry
+	}{
+		{
+			name:       "store changed drops the secret the failed add wrote",
+			firstStore: "keyring",
+			wantStored: "",
+		},
+		{
+			name:       "same URL and store keeps the live password",
+			firstStore: "file",
+			wantStored: "hunter2",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envSecretStore, "")
+			stateDir(t)
+			cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+			keyring.MockInit()
+
+			_, _, err := runServer(t, "hunter2\n",
+				"add",
+				"--config", cfgPath,
+				"--url", serverURL,
+				"--username", "alice",
+				"--password-stdin",
+				"--store", tc.firstStore,
+			)
+			require.NoError(t, err)
+
+			before, readErr := os.ReadFile(cfgPath)
+			require.NoError(t, readErr)
+
+			// A read-only config file still loads, so the second add gets all the
+			// way to config.Save — with the secret already written — and fails
+			// there.
+			require.NoError(t, os.Chmod(cfgPath, 0o400))
+			t.Cleanup(func() { _ = os.Chmod(cfgPath, 0o600) })
+
+			// Same alias, same URL, edited username. Only the first add's store
+			// differs between the cases, so this is a store change or it is not.
+			_, _, err = runServer(t, "hunter2\n",
+				"add",
+				"--config", cfgPath,
+				"--url", serverURL,
+				"--username", "bob",
+				"--password-stdin",
+				"--store", "file",
+			)
+			require.Error(t, err)
+
+			after, readErr := os.ReadFile(cfgPath)
+			require.NoError(t, readErr)
+			assert.JSONEq(t, string(before), string(after), "the failed save leaves the registered server as it was")
+
+			fileStore, storeErr := secrets.NewFileStore("")
+			require.NoError(t, storeErr)
+
+			stored, getErr := fileStore.Get(serverURL)
+			if tc.wantStored == "" {
+				require.ErrorIs(t, getErr, secrets.ErrNotFound)
+
+				return
+			}
+
+			require.NoError(t, getErr)
+			assert.Equal(t, tc.wantStored, stored)
+		})
+	}
+}
+
 func TestKeyringModeNeverTouchesFileStore(t *testing.T) {
 	t.Setenv(envSecretStore, "")
 	secretsPath := stateDir(t)

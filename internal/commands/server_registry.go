@@ -117,6 +117,21 @@ func newServerAddCmd() *cobra.Command {
 				return err
 			}
 
+			// Where the alias's existing secret lives — the store the saved
+			// entry itself names, never SNATCHER_SECRET_STORE (see
+			// recordedStoreMode).
+			prevMode, err := recordedStoreMode(prev)
+			if err != nil {
+				return err
+			}
+
+			// Whether the entry being saved points somewhere other than the
+			// alias's existing secret: a different URL, a different store, or
+			// no previous entry at all. The pre-clear and the config.Save
+			// rollback below must key off the same answer — whatever the
+			// pre-clear drops is no longer there to fall back on.
+			rekeyed := prev.URL != serverURL || prevMode != mode
+
 			srv := config.Server{URL: serverURL, Username: username, SecretStore: string(mode)}
 
 			// Confirm the store can hold the password before anything is written.
@@ -128,7 +143,7 @@ func newServerAddCmd() *cobra.Command {
 				return err
 			}
 
-			if err := clearPreviousSecret(prev, serverURL, mode); err != nil {
+			if err := clearPreviousSecret(prev, prevMode, rekeyed); err != nil {
 				return err
 			}
 
@@ -150,13 +165,14 @@ func newServerAddCmd() *cobra.Command {
 				// The secret is written first so a store that refuses it cannot
 				// leave a registered server without a password. The cost of that
 				// ordering is this path: the save failed, so the config on disk
-				// never came to name this URL, and the credential — plaintext,
-				// under --store=file — would be stranded for a server that does not
-				// exist. Drop it again, best effort. When the saved config already
-				// pointed this alias at the same URL its secret stays: that entry
-				// is still live, and clearing it would leave a working server
+				// never came to name this URL and store, and the credential —
+				// plaintext, under --store=file — would be stranded for an entry
+				// that does not exist. Drop it again, best effort. Only when the
+				// add was rekeyed: otherwise the saved config still points this
+				// alias at exactly the URL and store just written, so that
+				// password is live, and clearing it would leave a working server
 				// unable to authenticate.
-				if password != "" && prev.URL != serverURL {
+				if password != "" && rekeyed {
 					_ = store.Delete(serverURL)
 				}
 
@@ -193,9 +209,9 @@ func newServerAddCmd() *cobra.Command {
 	return cmd
 }
 
-// clearPreviousSecret drops the secret an existing alias used to keep, whenever
-// the entry replacing it no longer points at that secret: either the URL
-// changed, or the store did.
+// clearPreviousSecret drops the secret an existing alias used to keep, when
+// rekeyed says the entry replacing it no longer points at that secret: either
+// the URL changed, or the store did.
 //
 // Both leave a secret nothing will ever read again. The store change is the
 // sharper case: re-running "server add --store=none" on a server added with
@@ -203,22 +219,13 @@ func newServerAddCmd() *cobra.Command {
 // stays readable in secrets.json, so the command's own output contradicts the
 // disk after an explicit opt-out.
 //
-// The old secret lives in the store the previous entry itself names — not the
-// one SNATCHER_SECRET_STORE points at for this invocation, which would compare
-// and then delete from the wrong store (see recordedStoreMode). This is scoped
-// to the alias being changed; other servers' secrets are untouched. A missing
-// entry — or no reachable store to hold one — is fine.
-func clearPreviousSecret(prev config.Server, serverURL string, mode storeMode) error {
-	if prev.URL == "" {
-		return nil
-	}
-
-	prevMode, err := recordedStoreMode(prev)
-	if err != nil {
-		return err
-	}
-
-	if prev.URL == serverURL && prevMode == mode {
+// prevMode is where the old secret lives: the store the previous entry itself
+// names, not the one SNATCHER_SECRET_STORE points at for this invocation, which
+// would delete from the wrong store (see recordedStoreMode). This is scoped to
+// the alias being changed; other servers' secrets are untouched. A missing entry
+// — or no reachable store to hold one — is fine.
+func clearPreviousSecret(prev config.Server, prevMode storeMode, rekeyed bool) error {
+	if prev.URL == "" || !rekeyed {
 		return nil
 	}
 
