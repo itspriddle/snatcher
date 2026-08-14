@@ -550,7 +550,7 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR add ", " show ", " files ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
+.BR add ", " show ", " files ", " peers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
@@ -721,6 +721,40 @@ Do not download the selected files. Mutually exclusive with
 Comma-separated columns to show, in the given order \(em the same columns as
 .BR "snatcher torrent files" :
 .BR index ", " name ", " size ", " done ", " percent ", " priority ", " wanted .
+.RE
+.TP
+.B snatcher torrent peers \fR[\fIoptions\fR] \fIid | hash\fR
+List the peers a single torrent is currently connected to, identified by its
+numeric id or 40-character SHA1 info-hash. Exactly one selector is required, so a
+bare
+.B snatcher torrent peers
+is an error, not a no-op. On a terminal the output is an aligned table with a
+header; when piped (or when
+.B NO_COLOR
+is set) it is tab-separated, full-value rows with no header \(em a stable
+scripting contract. A torrent with no connected peers prints
+.B "No peers."
+on a terminal and nothing when piped. With
+.B \-\-json
+the peers are emitted as an array in the server's order.
+.IP
+The
+.B client
+and
+.B status
+columns are chosen by the remote peer, not by the server, so they are
+neutralized of terminal control sequences in the plaintext output;
+.B \-\-json
+and
+.B \-\-jq
+emit them verbatim. Besides the common options:
+.RS
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order. When omitted every column
+is shown. Available columns:
+.BR address ", " port ", " client ", " progress ", " down ", " up ,
+.BR encrypted ", " status .
 .RE
 .TP
 .B snatcher torrent list \fR[\fIoptions\fR]
