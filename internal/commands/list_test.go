@@ -339,6 +339,31 @@ func TestListFieldsInvalidKeyErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "download_dir", "the valid-keys list includes registry keys")
 }
 
+// TestListFieldKeysCoverRegistry is list's copy of the registry drift guard
+// US-008 added to show, files, peers, and trackers. The --fields help string and
+// the default column order are built from the hand-written key slices while
+// parseFields validates against the registry map, so a column added to
+// listFields but forgotten in allFieldKeys is silently unselectable and every
+// slice-iterating test still passes. list was the last registry without the
+// guard, and its absence surfaced in the wrong place: detailFields promotes
+// listFields, so the omission failed show_test.go's guard instead.
+func TestListFieldKeysCoverRegistry(t *testing.T) {
+	assert.Len(t, allFieldKeys, len(listFields), "the help names every registry key")
+	assert.Subset(t, allFieldKeys, defaultFieldKeys,
+		"the default column set is drawn from the help set")
+}
+
+// TestParseFieldsRejectsUnknownDefault pins the validation of the *caller's*
+// defaults slice, not the user's --fields spec. Before it, a typo in a defaults
+// slice produced a zero column[T] whose nil value accessor panicked in
+// cellValue at render time; now it is an error naming the key.
+func TestParseFieldsRejectsUnknownDefault(t *testing.T) {
+	_, err := parseFields(listFields, []string{"id", "bogus"}, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `default field "bogus" is not in the registry`)
+	assert.Contains(t, err.Error(), "valid fields are", "the error lists the valid keys")
+}
+
 func TestParseFieldsDefault(t *testing.T) {
 	cols, err := parseFields(listFields, defaultFieldKeys, "")
 	require.NoError(t, err)

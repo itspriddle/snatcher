@@ -100,7 +100,9 @@ var defaultFieldKeys = []string{
 // allFieldKeys is every selectable field key in registry order. It is the
 // canonical ordering of listFields, shared by the --fields help text, the man
 // page, and the show command's default (which shows the complete set rather
-// than list's smaller defaultFieldKeys).
+// than list's smaller defaultFieldKeys). TestListFieldKeysCoverRegistry pins it
+// to listFields, since the help string is built from this slice while
+// parseFields validates against the registry map.
 var allFieldKeys = []string{
 	"id", "hash", "name", "status", "done", "size", "down", "up", "ratio",
 	"eta", "peers", "added", "download_dir", "error", "labels",
@@ -122,8 +124,15 @@ func validFieldKeys[T any](registry map[string]column[T]) string {
 // parseFields resolves a --fields value into the ordered columns to render,
 // looked up in the calling command's own registry. An empty spec selects the
 // given defaults (list passes defaultFieldKeys, show passes the full
-// allFieldKeys). An unknown key returns an error listing the registry's valid
+// detailFieldKeys). An unknown key returns an error listing the registry's valid
 // keys. Keys are matched case-insensitively after trimming whitespace.
+//
+// The caller's defaults are validated too, not just the user's spec. A key in a
+// defaults slice that is absent from the registry would otherwise yield a zero
+// column[T] whose nil value accessor panics in cellValue — a typo becoming a
+// crash at render time rather than an error at parse time. The two failures
+// carry different messages because they have different audiences: an invalid
+// field is user input, an unknown default is a programming mistake.
 func parseFields[T any](registry map[string]column[T], defaults []string, spec string) ([]column[T], error) {
 	keys := defaults
 	if strings.TrimSpace(spec) != "" {
@@ -145,7 +154,14 @@ func parseFields[T any](registry map[string]column[T], defaults []string, spec s
 
 	cols := make([]column[T], len(keys))
 	for i, key := range keys {
-		cols[i] = registry[key]
+		// A miss here can only come from the defaults: the spec branch above
+		// validated every key it appended, and reports the raw token verbatim,
+		// which this loop no longer has.
+		col, ok := registry[key]
+		if !ok {
+			return nil, fmt.Errorf("default field %q is not in the registry: valid fields are %s", key, validFieldKeys(registry))
+		}
+		cols[i] = col
 	}
 
 	return cols, nil
@@ -231,7 +247,7 @@ func NewListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sortFlag, "sort", "queue", "sort by field (queue, name, added, size, progress, ratio, speed)")
 	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to torrents whose name contains this text (case-insensitive)")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "reverse the sort order")
-	cmd.Flags().StringVar(&fieldsFlag, "fields", "", "comma-separated columns to show (id, hash, name, status, done, size, down, up, ratio, eta, peers, added, download_dir, error, labels)")
+	cmd.Flags().StringVar(&fieldsFlag, "fields", "", fmt.Sprintf("comma-separated columns to show, in order (%s)", strings.Join(allFieldKeys, ", ")))
 
 	return cmd
 }
