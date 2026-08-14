@@ -210,11 +210,11 @@ func NewListCmd() *cobra.Command {
 			torrents = transmission.SortTorrents(torrents, sortField, reverse)
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), jsonTorrents(torrents), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), jsonSlice(torrents), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), jsonTorrents(torrents))
+				return output.JSON(cmd.OutOrStdout(), jsonSlice(torrents))
 			}
 
 			writeListPlaintext(cmd, torrents, columns, "No torrents.")
@@ -236,14 +236,18 @@ func NewListCmd() *cobra.Command {
 	return cmd
 }
 
-// jsonTorrents normalizes a torrent slice for structured output so an empty
-// result serializes as "[]" rather than "null".
-func jsonTorrents(torrents []transmission.Torrent) []transmission.Torrent {
-	if torrents == nil {
-		return []transmission.Torrent{}
+// jsonSlice normalizes a row slice for structured output so an empty collection
+// serializes as "[]" rather than "null" — no torrents, no files, no connected
+// peers, no trackers. Rows are emitted as-is, in the server's order — which is
+// what makes a file's array position its index column — and are never
+// sanitized: --json/--jq is a structured contract its consumers handle
+// themselves.
+func jsonSlice[T any](rows []T) []T {
+	if rows == nil {
+		return []T{}
 	}
 
-	return torrents
+	return rows
 }
 
 // writeListPlaintext renders rows in the appropriate plaintext mode for the

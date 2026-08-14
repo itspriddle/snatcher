@@ -104,11 +104,11 @@ func NewFilesCmd() *cobra.Command {
 			}
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), jsonFiles(match.Files), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), jsonSlice(match.Files), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), jsonFiles(match.Files))
+				return output.JSON(cmd.OutOrStdout(), jsonSlice(match.Files))
 			}
 
 			writeListPlaintext(cmd, fileRows(match.Files), columns, "No files.")
@@ -222,11 +222,11 @@ func newFilesUpdateCmd() *cobra.Command {
 			rows := selectFileRows(updated.Files, indexes)
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), jsonFiles(rowFiles(rows)), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), jsonSlice(rowFiles(rows)), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), jsonFiles(rowFiles(rows)))
+				return output.JSON(cmd.OutOrStdout(), jsonSlice(rowFiles(rows)))
 			}
 
 			writeListPlaintext(cmd, rows, columns, "No files.")
@@ -501,17 +501,6 @@ func rowFiles(rows []fileRow) []transmission.File {
 	files := make([]transmission.File, len(rows))
 	for i, row := range rows {
 		files[i] = row.File
-	}
-
-	return files
-}
-
-// jsonFiles normalizes a file slice for structured output so a torrent with no
-// files serializes as "[]" rather than "null". The slice is emitted as-is, in
-// torrent order, so an element's array position is its index column.
-func jsonFiles(files []transmission.File) []transmission.File {
-	if files == nil {
-		return []transmission.File{}
 	}
 
 	return files

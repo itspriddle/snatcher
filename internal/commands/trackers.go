@@ -112,11 +112,11 @@ func NewTrackersCmd() *cobra.Command {
 			}
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), jsonTrackers(match.Trackers), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), jsonSlice(match.Trackers), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), jsonTrackers(match.Trackers))
+				return output.JSON(cmd.OutOrStdout(), jsonSlice(match.Trackers))
 			}
 
 			writeListPlaintext(cmd, match.Trackers, columns, "No trackers.")
@@ -144,15 +144,4 @@ func trackerCount(n int) string {
 	}
 
 	return strconv.Itoa(n)
-}
-
-// jsonTrackers normalizes a tracker slice for structured output so a torrent
-// with no trackers serializes as "[]" rather than "null". The slice is emitted
-// as-is, in the server's order, and is never sanitized.
-func jsonTrackers(trackers []transmission.Tracker) []transmission.Tracker {
-	if trackers == nil {
-		return []transmission.Tracker{}
-	}
-
-	return trackers
 }

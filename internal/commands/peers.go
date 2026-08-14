@@ -97,11 +97,11 @@ func NewPeersCmd() *cobra.Command {
 			}
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), jsonPeers(match.Peers), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), jsonSlice(match.Peers), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), jsonPeers(match.Peers))
+				return output.JSON(cmd.OutOrStdout(), jsonSlice(match.Peers))
 			}
 
 			writeListPlaintext(cmd, match.Peers, columns, "No peers.")
@@ -117,15 +117,4 @@ func NewPeersCmd() *cobra.Command {
 	cmd.Flags().StringVar(&fieldsFlag, "fields", "", fmt.Sprintf("comma-separated columns to show, in order (%s)", strings.Join(peerFieldKeys, ", ")))
 
 	return cmd
-}
-
-// jsonPeers normalizes a peer slice for structured output so a torrent with no
-// connected peers serializes as "[]" rather than "null". The slice is emitted
-// as-is, in the server's order, and is never sanitized.
-func jsonPeers(peers []transmission.Peer) []transmission.Peer {
-	if peers == nil {
-		return []transmission.Peer{}
-	}
-
-	return peers
 }
