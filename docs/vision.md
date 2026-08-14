@@ -57,8 +57,8 @@ Use "snatcher [command] --help" for more information about a command.
 - [x] `snatcher server port get|set|test` - show or change listening port
 - [x] `snatcher server free-space ...` - show free space on disk (merge in with stats?)
 - [x] `snatcher torrent show <hash|id> ...` - show torrent info
-- [ ] `snatcher torrent files|peers|trackers <hash|id>` - the detail-pane data
-- [ ] `snatcher torrent files update ...` - file priority / wanted
+- [x] `snatcher torrent files|peers|trackers <hash|id>` - the detail-pane data
+- [x] `snatcher torrent files update ...` - file priority / wanted
 - [ ] `snatcher torrent rename ...` - `torrent-rename-path`
 - [ ] `snatcher config get|set|list|unset` - snatcher's own settings
 - [ ] `snatcher search ["query"] ...` - search for torrents with Prowlarr
