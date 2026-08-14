@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -44,7 +45,7 @@ type column[T any] struct {
 // commands own their own registries with their own key names.
 var listFields = map[string]column[transmission.Torrent]{
 	"id": {header: "ID", rightAlign: true, value: func(t transmission.Torrent) string {
-		return fmt.Sprintf("%d", t.ID)
+		return strconv.FormatInt(t.ID, 10)
 	}},
 	"hash": {header: "Hash", value: func(t transmission.Torrent) string {
 		return t.Hash
@@ -74,7 +75,7 @@ var listFields = map[string]column[transmission.Torrent]{
 		return output.ETA(t.ETA)
 	}},
 	"peers": {header: "Peers", rightAlign: true, value: func(t transmission.Torrent) string {
-		return fmt.Sprintf("%d", t.PeersConnected)
+		return strconv.FormatInt(t.PeersConnected, 10)
 	}},
 	"added": {header: "Added", value: func(t transmission.Torrent) string {
 		return output.Date(t.AddedDate)

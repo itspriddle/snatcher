@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -24,7 +25,7 @@ var peerFields = map[string]column[transmission.Peer]{
 		return p.Address
 	}},
 	"port": {header: "Port", rightAlign: true, value: func(p transmission.Peer) string {
-		return fmt.Sprintf("%d", p.Port)
+		return strconv.Itoa(p.Port)
 	}},
 	"client": {header: "Client", truncate: true, sanitize: true, value: func(p transmission.Peer) string {
 		return p.Client

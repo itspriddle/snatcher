@@ -32,7 +32,7 @@ type fileRow struct {
 // column-per-registry invariant nameColumnLimit relies on.
 var fileFields = map[string]column[fileRow]{
 	"index": {header: "Index", rightAlign: true, value: func(f fileRow) string {
-		return fmt.Sprintf("%d", f.Index)
+		return strconv.Itoa(f.Index)
 	}},
 	"name": {header: "Name", truncate: true, sanitize: true, value: func(f fileRow) string {
 		return f.Name
@@ -540,6 +540,6 @@ func filePriority(priority int) string {
 	case 1:
 		return "high"
 	default:
-		return fmt.Sprintf("%d", priority)
+		return strconv.Itoa(priority)
 	}
 }

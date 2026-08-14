@@ -5,6 +5,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -46,7 +47,7 @@ func newDetailFields() map[string]column[transmission.TorrentDetail] {
 			return yesNo(d.IsPrivate)
 		}},
 		"piece_count": {header: "Pieces", rightAlign: true, value: func(d transmission.TorrentDetail) string {
-			return fmt.Sprintf("%d", d.PieceCount)
+			return strconv.FormatInt(d.PieceCount, 10)
 		}},
 		"piece_size": {header: "Piece Size", rightAlign: true, value: func(d transmission.TorrentDetail) string {
 			return output.Bytes(d.PieceSize)
@@ -97,7 +98,7 @@ var detailFieldKeys = slices.Concat(allFieldKeys, []string{
 // the opt-in magnet_link. It exists for the --fields help text, which must name
 // every selectable key, and is derived so the help can never drift from the
 // registry.
-var allDetailFieldKeys = append(slices.Clone(detailFieldKeys), "magnet_link")
+var allDetailFieldKeys = slices.Concat(detailFieldKeys, []string{"magnet_link"})
 
 // promote lifts a Torrent column registry into a TorrentDetail one by wrapping
 // each accessor to read the embedded Torrent. TorrentDetail is a superset of
