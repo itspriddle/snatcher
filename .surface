@@ -23,6 +23,8 @@ CMD snatcher config set
 CMD snatcher config unset
 CMD snatcher server
 CMD snatcher server add
+CMD snatcher server bandwidth
+CMD snatcher server bandwidth show
 CMD snatcher server default
 CMD snatcher server free-space
 CMD snatcher server list
@@ -80,6 +82,10 @@ FLAG snatcher server add --password-stdin type=bool
 FLAG snatcher server add --store type=string
 FLAG snatcher server add --url type=string
 FLAG snatcher server add --username type=string
+FLAG snatcher server bandwidth show --alt type=bool
+FLAG snatcher server bandwidth show --jq type=string
+FLAG snatcher server bandwidth show --json type=bool
+FLAG snatcher server bandwidth show --server type=string
 FLAG snatcher server free-space --jq type=string
 FLAG snatcher server free-space --json type=bool
 FLAG snatcher server free-space --server type=string

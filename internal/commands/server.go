@@ -42,6 +42,7 @@ func NewServerCmd() *cobra.Command {
 	cmd.AddCommand(newServerResetCmd())
 	cmd.AddCommand(NewStatsCmd())
 	cmd.AddCommand(NewPortCmd())
+	cmd.AddCommand(NewBandwidthCmd())
 	cmd.AddCommand(NewFreeSpaceCmd())
 
 	return cmd

@@ -1,0 +1,291 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/transmission"
+)
+
+// directionDownload and directionUpload are the two values a bandwidth
+// direction argument may take, and the canonical spelling every helper here
+// compares against.
+const (
+	directionDownload = "download"
+	directionUpload   = "upload"
+)
+
+// bandwidthState is the JSON contract emitted by every "bandwidth" subcommand:
+// the live transfer rates, both limit pairs, and the alt (turtle) switches. Its
+// json tags are a stable scripting surface — treat them as API.
+//
+// The JSON is the rendered view: whatever the plaintext block shows, the object
+// contains, no more and no less. A direction is omitted entirely when the caller
+// narrowed to the other one, while the two alt fields are the invariant header
+// and are always present.
+type bandwidthState struct {
+	Download *bandwidthDirection `json:"download,omitempty"`
+	Upload   *bandwidthDirection `json:"upload,omitempty"`
+
+	// AltEnabled reports whether the alt (turtle) profile is active right now.
+	AltEnabled bool `json:"alt_enabled"`
+
+	// AltScheduleEnabled reports whether a scheduled alt-speed window is
+	// configured. Read-only here; "server update" owns the schedule keys.
+	AltScheduleEnabled bool `json:"alt_schedule_enabled"`
+}
+
+// bandwidthDirection is one direction's rates and limits. Limit fields are
+// pointers so a narrowed view omits what it did not render.
+//
+// The units deliberately differ, mirroring Transmission's own inconsistency:
+// CurrentSpeed is bytes/second while every limit is KB/s. Neither is converted
+// into the other's unit.
+type bandwidthDirection struct {
+	// CurrentSpeed is the live aggregate rate in bytes/second.
+	CurrentSpeed int64 `json:"current_speed"`
+
+	// Limit is the normal-profile limit in KB/s; LimitEnabled is its switch.
+	Limit        *int64 `json:"limit,omitempty"`
+	LimitEnabled *bool  `json:"limit_enabled,omitempty"`
+
+	// AltLimit is the alt-profile limit in KB/s.
+	AltLimit *int64 `json:"alt_limit,omitempty"`
+}
+
+// NewBandwidthCmd builds the "bandwidth" parent command and its subcommands.
+// With no subcommand it prints help (consistent with port and auth). The
+// bandwidth group is an ergonomic wrapper over the global speed-limit session
+// settings, so a caller never has to know that a limit and its "-enabled"
+// companion travel together; each subcommand dials the backend through the
+// shared dial seam.
+func NewBandwidthCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "bandwidth",
+		Short:         "View or change global speed limits",
+		Long:          "View and change the server's global download and upload speed limits, including the alt (turtle) profile.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	cmd.AddCommand(newBandwidthShowCmd())
+
+	return cmd
+}
+
+// newBandwidthShowCmd builds "bandwidth show [download|upload]", which reports
+// the live transfer rates alongside both limit pairs and the alt switches. A
+// positional direction narrows the report to that direction, and --alt narrows
+// each reported direction to its alt-profile limit. Plaintext is an aligned
+// block; --json emits the bandwidthState contract and --jq filters that same
+// structure.
+func newBandwidthShowCmd() *cobra.Command {
+	var (
+		server string
+		asJSON bool
+		jqExpr string
+		alt    bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "show [download|upload]",
+		Short: "Show current speeds and the global limits",
+		Long: "Show the server's current transfer rates, both global limit pairs, " +
+			"and whether the alt (turtle) profile is active.\n\n" +
+			"With no argument both directions are reported; naming a direction " +
+			"reports only that one. --alt narrows each reported direction to its " +
+			"alt-profile limit. Current speeds are bytes/second; every limit is in " +
+			"KB/s, exactly as Transmission stores it. A limit whose switch is off " +
+			"still shows its stored value, marked disabled, because the value " +
+			"survives being turned off.",
+		Args:          cobra.MaximumNArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate the direction before dialing so a typo never opens a
+			// connection.
+			direction := ""
+			if len(args) == 1 {
+				parsed, err := parseBandwidthDirection(args[0])
+				if err != nil {
+					return err
+				}
+				direction = parsed
+			}
+
+			backend, serverURL, err := dial(cmd, server)
+			if err != nil {
+				return err
+			}
+
+			state, err := readBandwidthState(cmd.Context(), backend)
+			if err != nil {
+				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			}
+
+			return renderBandwidthState(cmd, narrowBandwidthState(state, direction, alt), asJSON, jqExpr)
+		},
+	}
+
+	addServerFlag(cmd, &server)
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
+	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
+	cmd.Flags().BoolVar(&alt, "alt", false, "report the alt (turtle) limits instead of the normal ones")
+
+	return cmd
+}
+
+// parseBandwidthDirection validates a direction argument case-insensitively and
+// returns its canonical spelling. Any other value returns an error naming both
+// valid values, and the caller performs no network call.
+func parseBandwidthDirection(raw string) (string, error) {
+	switch strings.ToLower(raw) {
+	case directionDownload:
+		return directionDownload, nil
+	case directionUpload:
+		return directionUpload, nil
+	}
+
+	return "", fmt.Errorf("invalid direction %q: must be one of: %s, %s", raw, directionDownload, directionUpload)
+}
+
+// readBandwidthState performs the GetSession + Stats pair — two round-trips,
+// since Transmission offers no combined primitive — and builds the complete,
+// unnarrowed state. Errors are returned unwrapped for the caller to decorate
+// with the resolved server URL.
+func readBandwidthState(ctx context.Context, backend *transmission.Client) (bandwidthState, error) {
+	session, err := backend.GetSession(ctx)
+	if err != nil {
+		return bandwidthState{}, err
+	}
+
+	stats, err := backend.Stats(ctx)
+	if err != nil {
+		return bandwidthState{}, err
+	}
+
+	return bandwidthState{
+		Download: newBandwidthDirection(
+			stats.DownloadSpeed,
+			session.SpeedLimitDown,
+			session.SpeedLimitDownEnabled,
+			session.AltSpeedDown,
+		),
+		Upload: newBandwidthDirection(
+			stats.UploadSpeed,
+			session.SpeedLimitUp,
+			session.SpeedLimitUpEnabled,
+			session.AltSpeedUp,
+		),
+		AltEnabled:         session.AltSpeedEnabled,
+		AltScheduleEnabled: session.AltSpeedTimeEnabled,
+	}, nil
+}
+
+// newBandwidthDirection builds a fully populated direction. The parameters are
+// copies, so taking their addresses is safe and keeps every state independent.
+func newBandwidthDirection(current, limit int64, limitEnabled bool, altLimit int64) *bandwidthDirection {
+	return &bandwidthDirection{
+		CurrentSpeed: current,
+		Limit:        &limit,
+		LimitEnabled: &limitEnabled,
+		AltLimit:     &altLimit,
+	}
+}
+
+// narrowBandwidthState applies the two view filters: a direction ("" for both)
+// drops the other direction entirely, and altOnly keeps each surviving
+// direction's alt limit while dropping the normal-profile pair. The returned
+// state shares no direction with the input, so narrowing never mutates it.
+func narrowBandwidthState(state bandwidthState, direction string, altOnly bool) bandwidthState {
+	switch direction {
+	case directionDownload:
+		state.Upload = nil
+	case directionUpload:
+		state.Download = nil
+	}
+
+	if altOnly {
+		state.Download = altOnlyDirection(state.Download)
+		state.Upload = altOnlyDirection(state.Upload)
+	}
+
+	return state
+}
+
+// altOnlyDirection returns a copy of dir carrying only the live rate and the
+// alt-profile limit.
+func altOnlyDirection(dir *bandwidthDirection) *bandwidthDirection {
+	if dir == nil {
+		return nil
+	}
+
+	return &bandwidthDirection{
+		CurrentSpeed: dir.CurrentSpeed,
+		AltLimit:     dir.AltLimit,
+	}
+}
+
+// renderBandwidthState writes state in the mode the flags select, honoring the
+// fixed --jq -> --json -> plaintext precedence every command shares.
+func renderBandwidthState(cmd *cobra.Command, state bandwidthState, asJSON bool, jqExpr string) error {
+	if jqExpr != "" {
+		return output.JQ(cmd.OutOrStdout(), state, jqExpr)
+	}
+
+	if asJSON {
+		return output.JSON(cmd.OutOrStdout(), state)
+	}
+
+	writeBandwidthState(cmd, state)
+
+	return nil
+}
+
+// writeBandwidthState renders a (possibly narrowed) state as an aligned
+// plaintext block, alt switch first because it decides which limits are
+// actually in force. The values are server-derived numbers and bools, not
+// free-form strings, so no terminal sanitization is required.
+func writeBandwidthState(cmd *cobra.Command, state bandwidthState) {
+	out := cmd.OutOrStdout()
+
+	_, _ = fmt.Fprintf(out, "Alt-speed:      %s (schedule: %s)\n",
+		yesNo(state.AltEnabled), yesNo(state.AltScheduleEnabled))
+
+	writeBandwidthDirection(cmd, "Download", state.Download)
+	writeBandwidthDirection(cmd, "Upload", state.Upload)
+}
+
+// writeBandwidthDirection renders one direction's block, skipping it entirely
+// when the state was narrowed to the other direction. Limit lines are written
+// only for the fields the narrowed state carries, so the plaintext and the JSON
+// always show the same field set.
+func writeBandwidthDirection(cmd *cobra.Command, label string, dir *bandwidthDirection) {
+	if dir == nil {
+		return
+	}
+
+	out := cmd.OutOrStdout()
+
+	_, _ = fmt.Fprintf(out, "%s:\n", label)
+	_, _ = fmt.Fprintf(out, "  Current:      %s\n", output.Speed(dir.CurrentSpeed))
+
+	if dir.Limit != nil {
+		// A disabled limit keeps its stored value: "update <dir> off" only flips
+		// the switch, so the user needs to see the number that will come back.
+		disabled := ""
+		if dir.LimitEnabled != nil && !*dir.LimitEnabled {
+			disabled = " (disabled)"
+		}
+
+		_, _ = fmt.Fprintf(out, "  Limit:        %d KB/s%s\n", *dir.Limit, disabled)
+	}
+
+	if dir.AltLimit != nil {
+		_, _ = fmt.Fprintf(out, "  Alt limit:    %d KB/s\n", *dir.AltLimit)
+	}
+}

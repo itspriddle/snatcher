@@ -159,8 +159,8 @@ Manage configured servers and the server itself. The
 group maintains an inventory of named servers \(em the registry:
 .BR add ", " list ", " default ", " show ", " ping ", " remove
 \(em and operates on the selected server's session settings, statistics,
-BitTorrent listening port, and download-path free space
-.RB ( settings ", " stats ", " port ", " free-space ).
+BitTorrent listening port, global speed limits, and download-path free space
+.RB ( settings ", " stats ", " port ", " bandwidth ", " free-space ).
 .TP
 .B snatcher server add \fR[\fIoptions\fR]
 Add or update a named server. Its URL and username are stored in the config
@@ -580,6 +580,49 @@ is reported only by Transmission's JSON-RPC 2.0 scheme and omitted otherwise).
 Exits 0 when the port is open and non-zero when it is closed, while still
 writing the structured result to stdout; a connection or authentication failure
 is a distinct non-zero exit that renders no result. Accepts
+.BR \-\-json " and " \-\-jq .
+.TP
+.B snatcher server bandwidth \fR[\fIoptions\fR]
+View and change the global download and upload speed limits, including the
+alt (turtle) profile \(em an ergonomic wrapper over the same session settings
+.B server update
+exposes one raw key at a time, so a limit and its enabled companion never have
+to be written by hand. With no subcommand it prints help.
+.TP
+.B snatcher server bandwidth show \fR[\fIdownload\fR|\fIupload\fR] [\fIoptions\fR]
+Show the current transfer rates, both global limit pairs, and whether the alt
+(turtle) profile is active. With no argument both directions are reported;
+naming
+.B download
+or
+.B upload
+(case-insensitively) reports only that one, and the other direction is absent
+from the output entirely. Plaintext is an aligned block; the alt state and its
+schedule state are always reported, whatever the narrowing. Besides the common
+options:
+.RS
+.TP
+.B \-\-alt
+Report the alt (turtle) limit for each direction instead of the normal-profile
+limit and its enabled flag.
+.RE
+.IP
+Current speeds are in bytes per second and render as IEC rates (e.g.
+.BR "1.5 MiB/s" ),
+while every limit is an integer in
+.B KB/s
+exactly as Transmission stores it \(em the two units are never converted into
+one another. A limit whose enabled flag is false still shows its stored value,
+marked
+.BR (disabled) ,
+because turning a limit off preserves the number.
+.B \-\-json
+emits a stable
+.RB { download ", " upload ", " alt_enabled ", " alt_schedule_enabled }
+object whose direction values carry
+.BR current_speed ", " limit ", " limit_enabled ", and " alt_limit ;
+the object always contains exactly the fields the plaintext block shows.
+Accepts
 .BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher server free-space \fR[\fIpath\fR] [\fIoptions\fR]
