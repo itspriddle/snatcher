@@ -22,6 +22,23 @@ const testURL = "http://localhost:9091/transmission/rpc"
 // rather than a message string, since that is what the classifier matches.
 var errDBusLaunchMissing = &exec.Error{Name: "dbus-launch", Err: exec.ErrNotFound}
 
+// dbusLaunchExitError builds the other half of the headless failure: a
+// dbus-launch that exists but exits non-zero (dbus installed, no X11 session,
+// "Autolaunch error: X11 initialization failed"). godbus returns
+// CombinedOutput's error unwrapped, so the classifier sees a bare
+// *exec.ExitError. A real one is used rather than a zero value so the type is
+// exactly what the runtime produces.
+func dbusLaunchExitError(t *testing.T) error {
+	t.Helper()
+
+	err := exec.CommandContext(t.Context(), "false").Run()
+
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+
+	return exitErr
+}
+
 // mockStoreUnavailable points the keyring provider at a mock that fails every
 // call with err, simulating a system with no reachable secret store, and
 // restores the working in-memory mock afterwards.
@@ -139,12 +156,31 @@ func TestGenericProviderErrorIsNeitherSentinel(t *testing.T) {
 }
 
 func TestIsUnavailable(t *testing.T) {
+	// tests without a goos are platform-independent and are asserted on every
+	// platform; the two exit-status cases pin each side of the one rule that
+	// differs.
 	tests := map[string]struct {
 		err  error
+		goos string
 		want bool
 	}{
 		"dbus-launch missing": {
 			err:  errDBusLaunchMissing,
+			want: true,
+		},
+		"provider helper exited non-zero, linux": {
+			err:  dbusLaunchExitError(t),
+			goos: "linux",
+			want: true,
+		},
+		"provider helper exited non-zero, darwin": {
+			err:  dbusLaunchExitError(t),
+			goos: "darwin",
+			want: false,
+		},
+		"provider helper exited non-zero, linux, wrapped": {
+			err:  fmt.Errorf("opening session: %w", dbusLaunchExitError(t)),
+			goos: "linux",
 			want: true,
 		},
 		"dbus-launch missing, wrapped": {
@@ -190,7 +226,15 @@ func TestIsUnavailable(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tc.want, isUnavailable(tc.err))
+			if tc.goos != "" {
+				assert.Equal(t, tc.want, isUnavailableOn(tc.goos, tc.err))
+
+				return
+			}
+
+			for _, goos := range []string{"darwin", "linux"} {
+				assert.Equal(t, tc.want, isUnavailableOn(goos, tc.err), "goos %s", goos)
+			}
 		})
 	}
 }

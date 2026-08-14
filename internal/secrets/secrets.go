@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"runtime"
 
 	dbus "github.com/godbus/dbus/v5"
 	"github.com/zalando/go-keyring"
@@ -126,10 +127,18 @@ func unavailable(serverURL string) error {
 }
 
 // isUnavailable reports whether err means the secret store itself could not be
-// reached, rather than the store answering. It matches on error types and
-// wrapped sentinels, never on message substrings, so a reworded provider message
-// cannot silently reclassify a failure.
+// reached, rather than the store answering, on the platform this binary is
+// running on.
 func isUnavailable(err error) bool {
+	return isUnavailableOn(runtime.GOOS, err)
+}
+
+// isUnavailableOn is isUnavailable with the platform injected, since one rule
+// (how a helper binary's non-zero exit is read) differs between macOS and every
+// other platform. It matches on error types and wrapped sentinels, never on
+// message substrings, so a reworded provider message cannot silently reclassify
+// a failure.
+func isUnavailableOn(goos string, err error) bool {
 	// No keyring provider is compiled in for this platform at all.
 	if errors.Is(err, keyring.ErrUnsupportedPlatform) {
 		return true
@@ -137,12 +146,23 @@ func isUnavailable(err error) bool {
 
 	// A helper binary the provider shells out to is missing: dbus-launch on
 	// Linux, /usr/bin/security on macOS. This is the reported headless-Linux
-	// failure. Only lookup failures count — an *exec.ExitError means the helper
-	// ran and refused, which is a real answer (a locked or denied keychain), not
-	// an absent store.
+	// failure.
 	var execErr *exec.Error
 	if errors.As(err, &execErr) || errors.Is(err, exec.ErrNotFound) {
 		return true
+	}
+
+	// The helper binary ran and exited non-zero, and what that means depends on
+	// which helper it was. On Linux a dbus-launch that exists but fails is the
+	// other half of the headless case — dbus installed with no X11 session
+	// autolaunches, prints "Autolaunch error: X11 initialization failed", and
+	// exits 1, leaving no session bus and so no secret service. On macOS the
+	// provider shells out to /usr/bin/security, which exits non-zero for a
+	// locked or user-denied keychain: the store answered and refused, which is a
+	// real answer, not an absent store.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return goos != "darwin"
 	}
 
 	// The session bus socket is absent, or nothing is listening on it.
