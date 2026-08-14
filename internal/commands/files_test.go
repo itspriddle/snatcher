@@ -19,11 +19,19 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
+// infoHash3 is a third 40-character info-hash, for the files fixture's third
+// torrent. Hash resolution is asserted against a torrent that both has files and
+// is not the fixture's first entry, so a stub that ignored the requested ids
+// (and so always answered with torrent 1) could not pass. It is not the "c"
+// hash, which TestFilesNotFoundErrors relies on matching nothing.
+const infoHash3 = "dddddddddddddddddddddddddddddddddddddddd"
+
 // bespokeFilesResponse is a torrent-get payload whose first torrent carries the
 // parallel files/fileStats/wanted/priorities arrays the bespoke scheme uses, and
-// whose second torrent has no files at all (the empty-collection path). The third
-// file is zero-length, which is legal in a torrent and must not divide by zero in
-// the percent column.
+// whose second torrent has no files at all (the empty-collection path, and the
+// magnet-metadata-pending case "files update" must refuse to write to). The third
+// file of torrent 1 is zero-length, which is legal in a torrent and must not
+// divide by zero in the percent column.
 const bespokeFilesResponse = `{
 	"arguments": {"torrents": [
 		{
@@ -53,6 +61,22 @@ const bespokeFilesResponse = `{
 			"fileStats": [],
 			"wanted": [],
 			"priorities": []
+		},
+		{
+			"id": 3,
+			"hashString": "` + infoHash3 + `",
+			"name": "fedora.iso",
+			"status": 4,
+			"files": [
+				{"name": "fedora.iso", "length": 4096, "bytesCompleted": 4096},
+				{"name": "CHECKSUM", "length": 512, "bytesCompleted": 512}
+			],
+			"fileStats": [
+				{"bytesCompleted": 4096},
+				{"bytesCompleted": 512}
+			],
+			"wanted": [1, 1],
+			"priorities": [0, 0]
 		}
 	]},
 	"result": "success",
@@ -619,6 +643,38 @@ func TestFilesUpdateRejectsOutOfRangeIndex(t *testing.T) {
 	}
 }
 
+// TestFilesUpdateRejectsIndexesAgainstAFilelessTorrent asserts that a torrent
+// with no files — the realistic case is a magnet whose metadata has not arrived
+// yet — rejects every index form, "all" included, and writes nothing. Without the
+// "all" guard the command would send a torrent-set carrying only ids and exit 0,
+// reporting a change that could not have happened.
+func TestFilesUpdateRejectsIndexesAgainstAFilelessTorrent(t *testing.T) {
+	cases := []struct {
+		name  string
+		index string
+		want  string
+	}{
+		{"bare index", "0", "file index 0 is out of range: the torrent has 0 files"},
+		{"all", "all", "cannot update all files: the torrent has 0 files"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+			defer closeSrv()
+
+			// Torrent 2 in the fixture has no files.
+			out, _, err := runFilesUpdate(t, "--config", cfgPath, "2", tc.index, "--unwanted")
+			require.Error(t, err)
+			assert.Equal(t, tc.want, err.Error())
+			assert.Empty(t, out)
+
+			_, ok := stub.request("torrent-set")
+			assert.False(t, ok, "a fileless torrent is never written to")
+		})
+	}
+}
+
 // TestFilesUpdateRequiresAFieldFlag asserts the flag guards: --wanted and
 // --unwanted are mutually exclusive, and an invocation with no field flag is an
 // error rather than a silent no-op. Both are caught before the command dials, so
@@ -809,13 +865,15 @@ func TestFilesUpdateResolvesByHash(t *testing.T) {
 	cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
 	defer closeSrv()
 
-	out, _, err := runFilesUpdate(t, "--config", cfgPath, strings.ToUpper(infoHash2), "all", "--wanted")
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, strings.ToUpper(infoHash3), "all", "--wanted")
 	require.NoError(t, err)
-	assert.Empty(t, out, "torrent 2 has no files, so no rows are rendered")
+	assert.Len(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), 2,
+		`"all" selected both of torrent 3's files`)
 
 	body, ok := stub.request("torrent-set")
 	require.True(t, ok)
-	assert.Contains(t, body, `"ids":[2]`, "the hash resolved to its numeric id")
+	assert.Contains(t, body, `"ids":[3]`, "the hash resolved to its numeric id")
+	assert.Contains(t, body, `"files-wanted":[0,1]`)
 }
 
 func TestFilesUpdateWrongArgCount(t *testing.T) {

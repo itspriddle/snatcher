@@ -423,9 +423,15 @@ func fileIndexErr(arg, token, reason string) error {
 // resolve expands the spec against a torrent's file count into a sorted,
 // de-duplicated index set. Every index is checked here, before any write, so an
 // out-of-range index leaves the torrent untouched. "all" expands to every file,
-// which is an empty set for a torrent with no files.
+// and is an error for a torrent with no files — the realistic case is a magnet
+// whose metadata has not arrived yet, where succeeding silently would report a
+// change that could not have happened.
 func (s fileIndexSpec) resolve(count int) ([]int, error) {
 	if s.all {
+		if count == 0 {
+			return nil, fmt.Errorf("cannot update all files: the torrent has %s", pluralizeFiles(count))
+		}
+
 		indexes := make([]int, count)
 		for i := range indexes {
 			indexes[i] = i

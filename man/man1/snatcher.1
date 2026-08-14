@@ -699,7 +699,10 @@ selects every file in the torrent and must be given on its own. A reversed
 range, a negative or non-integer index, and an empty token are each errors
 naming the offending argument. Every index is validated against the torrent's
 file count before anything is written, so an out-of-range index leaves the
-torrent untouched.
+torrent untouched. A torrent with no files \(em a magnet whose metadata has not
+arrived yet, for instance \(em rejects every index form,
+.B all
+included, rather than reporting a change that could not have happened.
 .IP
 At least one of
 .BR \-\-priority ", " \-\-wanted ", or " \-\-unwanted
