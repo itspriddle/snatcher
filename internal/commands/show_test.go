@@ -674,6 +674,11 @@ func TestDetailFieldsAreShowOnly(t *testing.T) {
 
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		assert.Len(t, lines, len(allDetailFieldKeys), "one line per selectable field, magnet_link included")
+
+		// allDetailFieldKeys is what builds the --fields help string, so a key
+		// added to the registry but not to the slice would be selectable yet
+		// undocumented — and this subtest would still pass.
+		assert.Len(t, allDetailFieldKeys, len(detailFields), "the help names every registry key")
 	})
 
 	t.Run("list rejects the detail-only keys", func(t *testing.T) {

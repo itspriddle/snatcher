@@ -333,6 +333,11 @@ func TestPeersFieldsRegistryIsPeersOnly(t *testing.T) {
 		_, err := parseFields(peerFields, peerFieldKeys, key)
 		require.NoErrorf(t, err, "peers accepts its own key %q", key)
 	}
+
+	// peerFieldKeys is both the default column set and the --fields help string,
+	// so a key added to the registry but not to the slice would be invisible in
+	// the table and in the help without failing anything else here.
+	assert.Len(t, peerFieldKeys, len(peerFields), "the default column set covers every registry key")
 }
 
 func TestPeersWrongArgCount(t *testing.T) {

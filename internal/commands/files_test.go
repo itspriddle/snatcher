@@ -345,6 +345,11 @@ func TestFilesFieldsRegistryIsFilesOnly(t *testing.T) {
 		_, err := parseFields(fileFields, fileFieldKeys, key)
 		require.NoErrorf(t, err, "files accepts its own key %q", key)
 	}
+
+	// fileFieldKeys is both the default column set and the --fields help string,
+	// so a key added to the registry but not to the slice would be invisible in
+	// the table and in the help without failing anything else here.
+	assert.Len(t, fileFieldKeys, len(fileFields), "the default column set covers every registry key")
 }
 
 func TestFilesWrongArgCount(t *testing.T) {
@@ -408,11 +413,16 @@ func TestFilePriorityUnknownValue(t *testing.T) {
 // re-fetch after the write returns the same torrent), and records the body of
 // every non-handshake request keyed by method, so a test can assert exactly what
 // was written — or that nothing was.
+//
+// It also counts the calls per method. The body map keeps only the last body
+// seen for a method, so a duplicate write would silently overwrite the first;
+// the count is what lets a test pin "exactly one torrent-set".
 type filesUpdateStub struct {
 	torrents []json.RawMessage
 
 	mu       sync.Mutex
 	requests map[string]string
+	counts   map[string]int
 }
 
 func (s *filesUpdateStub) handler() http.HandlerFunc {
@@ -436,8 +446,10 @@ func (s *filesUpdateStub) handler() http.HandlerFunc {
 		s.mu.Lock()
 		if s.requests == nil {
 			s.requests = map[string]string{}
+			s.counts = map[string]int{}
 		}
 		s.requests[req.Method] = string(body)
+		s.counts[req.Method]++
 		s.mu.Unlock()
 
 		if req.Method != "torrent-get" {
@@ -461,6 +473,14 @@ func (s *filesUpdateStub) request(method string) (string, bool) {
 	body, ok := s.requests[method]
 
 	return body, ok
+}
+
+// count reports how many times the method was called.
+func (s *filesUpdateStub) count(method string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.counts[method]
 }
 
 // filesUpdateConfigPath stands up a recording, id-filtering transmission stub
@@ -786,7 +806,8 @@ func TestFilesUpdateSendsFileChanges(t *testing.T) {
 			require.NoError(t, err)
 
 			body, ok := stub.request("torrent-set")
-			require.True(t, ok, "exactly one torrent-set call is issued")
+			require.True(t, ok, "a torrent-set call is issued")
+			assert.Equal(t, 1, stub.count("torrent-set"), "exactly one torrent-set call is issued")
 
 			assert.Contains(t, body, `"ids":[1]`, "the write targets a single torrent")
 			for _, want := range tc.want {
