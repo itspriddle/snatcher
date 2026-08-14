@@ -999,6 +999,52 @@ func TestPasswordFromEnvUnset(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestServerAddIgnoresEnvPassword(t *testing.T) {
+	const serverURL = "http://host:9091/transmission/rpc"
+
+	tests := []struct {
+		name  string
+		store string
+	}{
+		{name: "keyring", store: "keyring"},
+		{name: "file", store: "file"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envSecretStore, "")
+			t.Setenv(envPassword, "from-env")
+			secretsPath := stateDir(t)
+			cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+			keyring.MockInit()
+
+			// SNATCHER_PASSWORD is a read override, never a source for "server
+			// add": an empty typed password means this server has no stored
+			// secret, whatever the environment holds. A regression here would
+			// silently persist an env-supplied password.
+			out, errOut, err := runServer(t, "",
+				"add",
+				"--config", cfgPath,
+				"--url", serverURL,
+				"--username", "alice",
+				"--store", tc.store,
+				"--password-stdin",
+			)
+			require.NoError(t, err)
+			assert.Contains(t, out, "no password stored")
+			assert.NotContains(t, out+errOut, "from-env")
+
+			// Neither store took the value: not the keyring...
+			_, getErr := secrets.Get(serverURL)
+			require.ErrorIs(t, getErr, secrets.ErrNotFound)
+
+			// ...and not the file store, which was never even created.
+			assert.NoFileExists(t, secretsPath)
+		})
+	}
+}
+
 func TestDialPrefersEnvPasswordOverStore(t *testing.T) {
 	stateDir(t)
 
