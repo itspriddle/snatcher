@@ -51,9 +51,10 @@ Show help for
 or any subcommand and exit.
 .SS Common options
 These options are accepted by the
-.B server
+.BR server ,
+.BR torrent ,
 and
-.B torrent
+.B config
 subcommands. They do not all apply everywhere: the named-server registry
 subcommands
 .RB ( server\ add ", " server\ list ", " server\ default ", " server\ show ", " server\ ping ", " server\ remove )
@@ -62,6 +63,12 @@ read or write local config and pick a server by positional alias, so they take
 (and
 .BR \-\-json / \-\-jq
 where they emit data) but never
+.BR \-\-server .
+The
+.B config
+subcommands never contact a server at all, so they take
+.BR \-\-config ", " \-\-json ", and " \-\-jq
+but never
 .BR \-\-server .
 The
 .B api
@@ -1075,6 +1082,100 @@ Remove all trackers from the torrent.
 .BR \-\-group " " \fIname\fR
 Bandwidth group name for the torrent.
 .RE
+.SS "config"
+Read snatcher's own settings \(em how snatcher itself behaves, as opposed to
+which server it talks to. They live in the
+.B client
+object of the config file (see
+.BR FILES )
+and are addressed on the command line by dotted keys such as
+.BR client.theme .
+The
+.B config
+group covers that section only; named servers are managed with
+.B snatcher server
+instead.
+.TP
+.B snatcher config list \fR[\fIoptions\fR]
+List every client setting, sorted by key, with its effective value and the
+source that value came from:
+.B config
+when the key is set in the config file, and
+.B default
+when it is not. Plaintext is an aligned KEY VALUE SOURCE table on a terminal and
+tab-separated, header-less rows when piped or when
+.B NO_COLOR
+is set (the same contract as
+.BR list ).
+Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher config get \fIkey\fR \fR[\fIoptions\fR]
+Print the effective value of one setting. The plaintext output is the bare value
+with nothing else \(em no key name, padding, or decoration \(em so it can be
+captured directly in a shell, e.g.\&
+.IR "theme=$(snatcher config get client.theme)" ;
+a list-valued key prints comma-separated.
+.B \-\-json
+and
+.B \-\-jq
+emit the same
+.IR key ", " value ", " source
+object that
+.B config list
+emits per row, with the value in its natural JSON type. An unknown key is an
+error listing the valid keys. A value in the config file that is not valid for
+its key is an error naming the key, the offending value, and what is accepted;
+it is never silently replaced by the default. Accepts
+.BR \-\-config ", " \-\-json ", and " \-\-jq .
+.PP
+The settings, with the defaults that apply when they are not set:
+.TP
+.B client.theme
+Color theme, one of
+.BR default ", " dracula ", or " nord .
+Default:
+.BR default .
+.TP
+.B client.nerd_font
+Whether to draw Nerd Font glyphs rather than ASCII icons
+.RB ( true / false ).
+Default:
+.BR true .
+.TP
+.B client.poll_interval
+How often the interface refreshes its data, in Go duration syntax (e.g.\&
+.IR 5s ", " 1m30s ),
+between 1s and 1h. Default:
+.BR 5s .
+.TP
+.B client.list_columns
+Comma-separated default columns for
+.BR "torrent list" ,
+in order, named from the same set as its
+.B \-\-fields
+option. Default:
+.BR id,name,status,done,size,down,up,ratio,eta .
+.TP
+.B client.list_sort
+Default sort field for
+.BR "torrent list" ,
+named from the same set as its
+.B \-\-sort
+option. Default:
+.BR queue .
+.TP
+.B client.list_reverse
+Whether
+.B "torrent list"
+reverses its sort order by default
+.RB ( true / false ).
+Default:
+.BR false .
+.PP
+.BR client.theme ", " client.nerd_font ", and " client.poll_interval
+are stored and validated but nothing renders them yet; they exist for the
+forthcoming TUI.
 .SS "api"
 .B snatcher api
 .RI [ options "] " method
@@ -1324,9 +1425,15 @@ map of named server aliases, each with a
 .B url
 and
 .BR username ,
-plus a
+a
 .B default_server
-alias), created with mode 0600. Falls back to
+alias, and a
+.B client
+object holding snatcher's own settings \(em see
+.BR "snatcher config" ),
+created with mode 0600. The file is operator-owned and hand-editable: keys
+snatcher does not recognize, at either level, survive a rewrite untouched.
+Falls back to
 .I ~/.config/snatcher/config.json
 when
 .B XDG_CONFIG_HOME
@@ -1442,6 +1549,14 @@ $ snatcher server update \-\-speed\-limit\-down 500 \-\-speed\-limit\-down\-enab
 
 # restore settings to their defaults
 $ snatcher server reset peer\-port encryption
+.EE
+.SS "Read snatcher's own settings"
+.EX
+# every client setting, its value, and where the value came from
+$ snatcher config list
+
+# one value, bare, for a shell
+$ theme=$(snatcher config get client.theme)
 .EE
 .SS "Raw RPC calls"
 .EX
