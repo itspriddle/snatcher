@@ -665,6 +665,64 @@ is shown. Available columns:
 .BR index ", " name ", " size ", " done ", " percent ", " priority ", " wanted .
 .RE
 .TP
+.B snatcher torrent files update \fR[\fIoptions\fR] \fIid | hash\fR \fIindex\fR...
+Change the download priority and the wanted/unwanted selection of individual
+files inside a single torrent. Exactly one torrent is selected, by numeric id or
+40-character SHA1 info-hash; file indices are torrent-relative, so an index set
+cannot meaningfully span several torrents and none is accepted.
+.IP
+Indices are
+.BR 0 -based
+and are the same numbers the
+.B index
+column of
+.B "snatcher torrent files"
+prints. One or more
+.I index
+arguments follow the selector, and each may hold several comma-separated
+tokens. A token is a single index
+.RB ( 3 ),
+an inclusive range
+.RB ( 2\-7 ),
+or the literal
+.BR all .
+Tokens may be mixed freely across arguments, e.g.
+.BR "snatcher torrent files update 5 0,2\-4 9" ;
+.B all
+selects every file in the torrent and must be given on its own. A reversed
+range, a negative or non-integer index, and an empty token are each errors
+naming the offending argument. Every index is validated against the torrent's
+file count before anything is written, so an out-of-range index leaves the
+torrent untouched.
+.IP
+At least one of
+.BR \-\-priority ", " \-\-wanted ", or " \-\-unwanted
+is required; an invocation with none of them is an error, not a no-op. After the
+change the affected files are re-read from the server and printed in the same
+columns, and with the same
+.B \-\-fields
+handling, as
+.BR "snatcher torrent files" .
+Besides the common options:
+.RS
+.TP
+.BR \-\-priority " " \fIlevel\fR
+Download priority for the selected files. One of
+.BR low ", " normal ", " high .
+.TP
+.B \-\-wanted
+Download the selected files.
+.TP
+.B \-\-unwanted
+Do not download the selected files. Mutually exclusive with
+.BR \-\-wanted .
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order \(em the same columns as
+.BR "snatcher torrent files" :
+.BR index ", " name ", " size ", " done ", " percent ", " priority ", " wanted .
+.RE
+.TP
 .B snatcher torrent list \fR[\fIoptions\fR]
 .RB ( ls )
 List torrents. On a terminal the output is an aligned table with a header; when

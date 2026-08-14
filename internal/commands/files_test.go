@@ -3,14 +3,19 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 
+	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -371,4 +376,494 @@ func TestFilePriorityUnknownValue(t *testing.T) {
 	assert.Equal(t, "high", filePriority(1))
 	assert.Equal(t, "7", filePriority(7))
 	assert.Equal(t, "-2", filePriority(-2))
+}
+
+// filesUpdateStub emulates a Transmission server for the files update command:
+// it answers torrent-get with the fixture torrents filtered by the requested ids
+// (so a hash selector resolves the way it would against a real server, and the
+// re-fetch after the write returns the same torrent), and records the body of
+// every non-handshake request keyed by method, so a test can assert exactly what
+// was written — or that nothing was.
+type filesUpdateStub struct {
+	torrents []json.RawMessage
+
+	mu       sync.Mutex
+	requests map[string]string
+}
+
+func (s *filesUpdateStub) handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "session-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+
+		var req struct {
+			Method    string `json:"method"`
+			Arguments struct {
+				IDs []json.RawMessage `json:"ids"`
+			} `json:"arguments"`
+		}
+		_ = json.Unmarshal(body, &req)
+
+		s.mu.Lock()
+		if s.requests == nil {
+			s.requests = map[string]string{}
+		}
+		s.requests[req.Method] = string(body)
+		s.mu.Unlock()
+
+		if req.Method != "torrent-get" {
+			_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
+			return
+		}
+
+		payload, _ := json.Marshal(map[string]any{
+			"result":    "success",
+			"arguments": map[string]any{"torrents": filterFixtureTorrents(s.torrents, req.Arguments.IDs)},
+			"tag":       1,
+		})
+		_, _ = w.Write(payload)
+	}
+}
+
+func (s *filesUpdateStub) request(method string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	body, ok := s.requests[method]
+
+	return body, ok
+}
+
+// filesUpdateConfigPath stands up a recording, id-filtering transmission stub
+// serving the given torrent-get fixture and writes a config pointing at it,
+// returning the config path, the stub for assertions, and a cleanup func.
+func filesUpdateConfigPath(t *testing.T, body string) (string, *filesUpdateStub, func()) {
+	t.Helper()
+
+	keyring.MockInit()
+
+	var fixture struct {
+		Arguments struct {
+			Torrents []json.RawMessage `json:"torrents"`
+		} `json:"arguments"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &fixture))
+
+	stub := &filesUpdateStub{torrents: fixture.Arguments.Torrents}
+	srv := httptest.NewServer(stub.handler())
+
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, config.Save(config.Config{Servers: map[string]config.Server{"test": {URL: srv.URL}}, DefaultServer: "test"}, cfgPath))
+
+	return cfgPath, stub, srv.Close
+}
+
+// runFilesUpdate executes "files update" through the files command, so the
+// subcommand is reached the same way a real invocation reaches it.
+func runFilesUpdate(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+
+	return runFiles(t, append([]string{"update"}, args...)...)
+}
+
+// runTorrent executes args against the whole torrent group, so command routing
+// (not just a single constructor) is exercised.
+func runTorrent(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+
+	cmd := NewTorrentCmd()
+
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetIn(strings.NewReader(""))
+	cmd.SetArgs(args)
+
+	err := cmd.Execute()
+
+	return out.String(), err
+}
+
+// TestFilesUpdateRoutesPastTheParentSelector is the guard for the first command
+// in this repo that mixes a positional selector with a subcommand: cobra matches
+// args[0] against child names before treating it as an argument, so the literal
+// word "update" reaches the child while a selector stays on the parent. A
+// selector can never collide with it — ids are numeric and hashes are 40 hex
+// characters.
+func TestFilesUpdateRoutesPastTheParentSelector(t *testing.T) {
+	t.Run("update reaches the subcommand", func(t *testing.T) {
+		cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+		defer closeSrv()
+
+		out, err := runTorrent(t, "files", "update", "1", "0", "--wanted", "--config", cfgPath)
+		require.NoError(t, err)
+
+		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+		require.Len(t, lines, 1, "only the affected file row is rendered")
+		assert.Equal(t, "0", strings.Split(lines[0], "\t")[0])
+
+		body, ok := stub.request("torrent-set")
+		require.True(t, ok, "the subcommand issued the write")
+		assert.Contains(t, body, `"files-wanted":[0]`)
+	})
+
+	t.Run("a selector stays on the parent", func(t *testing.T) {
+		cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+		defer closeSrv()
+
+		out, err := runTorrent(t, "files", "1", "--config", cfgPath)
+		require.NoError(t, err)
+
+		assert.Len(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), 3,
+			"the parent listed the torrent's three files")
+
+		_, ok := stub.request("torrent-set")
+		assert.False(t, ok, "listing files writes nothing")
+	})
+}
+
+// TestFileIndexSpecAccepts covers the accepted index syntax: bare integers,
+// comma-separated lists, inclusive ranges, the literal "all", and any mix of
+// those across several positional arguments. The resolved set is sorted and
+// de-duplicated.
+func TestFileIndexSpecAccepts(t *testing.T) {
+	const count = 10
+
+	cases := []struct {
+		name string
+		args []string
+		want []int
+	}{
+		{"bare integer", []string{"3"}, []int{3}},
+		{"comma list", []string{"0,2,5"}, []int{0, 2, 5}},
+		{"inclusive range", []string{"2-7"}, []int{2, 3, 4, 5, 6, 7}},
+		{"single-element range", []string{"4-4"}, []int{4}},
+		{"mixed across arguments", []string{"0,2-4", "9", "1"}, []int{0, 1, 2, 3, 4, 9}},
+		{"overlapping tokens are de-duplicated", []string{"1-3", "2,3,4"}, []int{1, 2, 3, 4}},
+		{"whitespace is trimmed", []string{" 5 , 6 "}, []int{5, 6}},
+		{"all", []string{"all"}, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}},
+		{"all is case-insensitive", []string{"ALL"}, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec, err := parseFileIndexes(tc.args)
+			require.NoError(t, err)
+
+			indexes, err := spec.resolve(count)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, indexes)
+		})
+	}
+}
+
+// TestFileIndexSpecRejects covers the malformed index syntax, each error naming
+// the offending argument so it can be found among several.
+func TestFileIndexSpecRejects(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"reversed range", []string{"7-2"}, `invalid file index "7-2": range start must not be greater than range end`},
+		{"negative index", []string{"0,-1"}, `invalid file index "-1" in "0,-1": must be a non-negative integer`},
+		{"non-integer token", []string{"two"}, `invalid file index "two": must be a non-negative integer`},
+		{"non-integer range bound", []string{"1-x"}, `invalid file index "1-x": must be a non-negative integer`},
+		{"empty token", []string{"0,,2"}, `invalid file index "" in "0,,2": must not be empty`},
+		{"empty argument", []string{""}, `invalid file index "": must not be empty`},
+		{"all combined with an index", []string{"all", "3"}, `"all" must be the only file index given`},
+		{"all combined within an argument", []string{"1,all"}, `"all" must be the only file index given`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseFileIndexes(tc.args)
+			require.Error(t, err)
+			assert.Equal(t, tc.want, err.Error())
+		})
+	}
+}
+
+// TestFilesUpdateRejectsOutOfRangeIndex asserts the pre-write validation: an
+// index the torrent does not have errors naming the index and the file count, and
+// nothing is written.
+func TestFilesUpdateRejectsOutOfRangeIndex(t *testing.T) {
+	cases := []struct {
+		name  string
+		index string
+		want  string
+	}{
+		{"bare index", "9", "file index 9 is out of range: the torrent has 3 files"},
+		{"range end", "1-9", "file index 9 is out of range: the torrent has 3 files"},
+		{"range start", "5-9", "file index 5 is out of range: the torrent has 3 files"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+			defer closeSrv()
+
+			out, _, err := runFilesUpdate(t, "--config", cfgPath, "1", tc.index, "--unwanted")
+			require.Error(t, err)
+			assert.Equal(t, tc.want, err.Error())
+			assert.Empty(t, out)
+
+			_, ok := stub.request("torrent-set")
+			assert.False(t, ok, "an out-of-range index writes nothing")
+		})
+	}
+}
+
+// TestFilesUpdateRequiresAFieldFlag asserts the flag guards: --wanted and
+// --unwanted are mutually exclusive, and an invocation with no field flag is an
+// error rather than a silent no-op. Both are caught before the command dials, so
+// nothing is written.
+func TestFilesUpdateRequiresAFieldFlag(t *testing.T) {
+	cases := []struct {
+		name  string
+		flags []string
+		want  string
+	}{
+		{"no field flag", nil, "nothing to change: provide --priority, --wanted, or --unwanted"},
+		{"wanted and unwanted", []string{"--wanted", "--unwanted"}, "--wanted and --unwanted cannot be used together"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+			defer closeSrv()
+
+			args := append([]string{"--config", cfgPath, "1", "0"}, tc.flags...)
+
+			out, _, err := runFilesUpdate(t, args...)
+			require.Error(t, err)
+			assert.Equal(t, tc.want, err.Error())
+			assert.Empty(t, out)
+
+			_, ok := stub.request("torrent-set")
+			assert.False(t, ok, "no write is issued")
+		})
+	}
+}
+
+func TestFilesUpdateRejectsInvalidPriority(t *testing.T) {
+	cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	_, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "0", "--priority", "urgent")
+	require.Error(t, err)
+	assert.Equal(t, "invalid value for --priority: must be low, normal, or high", err.Error())
+
+	_, ok := stub.request("torrent-set")
+	assert.False(t, ok, "an invalid priority writes nothing")
+}
+
+// TestFilesUpdateSendsFileChanges asserts the flags map 1:1 onto
+// transmission.FileChanges, in a single torrent-set call carrying the resolved
+// index set and a one-torrent selector.
+func TestFilesUpdateSendsFileChanges(t *testing.T) {
+	cases := []struct {
+		name    string
+		indexes []string
+		flags   []string
+		want    []string
+		absent  []string
+	}{
+		{
+			name:    "wanted",
+			indexes: []string{"0,2"},
+			flags:   []string{"--wanted"},
+			want:    []string{`"files-wanted":[0,2]`},
+			absent:  []string{"files-unwanted", "priority-"},
+		},
+		{
+			name:    "unwanted",
+			indexes: []string{"2"},
+			flags:   []string{"--unwanted"},
+			want:    []string{`"files-unwanted":[2]`},
+			absent:  []string{"files-wanted", "priority-"},
+		},
+		{
+			name:    "priority high",
+			indexes: []string{"0-1"},
+			flags:   []string{"--priority", "high"},
+			want:    []string{`"priority-high":[0,1]`},
+			absent:  []string{"files-wanted", "files-unwanted", "priority-normal", "priority-low"},
+		},
+		{
+			name:    "priority normal",
+			indexes: []string{"1"},
+			flags:   []string{"--priority", "normal"},
+			want:    []string{`"priority-normal":[1]`},
+			absent:  []string{"priority-high", "priority-low"},
+		},
+		{
+			name:    "priority low",
+			indexes: []string{"1"},
+			flags:   []string{"--priority", "LOW"},
+			want:    []string{`"priority-low":[1]`},
+			absent:  []string{"priority-high", "priority-normal"},
+		},
+		{
+			name:    "priority and selection together",
+			indexes: []string{"all"},
+			flags:   []string{"--priority", "low", "--unwanted"},
+			want:    []string{`"files-unwanted":[0,1,2]`, `"priority-low":[0,1,2]`},
+			absent:  []string{"files-wanted", "priority-high", "priority-normal"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+			defer closeSrv()
+
+			args := append([]string{"--config", cfgPath, "1"}, tc.indexes...)
+			args = append(args, tc.flags...)
+
+			_, _, err := runFilesUpdate(t, args...)
+			require.NoError(t, err)
+
+			body, ok := stub.request("torrent-set")
+			require.True(t, ok, "exactly one torrent-set call is issued")
+
+			assert.Contains(t, body, `"ids":[1]`, "the write targets a single torrent")
+			for _, want := range tc.want {
+				assert.Contains(t, body, want)
+			}
+			for _, absent := range tc.absent {
+				assert.NotContains(t, body, absent)
+			}
+		})
+	}
+}
+
+// TestFilesUpdateRendersOnlyAffectedRows asserts the post-write render: the
+// re-fetched detail is filtered to the affected indices, in ascending index
+// order, through the same registry and renderer as "torrent files".
+func TestFilesUpdateRendersOnlyAffectedRows(t *testing.T) {
+	cfgPath, _, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "2,0", "--priority", "high")
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 2, "only the two affected files are rendered")
+
+	first := strings.Split(lines[0], "\t")
+	require.Len(t, first, len(fileFieldKeys), "the files registry's full default column set")
+	assert.Equal(t, "0", first[0])
+	assert.Equal(t, "ubuntu-24.04.iso", first[1])
+
+	second := strings.Split(lines[1], "\t")
+	assert.Equal(t, "2", second[0], "rows are in ascending index order, not argument order")
+	assert.Equal(t, "empty.dat", second[1])
+}
+
+func TestFilesUpdateJSONEmitsAffectedFiles(t *testing.T) {
+	cfgPath, _, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "2,0", "--unwanted", "--json")
+	require.NoError(t, err)
+
+	var got []struct {
+		Name string `json:"name"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 2)
+	assert.Equal(t, "ubuntu-24.04.iso", got[0].Name)
+	assert.Equal(t, "empty.dat", got[1].Name)
+}
+
+func TestFilesUpdateJQ(t *testing.T) {
+	cfgPath, _, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "1", "--wanted", "--jq", ".[].name")
+	require.NoError(t, err)
+	assert.Equal(t, `"SHA256SUMS"`, strings.TrimSpace(out))
+}
+
+func TestFilesUpdateFieldsUsesTheFilesRegistry(t *testing.T) {
+	cfgPath, _, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "0", "--unwanted", "--fields", "name,index")
+	require.NoError(t, err)
+	assert.Equal(t, "ubuntu-24.04.iso\t0", strings.TrimRight(out, "\n"))
+
+	_, _, err = runFilesUpdate(t, "--config", cfgPath, "1", "0", "--unwanted", "--fields", "status")
+	require.Error(t, err)
+	assert.Equal(t, `invalid field "status": valid fields are `+validFieldKeys(fileFields), err.Error(),
+		"the error lists only the files command's own keys")
+}
+
+func TestFilesUpdateResolvesByHash(t *testing.T) {
+	cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, strings.ToUpper(infoHash2), "all", "--wanted")
+	require.NoError(t, err)
+	assert.Empty(t, out, "torrent 2 has no files, so no rows are rendered")
+
+	body, ok := stub.request("torrent-set")
+	require.True(t, ok)
+	assert.Contains(t, body, `"ids":[2]`, "the hash resolved to its numeric id")
+}
+
+func TestFilesUpdateWrongArgCount(t *testing.T) {
+	cfgPath, _, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	t.Run("selector only", func(t *testing.T) {
+		_, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "--wanted")
+		require.Error(t, err, "at least one index is required")
+	})
+
+	t.Run("no args", func(t *testing.T) {
+		_, _, err := runFilesUpdate(t, "--config", cfgPath, "--wanted")
+		require.Error(t, err)
+	})
+}
+
+func TestFilesUpdateInvalidSelector(t *testing.T) {
+	cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	_, _, err := runFilesUpdate(t, "--config", cfgPath, "not-an-id", "0", "--wanted")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid torrent selector")
+
+	_, ok := stub.request("torrent-set")
+	assert.False(t, ok, "a malformed selector writes nothing")
+}
+
+func TestFilesUpdateNotConfigured(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "0", "--wanted")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
+
+// TestSelectFileRowsSkipsMissingIndices guards the post-write re-fetch: the
+// second round-trip could in principle come back with fewer files, and a stale
+// index must not panic the renderer.
+func TestSelectFileRowsSkipsMissingIndices(t *testing.T) {
+	files := []transmission.File{{Name: "a.iso"}, {Name: "b.iso"}}
+
+	rows := selectFileRows(files, []int{0, 5})
+	require.Len(t, rows, 1)
+	assert.Equal(t, 0, rows[0].Index)
+	assert.Equal(t, "a.iso", rows[0].Name)
+
+	assert.Empty(t, rowFiles(selectFileRows(nil, []int{0})))
 }

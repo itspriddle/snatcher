@@ -1,6 +1,7 @@
 ARG snatcher api 0 method
 ARG snatcher server default 0 alias
 ARG snatcher torrent files 0 id|hash
+ARG snatcher torrent files update 0 id|hash
 ARG snatcher torrent move 0 id|hash
 ARG snatcher torrent move 1 location
 ARG snatcher torrent show 0 id|hash
@@ -24,6 +25,7 @@ CMD snatcher server update
 CMD snatcher torrent
 CMD snatcher torrent add
 CMD snatcher torrent files
+CMD snatcher torrent files update
 CMD snatcher torrent list
 CMD snatcher torrent move
 CMD snatcher torrent queue
@@ -149,6 +151,14 @@ FLAG snatcher torrent files --fields type=string
 FLAG snatcher torrent files --jq type=string
 FLAG snatcher torrent files --json type=bool
 FLAG snatcher torrent files --server type=string
+FLAG snatcher torrent files update --config type=string
+FLAG snatcher torrent files update --fields type=string
+FLAG snatcher torrent files update --jq type=string
+FLAG snatcher torrent files update --json type=bool
+FLAG snatcher torrent files update --priority type=string
+FLAG snatcher torrent files update --server type=string
+FLAG snatcher torrent files update --unwanted type=bool
+FLAG snatcher torrent files update --wanted type=bool
 FLAG snatcher torrent list --config type=string
 FLAG snatcher torrent list --fields type=string
 FLAG snatcher torrent list --filter type=string
