@@ -73,6 +73,9 @@ const (
 	methodTorrentSetLocationJSONRPC = "torrent_set_location"
 	methodTorrentSetLocationBespoke = "torrent-set-location"
 
+	methodTorrentRenamePathJSONRPC = "torrent_rename_path"
+	methodTorrentRenamePathBespoke = "torrent-rename-path"
+
 	methodTorrentSetJSONRPC = "torrent_set"
 	methodTorrentSetBespoke = "torrent-set"
 
@@ -331,6 +334,13 @@ type FreeSpaceResult struct {
 	// TotalBytes is the directory's total capacity, in bytes, or 0 (omitted) when
 	// the server did not report it.
 	TotalBytes int64 `json:"total_bytes,omitempty"`
+}
+
+// RenameResult is the server's echo of a completed torrent-rename-path call.
+type RenameResult struct {
+	ID   int64  `json:"id"`
+	Path string `json:"path"`
+	Name string `json:"name"`
 }
 
 // Torrent is the canonical, protocol-neutral result of one torrent in a
@@ -772,6 +782,14 @@ type Protocol interface {
 	// repoints to a path where the files already exist and searches there. The
 	// method carries no response payload, so the call only confirms success.
 	TorrentSetLocation(ctx context.Context, t transport, ids []any, location string, move bool) error
+
+	// TorrentRenamePath calls the server's torrent-rename-path/torrent_rename_path
+	// method, renaming the file or directory at the torrent-relative path to name.
+	// Renaming the torrent's root path renames the torrent itself. Unlike every
+	// other mutation here, ids is always sent even when empty: an omitted ids means
+	// "all torrents", and this method accepts exactly one. The server echoes the
+	// torrent id, the renamed path, and the new name in a RenameResult.
+	TorrentRenamePath(ctx context.Context, t transport, ids []any, path, name string) (RenameResult, error)
 
 	// TorrentSet calls the server's torrent-set/torrent_set method to write
 	// per-torrent fields. A nil or empty ids slice targets all torrents;
@@ -1736,6 +1754,54 @@ func (jsonrpcProtocol) TorrentSetLocation(ctx context.Context, t transport, ids 
 	}
 
 	return nil
+}
+
+// jsonrpcRenamePathResult is the torrent_rename_path result shape: the server
+// echoes the torrent id, the path it renamed, and the new name. The spec spells
+// these keys id/path/name in both schemes.
+type jsonrpcRenamePathResult struct {
+	ID   int64  `json:"id"`
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+// TorrentRenamePath sends torrent_rename_path with the torrent-relative path and
+// the new name, and decodes the server's echo. ids is always sent, even when
+// empty: unlike the other mutations here, an omitted ids would mean "every
+// torrent", and this method accepts exactly one.
+func (jsonrpcProtocol) TorrentRenamePath(ctx context.Context, t transport, ids []any, path, name string) (RenameResult, error) {
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  methodTorrentRenamePathJSONRPC,
+		Params:  map[string]any{"ids": ids, "path": path, "name": name},
+		ID:      1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return RenameResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return RenameResult{}, err
+	}
+
+	var resp jsonrpcResponse
+	if err := decodeResponse(methodTorrentRenamePathJSONRPC, respBody, &resp); err != nil {
+		return RenameResult{}, err
+	}
+
+	if resp.Error != nil {
+		return RenameResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Error.Message)
+	}
+
+	var result jsonrpcRenamePathResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return RenameResult{}, fmt.Errorf("rpc: decoding %s result: %w", methodTorrentRenamePathJSONRPC, err)
+	}
+
+	return RenameResult(result), nil
 }
 
 // TorrentSet sends torrent_set with the per-torrent settings (translated from
@@ -2804,6 +2870,53 @@ func (bespokeProtocol) TorrentSetLocation(ctx context.Context, t transport, ids 
 	}
 
 	return nil
+}
+
+// bespokeRenamePathArguments is the torrent-rename-path arguments shape: the
+// server echoes the torrent id, the path it renamed, and the new name. The spec
+// spells these keys id/path/name in both schemes.
+type bespokeRenamePathArguments struct {
+	ID   int64  `json:"id"`
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+// TorrentRenamePath sends torrent-rename-path with the torrent-relative path and
+// the new name, and decodes the server's echo. ids is always sent, even when
+// empty: unlike the other mutations here, an omitted ids would mean "every
+// torrent", and this method accepts exactly one.
+func (bespokeProtocol) TorrentRenamePath(ctx context.Context, t transport, ids []any, path, name string) (RenameResult, error) {
+	req := bespokeRequest{
+		Method:    methodTorrentRenamePathBespoke,
+		Arguments: map[string]any{"ids": ids, "path": path, "name": name},
+		Tag:       1,
+	}
+
+	body, err := marshalRequest(req)
+	if err != nil {
+		return RenameResult{}, err
+	}
+
+	respBody, err := t.Do(ctx, body)
+	if err != nil {
+		return RenameResult{}, err
+	}
+
+	var resp bespokeResponse
+	if err := decodeResponse(methodTorrentRenamePathBespoke, respBody, &resp); err != nil {
+		return RenameResult{}, err
+	}
+
+	if resp.Result != bespokeResultSuccess {
+		return RenameResult{}, fmt.Errorf("%w: %s", ErrRPC, resp.Result)
+	}
+
+	var args bespokeRenamePathArguments
+	if err := json.Unmarshal(resp.Arguments, &args); err != nil {
+		return RenameResult{}, fmt.Errorf("rpc: decoding %s arguments: %w", methodTorrentRenamePathBespoke, err)
+	}
+
+	return RenameResult(args), nil
 }
 
 // TorrentSet sends torrent-set with the per-torrent settings (translated from

@@ -1303,6 +1303,188 @@ func TestBespokeProtocolTorrentSetLocationMapsNonSuccessResult(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid argument")
 }
 
+func TestProtocolTorrentRenamePath(t *testing.T) {
+	// The spec names the response keys id, path, and name in both schemes
+	// (docs/transmission/rpc-spec-411.md and -406.md, both §3.7).
+	t.Run("jsonrpc sends ids, path, and name and decodes the echo", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{
+				"jsonrpc": "2.0",
+				"result": {"id": 12, "path": "Ubuntu 24.04/disk.iso", "name": "ubuntu.iso"},
+				"id": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		result, err := jsonrpcProtocol{}.TorrentRenamePath(context.Background(), tr, []any{int64(12)}, "Ubuntu 24.04/disk.iso", "ubuntu.iso")
+		require.NoError(t, err)
+
+		assert.Equal(t, RenameResult{ID: 12, Path: "Ubuntu 24.04/disk.iso", Name: "ubuntu.iso"}, result)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "2.0", gotBody["jsonrpc"])
+		assert.Equal(t, "torrent_rename_path", gotBody["method"])
+		assert.NotContains(t, gotBody, "tag")
+
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok, "params is an object")
+		assert.Equal(t, []any{float64(12)}, params["ids"], "exactly the one supplied torrent is named")
+		assert.Equal(t, "Ubuntu 24.04/disk.iso", params["path"])
+		assert.Equal(t, "ubuntu.iso", params["name"])
+	})
+
+	t.Run("bespoke sends ids, path, and name and decodes the echo", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{
+				"arguments": {"id": 12, "path": "Ubuntu 24.04/disk.iso", "name": "ubuntu.iso"},
+				"result": "success",
+				"tag": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		result, err := bespokeProtocol{}.TorrentRenamePath(context.Background(), tr, []any{"cafebabe"}, "Ubuntu 24.04/disk.iso", "ubuntu.iso")
+		require.NoError(t, err)
+
+		assert.Equal(t, RenameResult{ID: 12, Path: "Ubuntu 24.04/disk.iso", Name: "ubuntu.iso"}, result)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		assert.Equal(t, "torrent-rename-path", gotBody["method"])
+		assert.Contains(t, gotBody, "tag")
+		assert.NotContains(t, gotBody, "jsonrpc")
+
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok, "arguments is an object")
+		assert.Equal(t, []any{"cafebabe"}, args["ids"], "exactly the one supplied torrent is named")
+		assert.Equal(t, "Ubuntu 24.04/disk.iso", args["path"])
+		assert.Equal(t, "ubuntu.iso", args["name"])
+	})
+}
+
+func TestProtocolTorrentRenamePathNeverOmitsIDs(t *testing.T) {
+	// Every other mutation omits ids when empty, which Transmission reads as "all
+	// torrents". Renaming accepts exactly one torrent, so that idiom must not be
+	// copied here: ids stays on the wire even when the caller supplies none, and
+	// the server rejects the request rather than renaming a path in every torrent.
+	t.Run("jsonrpc keeps the ids key", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": {}, "id": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := jsonrpcProtocol{}.TorrentRenamePath(context.Background(), tr, nil, "disk.iso", "ubuntu.iso")
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok, "params is an object")
+		assert.Contains(t, params, "ids", "ids is never omitted, an omitted ids means all torrents")
+	})
+
+	t.Run("bespoke keeps the ids key", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"arguments": {}, "result": "success", "tag": 1}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := bespokeProtocol{}.TorrentRenamePath(context.Background(), tr, nil, "disk.iso", "ubuntu.iso")
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok, "arguments is an object")
+		assert.Contains(t, args, "ids", "ids is never omitted, an omitted ids means all torrents")
+	})
+}
+
+func TestJSONRPCProtocolTorrentRenamePathMapsErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"jsonrpc": "2.0",
+			"error": {"code": 7, "message": "path does not exist"},
+			"id": 1
+		}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := jsonrpcProtocol{}.TorrentRenamePath(context.Background(), tr, []any{int64(12)}, "nope", "ubuntu.iso")
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "path does not exist")
+}
+
+func TestBespokeProtocolTorrentRenamePathMapsNonSuccessResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result": "path does not exist", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := bespokeProtocol{}.TorrentRenamePath(context.Background(), tr, []any{int64(12)}, "nope", "ubuntu.iso")
+	require.ErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "path does not exist")
+}
+
+func TestJSONRPCProtocolTorrentRenamePathMalformedResult(t *testing.T) {
+	// A well-formed envelope whose result is not the documented object: the decode
+	// error names the method rather than surfacing a zero-valued RenameResult.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc": "2.0", "result": "renamed", "id": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := jsonrpcProtocol{}.TorrentRenamePath(context.Background(), tr, []any{int64(12)}, "disk.iso", "ubuntu.iso")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "decoding torrent_rename_path result")
+}
+
+func TestBespokeProtocolTorrentRenamePathMalformedArguments(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"arguments": "renamed", "result": "success", "tag": 1}`))
+	}))
+	defer srv.Close()
+
+	tr := NewTransport(srv.URL)
+
+	_, err := bespokeProtocol{}.TorrentRenamePath(context.Background(), tr, []any{int64(12)}, "disk.iso", "ubuntu.iso")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrRPC)
+	assert.ErrorContains(t, err, "decoding torrent-rename-path arguments")
+}
+
 func TestProtocolTorrentSet(t *testing.T) {
 	t.Run("jsonrpc sends snake_case keys verbatim with ids", func(t *testing.T) {
 		var rawBody []byte
