@@ -63,7 +63,9 @@ type mutationResult struct {
 	all bool
 }
 
-// mutationTorrent is a single affected torrent in a mutationResult.
+// mutationTorrent is a single affected torrent in a mutationResult, and the
+// shared {id, hash, name} shape any command's JSON contract names a torrent
+// with (rename embeds one too).
 type mutationTorrent struct {
 	ID   int64  `json:"id"`
 	Hash string `json:"hash"`

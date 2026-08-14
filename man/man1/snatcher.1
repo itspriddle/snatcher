@@ -550,7 +550,7 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR add ", " show ", " files ", " peers ", " trackers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " queue ", " remove ", and " update .
+.BR add ", " show ", " files ", " peers ", " trackers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " rename ", " queue ", " remove ", and " update .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
@@ -932,6 +932,31 @@ Besides the common options:
 .B \-\-in\-place
 Repoint Transmission at a path where the files already exist (after a manual
 move) without relocating them.
+.RE
+.TP
+.B snatcher torrent rename \fR[\fIoptions\fR] \fIid | hash\fR \fIpath\fR \fInew-name\fR
+Rename a file or directory inside a single torrent. Select the torrent by
+numeric id or 40-character SHA1 hash.
+.I path
+is the torrent-relative path of a file
+.I or
+directory, exactly as shown by
+.BR "snatcher torrent files" ;
+.I new-name
+replaces its last component.
+.IP
+Renaming the torrent's root path
+.RB ( path
+equal to the torrent's own name) renames the torrent itself. That case prompts
+.RB [ y/N ]
+on a terminal, and when standard input is not a terminal it is refused unless
+.B \-\-yes
+is given. After a root rename, later paths are relative to the new root.
+Besides the common options:
+.RS
+.TP
+.BR \-y ", " \-\-yes
+Skip the confirmation prompt.
 .RE
 .TP
 .B snatcher torrent queue \fR[\fIid | hash\fR]...
@@ -1380,6 +1405,18 @@ $ snatcher torrent add ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \(rs
 
 # add every source listed in a file (one per line)
 $ snatcher torrent add < sources.txt
+.EE
+.SS "Rename a file or a torrent"
+.EX
+# find the torrent\-relative path, then rename that file
+$ snatcher torrent files 3
+$ snatcher torrent rename 3 'Ubuntu 24.04/disk.iso' ubuntu.iso
+
+# renaming the root path renames the torrent itself, so it prompts
+$ snatcher torrent rename 3 'Ubuntu 24.04' ubuntu\-24.04
+
+# same, unattended (required when stdin is not a terminal)
+$ snatcher torrent rename 3 'Ubuntu 24.04' ubuntu\-24.04 \-\-yes
 .EE
 .SS "Session statistics"
 .EX

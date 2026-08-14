@@ -5,6 +5,9 @@ ARG snatcher torrent files update 0 id|hash
 ARG snatcher torrent move 0 id|hash
 ARG snatcher torrent move 1 location
 ARG snatcher torrent peers 0 id|hash
+ARG snatcher torrent rename 0 id|hash
+ARG snatcher torrent rename 1 path
+ARG snatcher torrent rename 2 new-name
 ARG snatcher torrent show 0 id|hash
 ARG snatcher torrent trackers 0 id|hash
 CMD snatcher
@@ -38,6 +41,7 @@ CMD snatcher torrent queue top
 CMD snatcher torrent queue up
 CMD snatcher torrent reannounce
 CMD snatcher torrent remove
+CMD snatcher torrent rename
 CMD snatcher torrent show
 CMD snatcher torrent start
 CMD snatcher torrent stop
@@ -210,6 +214,11 @@ FLAG snatcher torrent remove --jq type=string
 FLAG snatcher torrent remove --json type=bool
 FLAG snatcher torrent remove --server type=string
 FLAG snatcher torrent remove --yes type=bool
+FLAG snatcher torrent rename --config type=string
+FLAG snatcher torrent rename --jq type=string
+FLAG snatcher torrent rename --json type=bool
+FLAG snatcher torrent rename --server type=string
+FLAG snatcher torrent rename --yes type=bool
 FLAG snatcher torrent show --config type=string
 FLAG snatcher torrent show --fields type=string
 FLAG snatcher torrent show --jq type=string
