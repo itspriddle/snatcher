@@ -1039,6 +1039,66 @@ func TestCallAPIRedactsTheAPIKeyFromTheBody(t *testing.T) {
 	assert.Contains(t, string(resp.Redacted), "?apikey=REDACTED&link=abc")
 }
 
+// TestRedactStripsTheAPIKeyWhereverTheReleaseCarriesIt pins the value-based half
+// of the release strip: the key goes because it is the configured key, not
+// because a parameter happened to be spelled "apikey" on one of three URL
+// fields. Prowlarr proxies downloadUrl that way today, and a response shape that
+// changed would otherwise start leaking with nothing to catch it.
+func TestRedactStripsTheAPIKeyWhereverTheReleaseCarriesIt(t *testing.T) {
+	client := newTestClient(t, "http://prowlarr.test", WithAPIKey(testAPIKey))
+
+	raw := json.RawMessage(`{"guid":"https://tracker.test/1?apikey=` + testAPIKey + `"}`)
+	release := Release{
+		Raw:         raw,
+		GUID:        "https://tracker.test/1?apikey=" + testAPIKey,
+		Title:       "Ubuntu 24.04 (" + testAPIKey + ")",
+		DownloadURL: "http://prowlarr.test/3/download?api_key=" + testAPIKey + "&link=abc",
+		MagnetURL:   "magnet:?xt=urn:btih:aaa111&tr=http://tracker.test/announce?passkey=" + testAPIKey,
+		InfoURL:     "http://prowlarr.test/3/details?apikey=" + testAPIKey,
+		Categories: []Category{{
+			ID:            2000,
+			Name:          "Movies",
+			SubCategories: []Category{{ID: 2040, Name: "Movies/HD " + testAPIKey}},
+		}},
+	}
+
+	redacted := client.Redact(release)
+
+	rendered, err := json.Marshal(redacted)
+	require.NoError(t, err)
+	assert.NotContains(t, string(rendered), testAPIKey, "no rendered field carries the key")
+
+	assert.Equal(t, "https://tracker.test/1?apikey="+redactedValue, redacted.GUID,
+		"a field the URL rewrite does not visit is still covered")
+	assert.Equal(t, "http://prowlarr.test/3/download?api_key="+redactedValue+"&link=abc", redacted.DownloadURL,
+		"a differently spelled parameter is caught by value")
+	assert.Equal(t, "http://prowlarr.test/3/details?apikey="+redactedValue, redacted.InfoURL)
+	assert.Equal(t, "Movies/HD "+redactedValue, redacted.Categories[0].SubCategories[0].Name)
+
+	// The other half of the strip: it is a render-boundary copy, so the release a
+	// command acts on and the bytes a grab re-POSTs are exactly what arrived.
+	assert.Equal(t, string(raw), string(redacted.Raw), //nolint:testifylint // encoded-compare: byte-exactness is the assertion
+		"the retained resource is never rewritten")
+	assert.Contains(t, release.GUID, testAPIKey, "the receiver is untouched")
+	assert.Contains(t, release.Title, testAPIKey)
+	assert.Contains(t, release.Categories[0].SubCategories[0].Name, testAPIKey,
+		"and so is the category tree it shares with the copy")
+}
+
+// TestRedactStillStripsAnApikeyParameterWithNoKeyConfigured pins why Redact runs
+// both seams: the value scrub cannot see a key this client is not configured
+// with — an indexer's own, or one belonging to another instance — and the URL
+// rewrite can.
+func TestRedactStillStripsAnApikeyParameterWithNoKeyConfigured(t *testing.T) {
+	client := newTestClient(t, "http://prowlarr.test")
+
+	redacted := client.Redact(Release{
+		DownloadURL: "http://prowlarr.test/3/download?apikey=another-instances-key&link=abc",
+	})
+
+	assert.Equal(t, "http://prowlarr.test/3/download?apikey="+redactedValue+"&link=abc", redacted.DownloadURL)
+}
+
 func TestCallAPILeavesTheBodyAloneWithNoAPIKeyConfigured(t *testing.T) {
 	const body = `{"apiKey":"whatever-the-instance-reports"}`
 

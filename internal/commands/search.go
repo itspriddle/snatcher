@@ -165,11 +165,11 @@ func NewSearchCmd() *cobra.Command {
 			results := numberSearchResults(releases)
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), jsonSlice(redactSearchResults(results)), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), jsonSlice(redactSearchResults(client, results)), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), jsonSlice(redactSearchResults(results)))
+				return output.JSON(cmd.OutOrStdout(), jsonSlice(redactSearchResults(client, results)))
 			}
 
 			writeListPlaintext(cmd, results, searchColumns, "No results.")
@@ -320,7 +320,7 @@ func numberSearchResults(releases []prowlarr.Release) []searchResult {
 }
 
 // redactSearchResults returns the results with the API key stripped from every
-// release's URL fields, for the structured output modes only.
+// release, for the structured output modes only.
 //
 // The plaintext table renders no URL at all, so this is the whole exposure:
 // Prowlarr's downloadUrl is a proxy link that carries the key as a query
@@ -329,14 +329,18 @@ func numberSearchResults(releases []prowlarr.Release) []searchResult {
 // scripting contract, which is exactly what makes emitting the key there
 // dangerous — a filtered result lands in a log, a pipeline, or a paste.
 //
+// The strip is the client's, not this layer's: prowlarr.Client.Redact knows the
+// configured key and so can match on its value wherever it turns up, rather than
+// only where a parameter happens to be spelled "apikey" on one of three fields.
+//
 // It runs on a copy at the render boundary, so the releases the rest of the
 // command holds — the DownloadURL search download fetches, the Raw bytes search
-// grab re-POSTs — stay byte-exact. A redacted URL is for reading, not for
+// grab re-POSTs — stay byte-exact. A redacted release is for reading, not for
 // acting on.
-func redactSearchResults(results []searchResult) []searchResult {
+func redactSearchResults(client *prowlarr.Client, results []searchResult) []searchResult {
 	redacted := make([]searchResult, len(results))
 	for i, result := range results {
-		redacted[i] = searchResult{Index: result.Index, Release: result.Redacted()}
+		redacted[i] = searchResult{Index: result.Index, Release: client.Redact(result.Release)}
 	}
 
 	return redacted

@@ -392,6 +392,64 @@ func TestSearchGrabNeverPrintsTheAPIKey(t *testing.T) {
 	}
 }
 
+// TestSearchGrabRedactsTheAPIKeyWhereverItAppears is the grab half of the
+// value-based strip. The echoed resource carries the key on its guid and under a
+// parameter spelled api_key=, neither of which the URL rewrite visits, so a
+// redactor matching only on the name Prowlarr happens to use today would print
+// the key twice. The bytes handed back to Prowlarr are unaffected: the strip is a
+// render-boundary rewrite, and a grab must re-POST what it was sent.
+func TestSearchGrabRedactsTheAPIKeyWhereverItAppears(t *testing.T) {
+	page := `[{
+		"guid": "https://tracker.example/1?apikey=` + searchFixtureAPIKey + `",
+		"title": "Ubuntu 24.04 LTS",
+		"indexer": "Example Tracker",
+		"indexerId": 3,
+		"downloadUrl": "http://prowlarr.example/3/download?api_key=` + searchFixtureAPIKey + `&link=abc"
+	}]`
+
+	require.Contains(t, page, `"guid": "https://tracker.example/1?apikey=`+searchFixtureAPIKey,
+		"the fixture must carry the key on a field Redacted does not touch, or this guard passes vacuously")
+	require.Contains(t, page, "api_key="+searchFixtureAPIKey,
+		"and under a parameter name the URL rewrite does not match")
+
+	keyring.MockInit()
+
+	searches := new([]url.Values)
+	posted := new([]json.RawMessage)
+	stub := prowlarrGrabStub{
+		pages: []string{page},
+		// The echoed grab is the same resource without its enclosing array, which
+		// is exactly the shape Prowlarr answers a grab with.
+		grabbed:  page[1 : len(page)-1],
+		searches: searches,
+		posted:   posted,
+	}
+
+	srv := httptest.NewServer(stub.handler())
+	t.Cleanup(srv.Close)
+
+	cfgPath := writeConfigFile(t, fmt.Sprintf(
+		`{"servers": {"indexers": {"url": %q, "type": "prowlarr"}}, "default_prowlarr_server": "indexers"}`,
+		srv.URL))
+
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
+
+	out, errOut, err := runSearch(t, "--config", cfgPath, "--json", "grab", "ubuntu", "1")
+	require.NoError(t, err)
+	assert.NotContains(t, out+errOut, searchFixtureAPIKey)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+
+	assert.Equal(t, "https://tracker.example/1?apikey=REDACTED", got["guid"])
+	assert.Equal(t, "http://prowlarr.example/3/download?api_key=REDACTED&link=abc", got["download_url"],
+		"the value is matched, not the parameter name")
+
+	require.Len(t, *posted, 1)
+	assert.Contains(t, string((*posted)[0]), "api_key="+searchFixtureAPIKey,
+		"the retained bytes are re-POSTed unredacted; the strip is a render-boundary rewrite only")
+}
+
 // TestSearchGrabReportsAServerError pins that the POST half of a grab is not
 // swallowed: the re-run succeeds, Prowlarr refuses the grab, and the error says
 // which instance refused it.

@@ -139,6 +139,53 @@ func (r Release) Redacted() Release {
 	return r
 }
 
+// scrubbed returns a copy of r with scrub applied to every string it renders,
+// the names and descriptions of its nested categories included. It is the field
+// walk behind Client.Redact, where scrub replaces the configured API key
+// wherever it appears.
+//
+// Every rendered string is covered rather than the three URL fields Redacted
+// rewrites, because that is the whole point of matching on the key's own value:
+// it does not depend on where the server chose to put the key, so a hand-picked
+// field list would reintroduce the gap this exists to close. Raw is deliberately
+// untouched — those bytes are what a grab hands back and must stay byte-exact —
+// and the receiver is a copy, right down to a freshly built category slice, so
+// the release a command acts on is unchanged.
+func (r Release) scrubbed(scrub func(string) string) Release {
+	r.GUID = scrub(r.GUID)
+	r.Title = scrub(r.Title)
+	r.Indexer = scrub(r.Indexer)
+	r.PublishDate = scrub(r.PublishDate)
+	r.Protocol = scrub(r.Protocol)
+	r.InfoHash = scrub(r.InfoHash)
+	r.DownloadURL = scrub(r.DownloadURL)
+	r.MagnetURL = scrub(r.MagnetURL)
+	r.InfoURL = scrub(r.InfoURL)
+	r.CommentURL = scrub(r.CommentURL)
+	r.Categories = scrubCategories(r.Categories, scrub)
+
+	return r
+}
+
+// scrubCategories applies scrub to a category tree, returning a new slice so the
+// caller's categories — which a Release value copy still shares — are not
+// rewritten underneath it.
+func scrubCategories(cats []Category, scrub func(string) string) []Category {
+	if len(cats) == 0 {
+		return cats
+	}
+
+	out := make([]Category, len(cats))
+	for i, cat := range cats {
+		cat.Name = scrub(cat.Name)
+		cat.Description = scrub(cat.Description)
+		cat.SubCategories = scrubCategories(cat.SubCategories, scrub)
+		out[i] = cat
+	}
+
+	return out
+}
+
 // releaseWire is Prowlarr's ReleaseResource as it arrives on the wire. Only the
 // modeled fields are listed; the rest survive on Release.Raw.
 type releaseWire struct {

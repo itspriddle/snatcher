@@ -258,6 +258,32 @@ func (c *Client) Download(ctx context.Context, release Release) ([]byte, error) 
 	return c.transport.fetch(ctx, release.DownloadURL)
 }
 
+// Redact returns a copy of release ready to be emitted: the configured API key
+// replaced wherever it appears in a rendered string, and the value of any apikey
+// query parameter stripped from the URLs the server supplied.
+//
+// Both seams run, because neither subsumes the other. The value scrub catches
+// the key under a parameter spelled any way at all, and on a field no URL
+// rewrite would think to visit — Prowlarr proxies downloadUrl with apikey= today,
+// and a response shape that changed tomorrow would otherwise start leaking
+// silently. Release.Redacted catches the other direction: an apikey parameter
+// whose value is *not* the key this client is configured with, such as an
+// indexer's own or one from another instance, which the scrub cannot see.
+//
+// It is the same value-based strip APIResponse.Redacted gives the raw escape
+// hatch, so snatcher's two Prowlarr render boundaries mean the same thing by
+// redaction.
+//
+// This is a render-boundary rewrite only. The release a command acts on is
+// untouched, and so are the Raw bytes Grab re-POSTs: a redacted release is for
+// reading, never for acting on.
+func (c *Client) Redact(release Release) Release {
+	// Scrub first, against the strings exactly as the server sent them. Redacted
+	// re-encodes a URL it rewrites, and a value is surest to match before
+	// anything has had the chance to respell it.
+	return release.scrubbed(c.transport.scrub).Redacted()
+}
+
 // CallAPI issues an arbitrary REST request against the instance and returns the
 // server's exact answer. It is the escape hatch behind "snatcher api
 // --prowlarr", for the endpoints the typed calls above do not cover.

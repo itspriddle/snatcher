@@ -94,13 +94,15 @@ func newSearchGrabCmd() *cobra.Command {
 
 			// Prowlarr echoes the release with its own proxy downloadUrl, which
 			// carries the API key as a query parameter; the same strip search's
-			// structured output does applies here, and for the same reason.
+			// structured output does applies here, and for the same reason. The
+			// client owns it, so it matches the key by value wherever the echoed
+			// resource carries it rather than only in the URL fields.
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), grabbed.Redacted(), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), client.Redact(grabbed), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), grabbed.Redacted())
+				return output.JSON(cmd.OutOrStdout(), client.Redact(grabbed))
 			}
 
 			// Prowlarr echoes the release it accepted, so this line can name a

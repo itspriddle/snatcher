@@ -173,7 +173,8 @@ func TestSearchPipedEmptyWritesNothing(t *testing.T) {
 }
 
 func TestSearchTableAligned(t *testing.T) {
-	results := numberSearchResults(searchReleases(t, searchResultsBody))
+	_, releases := searchReleases(t, searchResultsBody)
+	results := numberSearchResults(releases)
 
 	var buf bytes.Buffer
 	// Width 0 disables truncation so the full titles show.
@@ -537,19 +538,71 @@ func TestSearchRedactsTheAPIKeyFromResultURLs(t *testing.T) {
 	assert.Equal(t, "https://tracker.example/1", got[0]["guid"])
 }
 
+// TestSearchRedactsTheAPIKeyWhereverItAppears is the value-based half of the
+// strip, and the reason it exists: Prowlarr proxies downloadUrl with an apikey=
+// parameter today, so a redactor that only looks for that name on those three
+// URL fields would start leaking the moment the response shape moved. Here the
+// key arrives under a differently spelled parameter and on two fields the URL
+// rewrite never visits.
+func TestSearchRedactsTheAPIKeyWhereverItAppears(t *testing.T) {
+	body := `[{
+		"guid": "https://tracker.example/1?apikey=` + searchFixtureAPIKey + `",
+		"title": "Ubuntu 24.04 LTS",
+		"indexer": "Example Tracker",
+		"indexerId": 3,
+		"downloadUrl": "http://prowlarr.example/3/download?api_key=` + searchFixtureAPIKey + `&link=abc",
+		"magnetUrl": "magnet:?xt=urn:btih:aaa111&tr=http://tracker.example/announce?passkey=` + searchFixtureAPIKey + `"
+	}]`
+
+	require.Contains(t, body, `"guid": "https://tracker.example/1?apikey=`+searchFixtureAPIKey,
+		"the fixture must carry the key on a field Redacted does not touch, or this guard passes vacuously")
+	require.Contains(t, body, "api_key="+searchFixtureAPIKey,
+		"and under a parameter name the URL rewrite does not match")
+
+	cfgPath, _ := searchConfig(t, body)
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
+
+	for _, args := range [][]string{
+		{"--json", "ubuntu"},
+		{"--jq", ".", "ubuntu"},
+	} {
+		out, errOut, err := runSearch(t, append([]string{"--config", cfgPath}, args...)...)
+		require.NoErrorf(t, err, "%v", args)
+		assert.NotContainsf(t, out+errOut, searchFixtureAPIKey, "%v", args)
+	}
+
+	out, _, err := runSearch(t, "--config", cfgPath, "--json", "ubuntu")
+	require.NoError(t, err)
+
+	var got []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1)
+
+	assert.Equal(t, "https://tracker.example/1?apikey=REDACTED", got[0]["guid"])
+	assert.Equal(t, "http://prowlarr.example/3/download?api_key=REDACTED&link=abc", got[0]["download_url"],
+		"the value is matched, not the parameter name")
+	assert.Equal(t, "magnet:?xt=urn:btih:aaa111&tr=http://tracker.example/announce?passkey=REDACTED",
+		got[0]["magnet_url"])
+}
+
 // TestSearchLeavesTheReleaseItActsOnUnredacted is the other half of the strip:
 // the rewrite happens on a copy at the render boundary, so the release the rest
 // of the command holds — the URL search download fetches, the bytes search grab
 // re-POSTs — is still the one Prowlarr sent.
 func TestSearchLeavesTheReleaseItActsOnUnredacted(t *testing.T) {
-	releases := searchReleases(t, searchResultsBody)
+	// The key has to be configured for the value-based half of the strip to have
+	// anything to match, so this covers both halves of Redact at once.
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
+
+	client, releases := searchReleases(t, searchResultsBody)
 	before := releases[0].DownloadURL
 	raw := string(releases[0].Raw)
 
 	results := numberSearchResults(releases)
-	redacted := redactSearchResults(results)
+	redacted := redactSearchResults(client, results)
 
 	assert.Contains(t, redacted[0].DownloadURL, "apikey=REDACTED")
+	assert.NotContains(t, redacted[0].DownloadURL, searchFixtureAPIKey)
 	assert.Equal(t, before, results[0].DownloadURL, "the rendered copy does not mutate the release")
 	assert.Contains(t, before, "apikey="+searchFixtureAPIKey)
 	assert.Equal(t, raw, string(results[0].Raw), "the retained ReleaseResource bytes stay byte-exact")
@@ -619,8 +672,9 @@ func TestSearchAgeAndCountRendering(t *testing.T) {
 
 // searchReleases decodes a fixture search body through the same client path the
 // command uses, so a rendering test starts from real decoded releases rather
-// than hand-built ones.
-func searchReleases(t *testing.T, body string) []prowlarr.Release {
+// than hand-built ones. The client is returned alongside them: it is what owns
+// the render-boundary redaction, so a test rendering these releases needs it.
+func searchReleases(t *testing.T, body string) (*prowlarr.Client, []prowlarr.Release) {
 	t.Helper()
 
 	cfgPath, _ := searchConfig(t, body)
@@ -631,5 +685,5 @@ func searchReleases(t *testing.T, body string) []prowlarr.Release {
 	releases, err := client.Search(t.Context(), prowlarr.SearchParams{Limit: defaultSearchLimit})
 	require.NoError(t, err)
 
-	return releases
+	return client, releases
 }
