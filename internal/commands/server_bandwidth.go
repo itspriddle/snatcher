@@ -269,7 +269,9 @@ func newBandwidthAltCmd() *cobra.Command {
 			"a manual 'on' or 'off' holds only until the next boundary — no second " +
 			"client involved. 'snatcher server bandwidth show' reports whether a " +
 			"schedule is configured, as alt_schedule_enabled in --json and as " +
-			"'(schedule: yes)' on the plaintext Alt-speed line.\n\n" +
+			"'(schedule: yes)' on the plaintext Alt-speed line. The window itself — " +
+			"alt-speed-time-begin, alt-speed-time-end, and alt-speed-time-day — is " +
+			"shown by 'snatcher server show --category bandwidth'.\n\n" +
 			"Because the switch decides which limits apply to both directions, the " +
 			"complete state is read back and reported afterwards.",
 		Args:          cobra.ExactArgs(1),
