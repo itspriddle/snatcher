@@ -1892,7 +1892,7 @@ so a subcommand name wins over a bare positional query:
 runs the subcommand rather than searching for the word
 .IR indexers ,
 and the same holds for
-.BR grab " and " categories .
+.BR grab ", " download ", and " categories .
 That is deliberate \(em it keeps the common case,
 .BR "snatcher search ubuntu" ,
 the shortest thing to type \(em and
@@ -2018,6 +2018,88 @@ position in a re-run. Requires exactly one
 naming the indexer that issued the guid, since a guid is unique only within one
 indexer; zero or more than one is an error. Takes no positional arguments.
 .RE
+.TP
+.B snatcher search download \fR[\fIoptions\fR] [\fIquery\fR] [\fIn\fR]
+Write one release's .torrent file to disk.
+.IP
+This is the local counterpart of
+.BR "snatcher search grab" :
+nothing is handed to a download client, the bytes simply land on this machine,
+ready for
+.B "snatcher torrent add"
+or anywhere else. The release is named by position in a re-run of the search,
+exactly as
+.B grab
+names it, and the resolved release is echoed to standard error before it is
+fetched \(em with
+.B "\-\-output \-"
+that echo is the only thing that says what the bytes are.
+.IP
+.B \-\-guid
+is accepted for symmetry with
+.BR grab ,
+but it cannot download: a guid names a release without describing one, and
+Prowlarr resolves it only when grabbing, so there is no download url on it to
+fetch. The error says so and points at the positional form.
+.IP
+The bytes come from the release's own download url, which may be served by
+Prowlarr or straight by the indexer; the Prowlarr API key travels only when
+that url is on the Prowlarr instance's own origin, and is dropped again at any
+redirect that leaves it. A release publishing only a
+.B magnet_url
+has no file to write, and the error hands over the
+.B \-\-jq
+expression that extracts the link. Besides the common options and the search
+filters listed above:
+.RS
+.TP
+.BR \-o ", " \-\-output " " \fIpath\fR
+Write to
+.I path
+instead of to a derived filename, or to standard output when
+.I path
+is
+.BR \- .
+Writing to standard output prints nothing else \(em not the confirmation line,
+not
+.BR \-\-json .
+.TP
+.BR \-\-guid " " \fIguid\fR
+Accepted as it is by
+.BR "snatcher search grab" ,
+and always an error here; see above.
+.RE
+.IP
+With no
+.BR \-\-output ,
+the filename is derived from the release
+.I title
+and written to the current directory. It is never taken from the response's
+.B Content\-Disposition
+header, which is a server-controlled string naming a file on this machine. The
+title is reduced to a single safe filename \(em path separators, leading dots,
+and control bytes are removed, and the name is bounded in length \(em with a
+.B .torrent
+extension, so an indexer can neither write outside the current directory nor
+put an escape sequence into a name every
+.B ls
+will echo back.
+.IP
+An existing file is never replaced: that is an error naming the path and
+suggesting
+.BR \-\-output ,
+and there is deliberately no
+.B \-\-force
+to override it. The file is created at mode 0600 \(em a private tracker's
+.B .torrent
+embeds a passkey \(em and written atomically, through a temporary file in the
+destination directory that is renamed into place, so an interrupted download
+leaves no partial
+.B .torrent
+behind. On success the plaintext path prints the written path and size, while
+.BR \-\-json " and " \-\-jq
+emit
+.BR path ", " bytes ", " title ", and " guid .
 .TP
 .B snatcher search indexers \fR[\fIoptions\fR]
 List the indexers the Prowlarr instance is configured with, in the server's own

@@ -113,7 +113,7 @@ func NewSearchCmd() *cobra.Command {
 		Use:   "search [query]",
 		Short: "Search indexers with Prowlarr",
 		Long: "Search the indexers a configured Prowlarr instance knows about.\n\n" +
-			"The subcommands (grab, indexers, categories) act on a result and list " +
+			"The subcommands (grab, download, indexers, categories) act on a result and list " +
 			"the ids --indexer and --category take. A subcommand name wins over a " +
 			"bare query, so \"snatcher search indexers\" runs the subcommand; search " +
 			"for that literal word with \"snatcher search --query indexers\".\n\n" +
@@ -190,6 +190,7 @@ func NewSearchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&searchType, "search-type", defaultSearchType, fmt.Sprintf("torznab search type (%s)", strings.Join(searchTypes, ", ")))
 
 	cmd.AddCommand(newSearchGrabCmd())
+	cmd.AddCommand(newSearchDownloadCmd())
 	cmd.AddCommand(newSearchIndexersCmd())
 	cmd.AddCommand(newSearchCategoriesCmd())
 

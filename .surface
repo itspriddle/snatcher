@@ -26,6 +26,7 @@ CMD snatcher config set
 CMD snatcher config unset
 CMD snatcher search
 CMD snatcher search categories
+CMD snatcher search download
 CMD snatcher search grab
 CMD snatcher search indexers
 CMD snatcher server
@@ -104,6 +105,17 @@ FLAG snatcher search --server type=string
 FLAG snatcher search categories --jq type=string
 FLAG snatcher search categories --json type=bool
 FLAG snatcher search categories --server type=string
+FLAG snatcher search download --category type=intSlice
+FLAG snatcher search download --guid type=string
+FLAG snatcher search download --indexer type=intSlice
+FLAG snatcher search download --jq type=string
+FLAG snatcher search download --json type=bool
+FLAG snatcher search download --limit type=int
+FLAG snatcher search download --offset type=int
+FLAG snatcher search download --output type=string
+FLAG snatcher search download --pages type=int
+FLAG snatcher search download --search-type type=string
+FLAG snatcher search download --server type=string
 FLAG snatcher search grab --category type=intSlice
 FLAG snatcher search grab --guid type=string
 FLAG snatcher search grab --indexer type=intSlice
