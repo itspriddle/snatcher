@@ -33,6 +33,18 @@ const envServer = "SNATCHER_SERVER"
 // counterpart to SNATCHER_SECRET_STORE=none.
 const envPassword = "SNATCHER_PASSWORD"
 
+// envAPIKey names the environment variable that supplies a Prowlarr API key for
+// one invocation.
+//
+// It is the Prowlarr counterpart to envPassword and behaves identically: it is a
+// read override sitting above every store, nothing writes to it, and "server
+// add" never consults it. The two are kept strictly apart by server type —
+// SNATCHER_PASSWORD is not consulted for a Prowlarr server and SNATCHER_API_KEY
+// is not consulted for a Transmission one — so exporting one to reach a
+// Transmission server cannot silently become the credential offered to a
+// Prowlarr instance, or the reverse.
+const envAPIKey = "SNATCHER_API_KEY" //nolint:gosec // G101 false positive: a variable name, not a credential
+
 // passwordFromEnv returns the password envPassword supplies and whether it
 // supplied one. An unset or empty value supplies nothing and defers to the
 // store; any other value is used verbatim, since leading or trailing whitespace
@@ -41,6 +53,26 @@ func passwordFromEnv() (string, bool) {
 	password := os.Getenv(envPassword)
 
 	return password, password != ""
+}
+
+// apiKeyFromEnv returns the API key envAPIKey supplies and whether it supplied
+// one, with the same reading passwordFromEnv gives its variable.
+func apiKeyFromEnv() (string, bool) {
+	key := os.Getenv(envAPIKey)
+
+	return key, key != ""
+}
+
+// secretFromEnv returns the per-invocation secret override that applies to srv,
+// chosen by srv's type: SNATCHER_PASSWORD for a Transmission server,
+// SNATCHER_API_KEY for a Prowlarr one. Neither variable ever applies to the
+// other type.
+func secretFromEnv(srv config.Server) (string, bool) {
+	if srv.ResolvedType() == config.TypeProwlarr {
+		return apiKeyFromEnv()
+	}
+
+	return passwordFromEnv()
 }
 
 // storeUnavailableAdvice is the fatal counterpart to storeUnavailableRemedy: it

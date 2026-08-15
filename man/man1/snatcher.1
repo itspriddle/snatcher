@@ -168,16 +168,32 @@ BitTorrent listening port, global speed limits, and download-path free space
 .RB ( show ", " update ", " reset ", " stats ", " port ", " bandwidth ", " free-space ).
 .TP
 .B snatcher server add \fR[\fIoptions\fR]
-Add or update a named server. Its URL and username are stored in the config
-file under the server's alias and the password in a secret store, by default
-the OS keyring. The password is read from a hidden, non-echoing prompt (with
-confirmation) or, for scripting, from standard input with
-.BR \-\-password\-stdin .
+Add or update a named server. Its URL, type, and username are stored in the
+config file under the server's alias and its secret in a secret store, by
+default the OS keyring. Two kinds of server can be registered, chosen with
+.BR \-\-type :
+a Transmission server, which authenticates with a password, and a Prowlarr
+instance, which authenticates with an API key. The password is read from a
+hidden, non-echoing prompt (with confirmation) or, for scripting, from standard
+input with
+.BR \-\-password\-stdin ;
+an API key is read from a hidden prompt asked
+.I once
+\(em an API key is pasted, not typed, so a confirmation step catches nothing \(em
+or from standard input with
+.BR \-\-api\-key\-stdin .
 An empty password is a valid choice (a server with authentication disabled)
-and stores no secret. When the alias's URL or its secret store changes, the
+and stores no secret; an empty API key is accepted too, with a note on standard
+error that search commands will fail unless
+.B SNATCHER_API_KEY
+is set. When the alias's URL or its secret store changes, the
 secret it used to keep is deleted from the store that held it, so no password
 is left behind in a store the server no longer uses. The first server
-registered when no default is set becomes the default. Options:
+registered when no default is set becomes the default. Re-adding an existing
+alias with a different type is refused unless
+.B \-\-type
+is passed explicitly, so an omitted flag cannot silently turn a registered
+Prowlarr instance into a Transmission server and strand its API key. Options:
 .RS
 .TP
 .BR \-\-name " " \fIalias\fR
@@ -185,18 +201,38 @@ Alias the server is stored under. When omitted it defaults to the lowercased
 URL host (including the port).
 .TP
 .BR \-\-url " " \fIurl\fR
-Transmission RPC URL, e.g.\&
-.IR http://host:9091/transmission/rpc .
-Required. Must be an absolute http or https URL with no embedded credentials.
+Server URL: a Transmission RPC URL, e.g.\&
+.IR http://host:9091/transmission/rpc ,
+or a Prowlarr base URL, e.g.\&
+.IR http://host:9696 .
+Required. Must be an absolute http or https URL with no embedded credentials,
+whichever type is being registered.
+.TP
+.BR \-\-type " " \fIname\fR
+Kind of server this alias names, one of
+.BR transmission " (the default) or " prowlarr ,
+matched case-insensitively. A Transmission server records no type at all, so a
+config file written before the option existed round-trips unchanged. An
+unrecognized value is an error naming the valid ones, never a silent fallback.
 .TP
 .BR \-\-username " " \fIname\fR
-Username for HTTP Basic Auth.
+Username for HTTP Basic Auth. Transmission only; it is rejected with
+.BR "\-\-type prowlarr" ,
+which authenticates with an API key and no user.
 .TP
 .B \-\-password\-stdin
-Read the password from standard input instead of prompting.
+Read the password from standard input instead of prompting. Transmission only;
+it is rejected with
+.BR "\-\-type prowlarr" .
+.TP
+.B \-\-api\-key\-stdin
+Read the Prowlarr API key from standard input instead of prompting. Prowlarr
+only; it is rejected without
+.BR "\-\-type prowlarr" .
 .TP
 .BR \-\-store " " \fIname\fR
-Secret store this server's password lives in, one of
+Secret store this server's secret \(em its password, or its Prowlarr API key
+\(em lives in, one of
 .BR keyring ", " file ", or " none .
 .B keyring
 is the default: the operating system keyring, and only the keyring \(em it
@@ -2004,6 +2040,30 @@ running as the same user can read it (for example
 it is inherited by every child process snatcher spawns, and it is commonly
 captured in shell history and CI logs. Prefer the OS keyring where one is
 available.
+.IP
+It applies to Transmission servers only. A Prowlarr instance takes its
+credential from
+.B SNATCHER_API_KEY
+instead, and neither variable is ever consulted for the other type.
+.TP
+.B SNATCHER_API_KEY
+Supplies the Prowlarr API key for this invocation, ahead of every secret store.
+It is the Prowlarr counterpart to
+.B SNATCHER_PASSWORD
+and behaves identically: a non-empty value means no store is read at all,
+whatever
+.B SNATCHER_SECRET_STORE
+or the server's
+.B secret_store
+names;
+.B "snatcher server add"
+never stores its value; and an empty or unset value defers to the resolved
+store. It applies only to servers registered with
+.BR "\-\-type prowlarr" ,
+and
+.B SNATCHER_PASSWORD
+is not consulted for those. The same warning about the privacy of a process
+environment applies.
 .TP
 .B SNATCHER_THEME
 Selects the color theme for this invocation, equivalent to passing

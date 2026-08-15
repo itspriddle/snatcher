@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"text/tabwriter"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/prowlarr"
 	"github.com/itspriddle/snatcher/internal/secrets"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
@@ -61,11 +63,13 @@ func secretAbsent(err error) bool {
 	return errors.Is(err, secrets.ErrNotFound) || errors.Is(err, secrets.ErrUnavailable)
 }
 
-// newServerAddCmd builds "server add", which stores the server URL and username
-// in config and the password in a secret store. The password is read from a
-// hidden TTY prompt or, for scripting, from stdin via --password-stdin.
+// newServerAddCmd builds "server add", which stores the server URL, type, and
+// username in config and the server's secret in a secret store. The secret is a
+// Transmission password or a Prowlarr API key, depending on --type; it is read
+// from a hidden TTY prompt or, for scripting, from stdin via --password-stdin or
+// --api-key-stdin.
 //
-// --store picks which store holds the password. Whichever store is resolved is
+// --store picks which store holds the secret. Whichever store is resolved is
 // both written to and persisted with the server, so later commands resolve the
 // same store without re-passing the flag.
 func newServerAddCmd() *cobra.Command {
@@ -73,17 +77,31 @@ func newServerAddCmd() *cobra.Command {
 		name          string
 		serverURL     string
 		username      string
+		typeFlag      string
 		passwordStdin bool
+		apiKeyStdin   bool
 		storeFlag     string
 	)
 
 	cmd := &cobra.Command{
 		Use:           "add",
-		Short:         "Add or update a named server's URL, username, and password",
+		Short:         "Add or update a named server's URL, type, username, and secret",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Flag combinations settle first, before a secret is read from a
+			// terminal or a config file is touched: a run that cannot be
+			// carried out must say so with nothing typed and nothing written.
+			serverType, err := parseServerType(typeFlag)
+			if err != nil {
+				return err
+			}
+
+			if err := validateAddSecretFlags(serverType, passwordStdin, apiKeyStdin, username); err != nil {
+				return err
+			}
+
 			if serverURL == "" {
 				return errors.New("--url is required")
 			}
@@ -99,7 +117,7 @@ func newServerAddCmd() *cobra.Command {
 				alias = config.HostAlias(serverURL)
 			}
 
-			password, err := readPassword(cmd, passwordStdin)
+			secret, err := readServerSecret(cmd, serverType, passwordStdin, apiKeyStdin)
 			if err != nil {
 				return err
 			}
@@ -114,12 +132,22 @@ func newServerAddCmd() *cobra.Command {
 				cfg.Servers = map[string]config.Server{}
 			}
 
-			plan, err := planServerSecret(storeFlag, cmd.Flags().Changed("store"), cfg.Servers[alias], serverURL, password)
+			prev := cfg.Servers[alias]
+			if err := checkServerTypeChange(alias, prev, serverType, cmd.Flags().Changed("type")); err != nil {
+				return err
+			}
+
+			plan, err := planServerSecret(storeFlag, cmd.Flags().Changed("store"), prev, serverURL, secret)
 			if err != nil {
 				return err
 			}
 
-			cfg.Servers[alias] = config.Server{URL: serverURL, Username: username, SecretStore: string(plan.mode)}
+			cfg.Servers[alias] = config.Server{
+				URL:         serverURL,
+				Username:    username,
+				Type:        storedServerType(serverType),
+				SecretStore: string(plan.mode),
+			}
 
 			// The first server registered when no default exists becomes the
 			// default.
@@ -131,19 +159,118 @@ func newServerAddCmd() *cobra.Command {
 				return err
 			}
 
-			reportServerAdded(cmd, plan, alias)
+			reportServerAdded(cmd, plan, alias, serverType)
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "server alias (default: the URL host)")
-	cmd.Flags().StringVar(&serverURL, "url", "", "Transmission RPC URL (e.g. http://host:9091/transmission/rpc)")
-	cmd.Flags().StringVar(&username, "username", "", "username for HTTP Basic Auth")
+	cmd.Flags().StringVar(&serverURL, "url", "", "server URL (e.g. http://host:9091/transmission/rpc)")
+	cmd.Flags().StringVar(&username, "username", "", "username for HTTP Basic Auth (Transmission only)")
+	cmd.Flags().StringVar(&typeFlag, "type", "", `kind of server: "transmission" (default) or "prowlarr"`)
 	cmd.Flags().BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin instead of a prompt")
-	cmd.Flags().StringVar(&storeFlag, "store", "", `where to keep the password: "keyring" (default), "file" (plaintext, mode 0600), or "none"`)
+	cmd.Flags().BoolVar(&apiKeyStdin, "api-key-stdin", false, "read the Prowlarr API key from stdin instead of a prompt")
+	cmd.Flags().StringVar(&storeFlag, "store", "", `where to keep the secret: "keyring" (default), "file" (plaintext, mode 0600), or "none"`)
 
 	return cmd
+}
+
+// validServerTypes lists the accepted --type values, quoted, for error messages.
+const validServerTypes = `"transmission", "prowlarr"`
+
+// parseServerType resolves an operator-written --type value to one of the
+// config type constants. Matching is case-insensitive and tolerates surrounding
+// whitespace, exactly as parseStoreMode does; an omitted value is Transmission,
+// which is what every server registered before the flag existed is. An
+// unrecognized value is an error naming the valid ones rather than a silent
+// fallback, since quietly treating "prowlar" as Transmission would send an API
+// key to a Basic Auth header.
+//
+// Parsing lives in the command layer, not in internal/config: the constants are
+// structural, but which spellings an operator may type is policy, the same split
+// the per-server secret_store field already has.
+func parseServerType(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", config.TypeTransmission:
+		return config.TypeTransmission, nil
+	case config.TypeProwlarr:
+		return config.TypeProwlarr, nil
+	default:
+		return "", fmt.Errorf("invalid --type %q: valid values are %s", raw, validServerTypes)
+	}
+}
+
+// storedServerType returns the value written to the server's type field.
+// Transmission is stored as the empty string so it is omitted from the file: a
+// config written before the field existed round-trips byte-identically, and
+// re-adding a Transmission server never introduces the key.
+func storedServerType(serverType string) string {
+	if serverType == config.TypeProwlarr {
+		return config.TypeProwlarr
+	}
+
+	return ""
+}
+
+// validateAddSecretFlags rejects the flag combinations that name a credential
+// the chosen server type does not have, before anything is read or written.
+//
+// Each type has exactly one secret and one way to pipe it in, so crossing them
+// is always a mistake worth naming: --api-key-stdin on a Transmission server,
+// and --password-stdin or --username on a Prowlarr one, which authenticates with
+// an API key header and no user.
+func validateAddSecretFlags(serverType string, passwordStdin, apiKeyStdin bool, username string) error {
+	if serverType == config.TypeProwlarr {
+		if passwordStdin {
+			return errors.New("--password-stdin does not apply to a Prowlarr server: use --api-key-stdin")
+		}
+		if username != "" {
+			return errors.New("--username does not apply to a Prowlarr server: it authenticates with an API key, not HTTP Basic Auth")
+		}
+
+		return nil
+	}
+
+	if apiKeyStdin {
+		return fmt.Errorf("--api-key-stdin only applies to a Prowlarr server: pass --type %s, or use --password-stdin", config.TypeProwlarr)
+	}
+
+	return nil
+}
+
+// checkServerTypeChange refuses to silently change what kind of backend an
+// existing alias names.
+//
+// Re-running "server add" on an alias to correct its URL is routine, and --type
+// defaults to Transmission, so an omitted flag would otherwise turn a registered
+// Prowlarr server into a Transmission one: its API key would be stranded under a
+// name nothing reads, and the next search command would fail with a type error
+// pointing at the wrong thing. An explicitly passed --type is a deliberate
+// change and is allowed through.
+func checkServerTypeChange(alias string, prev config.Server, serverType string, typeChanged bool) error {
+	if typeChanged || prev.URL == "" || prev.ResolvedType() == serverType {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"server %q is already a %s server: pass --type %s to update it, or --type %s to change what it is",
+		alias, serverTypeName(prev.ResolvedType()), prev.ResolvedType(), serverType,
+	)
+}
+
+// serverTypeName renders a server type for operator-facing text. The two types
+// snatcher knows get their product spelling; anything else — a hand-edited
+// config can hold any string — is quoted as the file spells it.
+func serverTypeName(serverType string) string {
+	switch serverType {
+	case config.TypeTransmission:
+		return "Transmission"
+	case config.TypeProwlarr:
+		return "Prowlarr"
+	default:
+		return strconv.Quote(serverType)
+	}
 }
 
 // serverSecretPlan is everything "server add" settles about a password before
@@ -249,12 +376,27 @@ func commitServerSecret(plan serverSecretPlan, cfg config.Config, configPath str
 }
 
 // reportServerAdded prints what "server add" saved and, for the plaintext file
-// store, exactly what is now on disk.
-func reportServerAdded(cmd *cobra.Command, plan serverSecretPlan, alias string) {
+// store, exactly what is now on disk. The secret is named for what it is —
+// a password or an API key — so the report matches the flag the operator used.
+func reportServerAdded(cmd *cobra.Command, plan serverSecretPlan, alias, serverType string) {
 	out := cmd.OutOrStdout()
 
+	secret := "password"
+	if serverType == config.TypeProwlarr {
+		secret = "API key"
+	}
+
 	if plan.password == "" {
-		_, _ = fmt.Fprintf(out, "Saved server %q (%s) with no password stored\n", alias, plan.serverURL)
+		_, _ = fmt.Fprintf(out, "Saved server %q (%s) with no %s stored\n", alias, plan.serverURL, secret)
+
+		// A Transmission server with no password is an ordinary configuration
+		// (auth disabled). A Prowlarr instance always requires its API key, so
+		// say plainly that the server is registered but unusable until one
+		// arrives.
+		if serverType == config.TypeProwlarr {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"Note: no API key is stored, so search commands will fail unless %s is set.\n", envAPIKey)
+		}
 
 		return
 	}
@@ -264,8 +406,19 @@ func reportServerAdded(cmd *cobra.Command, plan serverSecretPlan, alias string) 
 	// The file store is plaintext by design; say where it landed, so an
 	// operator who opted in knows exactly what is on disk.
 	if fileStore, ok := plan.store.(*secrets.FileStore); ok {
-		_, _ = fmt.Fprintf(out, "Password stored in plaintext at %s (mode 0600)\n", fileStore.Path())
+		_, _ = fmt.Fprintf(out, "%s stored in plaintext at %s (mode 0600)\n", capitalizeFirst(secret), fileStore.Path())
 	}
+}
+
+// capitalizeFirst upper-cases the first letter of s, for a noun that starts a
+// sentence. It is ASCII-only by design: its inputs are snatcher's own fixed
+// nouns, never server- or operator-supplied text.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // clearPreviousSecret drops the secret an existing alias used to keep, when
@@ -669,22 +822,9 @@ func firstArg(args []string) string {
 // serverPassword). Store selection precedence is SNATCHER_SECRET_STORE > the
 // server's secret_store > the keyring (see resolveStoreMode).
 func dial(cmd *cobra.Command, server string) (*transmission.Client, string, error) {
-	cfg, configured, err := loadConfig(configFlag(cmd))
+	srv, err := dialTarget(cmd, server, config.TypeTransmission)
 	if err != nil {
 		return nil, "", err
-	}
-
-	if !configured || len(cfg.Servers) == 0 {
-		return nil, "", errors.New("not configured: run 'snatcher server add' first")
-	}
-
-	if server == "" {
-		server = os.Getenv(envServer)
-	}
-
-	_, srv, err := config.Resolve(cfg, server)
-	if err != nil {
-		return nil, "", resolveServerError(cfg, server, err)
 	}
 
 	password, err := serverPassword(cmd, srv)
@@ -697,22 +837,118 @@ func dial(cmd *cobra.Command, server string) (*transmission.Client, string, erro
 	return backend, srv.URL, nil
 }
 
-// serverPassword returns the password to dial srv with.
+// dialProwlarr is dial's Prowlarr counterpart: it resolves which configured
+// Prowlarr instance to use, reads its API key from the store that instance
+// resolves to (or SNATCHER_API_KEY), and constructs the *prowlarr.Client. It
+// returns the client and the resolved server URL.
 //
-// SNATCHER_PASSWORD comes first and settles it: no store is resolved, opened, or
-// read, whatever mode srv names, so SNATCHER_SECRET_STORE=none plus
-// SNATCHER_PASSWORD is a working unattended configuration with nothing written to
-// disk. No unavailable-store warning is emitted on that path either — the store
-// was never needed, so there is nothing to warn about.
+// Selection precedence matches dial exactly — the --server flag > the
+// SNATCHER_SERVER environment variable > the configured default — except that
+// the default it falls back to is default_prowlarr_server, so a Transmission
+// default and a Prowlarr default coexist without either shadowing the other.
+func dialProwlarr(cmd *cobra.Command, server string) (*prowlarr.Client, string, error) {
+	srv, err := dialTarget(cmd, server, config.TypeProwlarr)
+	if err != nil {
+		return nil, "", err
+	}
+
+	apiKey, err := serverAPIKey(cmd, srv)
+	if err != nil {
+		return nil, "", err
+	}
+
+	client, err := prowlarr.NewClient(srv.URL, prowlarr.WithAPIKey(apiKey))
+	if err != nil {
+		return nil, "", err
+	}
+
+	return client, srv.URL, nil
+}
+
+// dialTarget resolves which configured server a dialing command should use and
+// checks it is the kind of backend that command needs. It is the shared front
+// half of dial and dialProwlarr, so both apply the same precedence and produce
+// the same errors.
+//
+// A resolved server of the wrong type is refused here rather than dialed: a
+// Prowlarr instance handed to the Transmission client would fail with an opaque
+// protocol error, and — worse in the other direction — a Transmission password
+// would be offered to a Prowlarr host. The error names the alias, what it
+// actually is, and where the alias came from, since an alias supplied by an
+// exported SNATCHER_SERVER is the case an operator is least likely to guess.
+func dialTarget(cmd *cobra.Command, server, wantType string) (config.Server, error) {
+	cfg, configured, err := loadConfig(configFlag(cmd))
+	if err != nil {
+		return config.Server{}, err
+	}
+
+	if !configured || len(cfg.Servers) == 0 {
+		return config.Server{}, errors.New("not configured: run 'snatcher server add' first")
+	}
+
+	fromEnv := false
+	if server == "" {
+		server = os.Getenv(envServer)
+		fromEnv = server != ""
+	}
+
+	resolve := config.Resolve
+	if wantType == config.TypeProwlarr {
+		resolve = config.ResolveProwlarr
+	}
+
+	name, srv, err := resolve(cfg, server)
+	if err != nil {
+		return config.Server{}, resolveServerError(cfg, server, err)
+	}
+
+	if got := srv.ResolvedType(); got != wantType {
+		return config.Server{}, serverTypeMismatchError(name, got, wantType, fromEnv)
+	}
+
+	return srv, nil
+}
+
+// serverTypeMismatchError reports that the resolved alias names the wrong kind
+// of backend for the command in hand, and how to select the right one.
+func serverTypeMismatchError(name, got, want string, fromEnv bool) error {
+	remedy := "pass --server <alias> to select one"
+	if fromEnv {
+		remedy = fmt.Sprintf("the alias came from %s; pass --server <alias> to override it", envServer)
+	}
+
+	return fmt.Errorf("server %q is a %s server; this command needs a %s server: %s",
+		name, serverTypeName(got), serverTypeName(want), remedy)
+}
+
+// serverPassword returns the password to dial a Transmission srv with, and
+// serverAPIKey the API key for a Prowlarr one. Both are serverSecret with the
+// noun the unavailable-store warning should use.
+func serverPassword(cmd *cobra.Command, srv config.Server) (string, error) {
+	return serverSecret(cmd, srv, "connecting without a stored password")
+}
+
+func serverAPIKey(cmd *cobra.Command, srv config.Server) (string, error) {
+	return serverSecret(cmd, srv, "connecting without a stored API key")
+}
+
+// serverSecret returns the secret to dial srv with: its password or its API key,
+// whichever its type calls for.
+//
+// The environment override for that type comes first and settles it (see
+// secretFromEnv): no store is resolved, opened, or read, whatever mode srv
+// names, so SNATCHER_SECRET_STORE=none plus SNATCHER_PASSWORD — or
+// SNATCHER_API_KEY — is a working unattended configuration with nothing written
+// to disk. No unavailable-store warning is emitted on that path either: the
+// store was never needed, so there is nothing to warn about.
 //
 // Otherwise the store srv resolves to answers. An unreachable store is not fatal
 // on a read path: the server may not need auth at all, and if it does the request
-// fails later with the transmission auth error, which already says what to do.
-// Get yields an empty password alongside its error, so the client is built
-// without one.
-func serverPassword(cmd *cobra.Command, srv config.Server) (string, error) {
-	if password, ok := passwordFromEnv(); ok {
-		return password, nil
+// fails later with the backend's auth error, which already says what to do. Get
+// yields an empty secret alongside its error, so the client is built without one.
+func serverSecret(cmd *cobra.Command, srv config.Server, unavailableConsequence string) (string, error) {
+	if secret, ok := secretFromEnv(srv); ok {
+		return secret, nil
 	}
 
 	store, err := serverStore(srv)
@@ -720,15 +956,15 @@ func serverPassword(cmd *cobra.Command, srv config.Server) (string, error) {
 		return "", err
 	}
 
-	password, err := store.Get(srv.URL)
+	secret, err := store.Get(srv.URL)
 	switch {
 	case errors.Is(err, secrets.ErrUnavailable):
-		warnStoreUnavailableOnce(cmd, "connecting without a stored password")
+		warnStoreUnavailableOnce(cmd, unavailableConsequence)
 	case err != nil && !errors.Is(err, secrets.ErrNotFound):
 		return "", err
 	}
 
-	return password, nil
+	return secret, nil
 }
 
 // resolveServerError turns a config.Resolve sentinel into a clear, actionable
@@ -741,9 +977,26 @@ func resolveServerError(cfg config.Config, server string, err error) error {
 	case errors.Is(err, config.ErrNoDefaultServer):
 		names := strings.Join(cfg.Names(), ", ")
 		return fmt.Errorf("no default server set: pass --server <alias> or set one with 'snatcher server default <alias>' (configured: %s)", names)
+	case errors.Is(err, config.ErrNoDefaultProwlarrServer):
+		return noDefaultProwlarrError(cfg)
 	default:
 		return err
 	}
+}
+
+// noDefaultProwlarrError explains that no Prowlarr instance is selected, in the
+// terms of whichever situation the operator is actually in: none registered at
+// all, or several registered with none of them the default.
+func noDefaultProwlarrError(cfg config.Config) error {
+	names := cfg.NamesOfType(config.TypeProwlarr)
+	if len(names) == 0 {
+		return fmt.Errorf("no Prowlarr server configured: add one with 'snatcher server add --type %s --url <url>'", config.TypeProwlarr)
+	}
+
+	return fmt.Errorf(
+		"no default Prowlarr server set: pass --server <alias> or set one with 'snatcher server default <alias>' (configured Prowlarr servers: %s)",
+		strings.Join(names, ", "),
+	)
 }
 
 // addServerFlag registers the shared --server flag on a dialing command, binding
@@ -779,25 +1032,32 @@ func resolveConfigPath(configPath string) (string, error) {
 	return config.DefaultPath()
 }
 
+// readServerSecret obtains the secret "server add" stores for a server of
+// serverType: a Transmission password or a Prowlarr API key. Each type has its
+// own reader because the two are typed differently — see readAPIKey.
+func readServerSecret(cmd *cobra.Command, serverType string, passwordStdin, apiKeyStdin bool) (string, error) {
+	if serverType == config.TypeProwlarr {
+		return readAPIKey(cmd, apiKeyStdin)
+	}
+
+	return readPassword(cmd, passwordStdin)
+}
+
 // readPassword obtains the password either from stdin (when passwordStdin is
 // set, for scripting) or from a hidden TTY prompt. The trailing newline of a
 // piped password is trimmed; the prompt path uses term.ReadPassword so the input
 // never echoes.
 func readPassword(cmd *cobra.Command, passwordStdin bool) (string, error) {
 	if passwordStdin {
-		data, err := io.ReadAll(cmd.InOrStdin())
-		if err != nil {
-			return "", fmt.Errorf("reading password from stdin: %w", err)
-		}
-		return strings.TrimRight(string(data), "\r\n"), nil
+		return readSecretStdin(cmd, "password")
 	}
 
-	in, ok := cmd.InOrStdin().(*os.File)
-	if !ok || !term.IsTerminal(int(in.Fd())) {
-		return "", errors.New("no terminal available for password prompt; use --password-stdin")
+	in, err := promptTerminal(cmd, "password", "--password-stdin")
+	if err != nil {
+		return "", err
 	}
 
-	password, err := promptHidden(cmd, in, "Password: ")
+	password, err := promptHidden(cmd, in, "Password: ", "password")
 	if err != nil {
 		return "", err
 	}
@@ -809,7 +1069,7 @@ func readPassword(cmd *cobra.Command, passwordStdin bool) (string, error) {
 		return "", nil
 	}
 
-	confirm, err := promptHidden(cmd, in, "Confirm password: ")
+	confirm, err := promptHidden(cmd, in, "Confirm password: ", "password")
 	if err != nil {
 		return "", err
 	}
@@ -821,14 +1081,58 @@ func readPassword(cmd *cobra.Command, passwordStdin bool) (string, error) {
 	return password, nil
 }
 
+// readAPIKey obtains a Prowlarr API key either from stdin (when apiKeyStdin is
+// set) or from a hidden TTY prompt.
+//
+// Unlike readPassword it asks once, with no confirmation step. A password is
+// typed, so a mistype is invisible and worth catching before it is stored; an
+// API key is pasted from Prowlarr's settings page, where a paste-twice prompt is
+// friction that catches nothing. A wrong key surfaces on the next command that
+// uses it.
+func readAPIKey(cmd *cobra.Command, apiKeyStdin bool) (string, error) {
+	if apiKeyStdin {
+		return readSecretStdin(cmd, "API key")
+	}
+
+	in, err := promptTerminal(cmd, "API key", "--api-key-stdin")
+	if err != nil {
+		return "", err
+	}
+
+	return promptHidden(cmd, in, "API key: ", "API key")
+}
+
+// readSecretStdin reads a piped secret, trimming the trailing newline a shell
+// pipeline adds. noun names the secret in the error, so a failed read says which
+// one it was reading.
+func readSecretStdin(cmd *cobra.Command, noun string) (string, error) {
+	data, err := io.ReadAll(cmd.InOrStdin())
+	if err != nil {
+		return "", fmt.Errorf("reading %s from stdin: %w", noun, err)
+	}
+
+	return strings.TrimRight(string(data), "\r\n"), nil
+}
+
+// promptTerminal returns the command's input as a terminal, or an error naming
+// the stdin flag to use instead when there is no terminal to prompt on.
+func promptTerminal(cmd *cobra.Command, noun, stdinFlag string) (*os.File, error) {
+	in, ok := cmd.InOrStdin().(*os.File)
+	if !ok || !term.IsTerminal(int(in.Fd())) {
+		return nil, fmt.Errorf("no terminal available for %s prompt; use %s", noun, stdinFlag)
+	}
+
+	return in, nil
+}
+
 // promptHidden writes label to the command's output and reads a line from the
-// terminal without echoing it.
-func promptHidden(cmd *cobra.Command, in *os.File, label string) (string, error) {
+// terminal without echoing it. noun names the secret in a read error.
+func promptHidden(cmd *cobra.Command, in *os.File, label, noun string) (string, error) {
 	_, _ = fmt.Fprint(cmd.OutOrStdout(), label)
 	data, err := term.ReadPassword(int(in.Fd()))
 	_, _ = fmt.Fprintln(cmd.OutOrStdout())
 	if err != nil {
-		return "", fmt.Errorf("reading password: %w", err)
+		return "", fmt.Errorf("reading %s: %w", noun, err)
 	}
 
 	return string(data), nil
