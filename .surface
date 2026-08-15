@@ -50,6 +50,7 @@ CMD snatcher torrent files update
 CMD snatcher torrent label
 CMD snatcher torrent label add
 CMD snatcher torrent label list
+CMD snatcher torrent label remove
 CMD snatcher torrent label set
 CMD snatcher torrent list
 CMD snatcher torrent move
@@ -203,6 +204,12 @@ FLAG snatcher torrent label list --fields type=string
 FLAG snatcher torrent label list --jq type=string
 FLAG snatcher torrent label list --json type=bool
 FLAG snatcher torrent label list --server type=string
+FLAG snatcher torrent label remove --all type=bool
+FLAG snatcher torrent label remove --fields type=string
+FLAG snatcher torrent label remove --jq type=string
+FLAG snatcher torrent label remove --json type=bool
+FLAG snatcher torrent label remove --label type=stringArray
+FLAG snatcher torrent label remove --server type=string
 FLAG snatcher torrent label set --all type=bool
 FLAG snatcher torrent label set --fields type=string
 FLAG snatcher torrent label set --jq type=string

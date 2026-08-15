@@ -129,6 +129,52 @@ func NewLabelCmd() *cobra.Command {
 	}))
 	cmd.AddCommand(newLabelListCmd())
 	cmd.AddCommand(newLabelWriteCmd(labelWriteSpec{
+		name:    "remove",
+		aliases: []string{"rm"},
+		short:   "Remove labels from torrents",
+		long: "Remove the given labels from the selected torrents, leaving the " +
+			"other labels each torrent has alone.\n\n" +
+			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
+			"At least one selector is required; a bare 'snatcher torrent label " +
+			"remove' with no selector is an error, not a no-op. At least one " +
+			"--label is required too — 'remove' never falls back to stripping " +
+			"every label, so use 'snatcher torrent label set' with no --label to " +
+			"clear a selection.\n\n" +
+			"--label may be repeated, and each occurrence is one label: the " +
+			"value is never split on commas, and a label containing a comma (or " +
+			"one that is empty once surrounding whitespace is trimmed) is " +
+			"rejected before anything is sent. Matching is exact and " +
+			"case-sensitive, so removing 'foo' from a torrent holding 'Foo' " +
+			"leaves it alone. The set that gets written is de-duplicated and " +
+			"sorted, so the order of a torrent's remaining labels is not " +
+			"preserved.\n\n" +
+			"Removing a label a torrent does not have changes nothing for that " +
+			"torrent: it is left out of the write entirely, and when no torrent " +
+			"would change nothing is sent at all. Torrents that do change are " +
+			"grouped by their resulting labels, so a selection landing on one set " +
+			"costs one write however many torrents it names. Removing a torrent's " +
+			"last label leaves it with no labels at all.\n\n" +
+			"The labels are read, filtered locally, and written back — " +
+			"Transmission's RPC has no compare-and-set, so another client " +
+			"changing a torrent's labels between that read and the write loses, " +
+			"and this command does not guard against it. After the write the " +
+			"labels are re-read from the server and printed in the same columns " +
+			"as 'snatcher torrent label list'.",
+		action:      "label-remove",
+		labelUsage:  "label to remove, leaving the torrent's other labels (repeatable)",
+		noLabelsErr: "nothing to remove: provide --label",
+		merge: func(current, requested []string) []string {
+			remaining := make([]string, 0, len(current))
+			for _, label := range current {
+				if !slices.Contains(requested, label) {
+					remaining = append(remaining, label)
+				}
+			}
+
+			return remaining
+		},
+	}))
+	cmd.AddCommand(newLabelWriteCmd(labelWriteSpec{
 		name:  "set",
 		short: "Replace the labels on torrents",
 		long: "Replace the labels on the selected torrents with the labels " +
@@ -178,6 +224,12 @@ type labelWriteSpec struct {
 	// name is the subcommand name, e.g. "set".
 	name string
 
+	// aliases are the subcommand's alternate spellings, e.g. "rm" for remove.
+	// Canonical names win over the shorthand here — every other pair in the CLI
+	// spells it that way round — and aliases are not recorded in .surface, so
+	// aliases_test.go is what pins them.
+	aliases []string
+
 	// short and long are the cobra help texts.
 	short string
 	long  string
@@ -224,6 +276,7 @@ func newLabelWriteCmd(spec labelWriteSpec) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           spec.name + " [id|hash]...",
+		Aliases:       spec.aliases,
 		Short:         spec.short,
 		Long:          spec.long,
 		SilenceUsage:  true,

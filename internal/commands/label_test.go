@@ -1289,3 +1289,349 @@ func TestLabelAddRegistersFlags(t *testing.T) {
 	require.NotNil(t, flag)
 	assert.Equal(t, "stringArray", flag.Value.Type())
 }
+
+// bespokeLabelHDRemovedResponse is the post-write torrent-get payload for a
+// server that has just had "hd" removed from torrent 1, leaving its other label
+// in place.
+const bespokeLabelHDRemovedResponse = `{
+	"arguments": {"torrents": [
+		{"id": 1, "hashString": "` + infoHash1 + `", "name": "ubuntu-24.04.iso", "labels": ["movies"]},
+		{"id": 2, "hashString": "` + infoHash2 + `", "name": "debian.iso"},
+		{"id": 3, "hashString": "` + infoHash3 + `", "name": "fedora.iso", "labels": ["linux"]}
+	]},
+	"result": "success",
+	"tag": 1
+}`
+
+// jsonrpcLabelHDRemovedResponse is the same post-write payload under the
+// JSON-RPC 2.0 scheme.
+const jsonrpcLabelHDRemovedResponse = `{
+	"jsonrpc": "2.0",
+	"result": {"torrents": [
+		{"id": 1, "hash_string": "` + infoHash1 + `", "name": "ubuntu-24.04.iso", "labels": ["movies"]},
+		{"id": 2, "hash_string": "` + infoHash2 + `", "name": "debian.iso"},
+		{"id": 3, "hash_string": "` + infoHash3 + `", "name": "fedora.iso", "labels": ["linux"]}
+	]},
+	"id": 1
+}`
+
+// bespokeLabelStrippedResponse is the post-write payload for a server that has
+// just had torrent 3's only label removed, so it now carries an empty array.
+const bespokeLabelStrippedResponse = `{
+	"arguments": {"torrents": [
+		{"id": 1, "hashString": "` + infoHash1 + `", "name": "ubuntu-24.04.iso", "labels": ["hd", "movies"]},
+		{"id": 2, "hashString": "` + infoHash2 + `", "name": "debian.iso"},
+		{"id": 3, "hashString": "` + infoHash3 + `", "name": "fedora.iso", "labels": []}
+	]},
+	"result": "success",
+	"tag": 1
+}`
+
+// TestLabelRemoveKeepsOtherLabels is the story's headline behavior, on both wire
+// schemes: only the named label leaves, the torrent's other labels survive in
+// the written set, and the rendered rows come from the post-write re-read.
+func TestLabelRemoveKeepsOtherLabels(t *testing.T) {
+	cases := []struct {
+		name      string
+		rpcVer    string
+		listBody  string
+		afterBody string
+	}{
+		{"bespoke", "", bespokeLabelResponse, bespokeLabelHDRemovedResponse},
+		{"jsonrpc", "6.0.0", jsonrpcLabelResponse, jsonrpcLabelHDRemovedResponse},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := labelStubConfigPath(t, &labelStub{
+				rpcVersion:    tc.rpcVer,
+				listBody:      tc.listBody,
+				postWriteBody: tc.afterBody,
+			})
+			defer closeSrv()
+
+			out, _, err := runLabel(t, "remove", "--config", cfgPath, "1", "--label", "hd")
+			require.NoError(t, err)
+
+			bodies := labelSetBodies(stub)
+			require.Len(t, bodies, 1, "one resulting label set is one write")
+
+			args := labelSetBody(t, bodies[0])
+			assert.Equal(t, []int64{1}, args.IDs)
+			assert.Equal(t, []string{"movies"}, args.Labels,
+				"the torrent's other labels survive the write")
+
+			rows := labelRows(t, out)
+			require.Len(t, rows, 1)
+			assert.Equal(t, []string{"1", "ubuntu-24.04.iso", "movies"}, rows[0])
+
+			assert.Len(t, stub.bodies("torrent-get", "torrent_get"), 2,
+				"one read to compute the merge, one to report it")
+		})
+	}
+}
+
+// TestLabelRemoveRmAliasRuns proves the rm alias is wired into the group, not
+// merely declared on the command: invoking it runs the same write.
+func TestLabelRemoveRmAliasRuns(t *testing.T) {
+	cfgPath, stub, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelHDRemovedResponse,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "rm", "--config", cfgPath, "1", "--label", "hd")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 1)
+	assert.Equal(t, []string{"movies"}, labelSetBody(t, bodies[0]).Labels)
+
+	rows := labelRows(t, out)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []string{"1", "ubuntu-24.04.iso", "movies"}, rows[0])
+}
+
+// TestLabelRemoveLastLabelWritesEmptyArray covers the boundary the pointer in
+// mutationTorrent exists for: stripping a torrent's only label sends an empty
+// array (not a null or a missing key) and reports "labels": [] in both the
+// rendered row and the JSON contract.
+func TestLabelRemoveLastLabelWritesEmptyArray(t *testing.T) {
+	cfgPath, stub, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelStrippedResponse,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "remove", "--config", cfgPath, "3", "--label", "linux")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 1)
+
+	args := labelSetBody(t, bodies[0])
+	assert.Equal(t, []int64{3}, args.IDs)
+	assert.NotNil(t, args.Labels, "an empty array is sent, not a null or a missing key")
+	assert.Empty(t, args.Labels)
+
+	rows := labelRows(t, out)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []string{"3", "fedora.iso", ""}, rows[0])
+
+	// The JSON contract on a fresh server, so the re-read is not confused by the
+	// first run's write.
+	jsonPath, _, closeJSONSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelStrippedResponse,
+	})
+	defer closeJSONSrv()
+
+	raw, _, err := runLabel(t, "remove", "--config", jsonPath, "3", "--label", "linux", "--json")
+	require.NoError(t, err)
+
+	assert.Contains(t, raw, `"labels": []`)
+	assert.NotContains(t, raw, `"labels": null`)
+
+	var got mutationResult
+	require.NoError(t, json.Unmarshal([]byte(raw), &got))
+	require.Len(t, got.Torrents, 1)
+	require.NotNil(t, got.Torrents[0].Labels)
+	assert.Empty(t, *got.Torrents[0].Labels)
+}
+
+// TestLabelRemoveAbsentLabelIssuesNoWrite proves the idempotent model by request
+// count: removing a label a torrent does not have is a silent no-op, not an
+// error, and the rows still render.
+func TestLabelRemoveAbsentLabelIssuesNoWrite(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "remove", "--config", cfgPath, "1", "--label", "nope")
+	require.NoError(t, err)
+
+	assert.Empty(t, labelSetBodies(stub), "removing an absent label is not written")
+
+	rows := labelRows(t, out)
+	require.Len(t, rows, 1, "the rows still render")
+	assert.Equal(t, []string{"1", "ubuntu-24.04.iso", "hd,movies"}, rows[0])
+}
+
+// TestLabelRemoveMixedSelectionWritesOnlyChanged covers a selection where one
+// torrent carries the label and one does not: only the one that changes is
+// named in the write.
+func TestLabelRemoveMixedSelectionWritesOnlyChanged(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "remove", "--config", cfgPath, "1", "3", "--label", "hd")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 1, "only the changing torrent is written")
+
+	args := labelSetBody(t, bodies[0])
+	assert.Equal(t, []int64{1}, args.IDs)
+	assert.Equal(t, []string{"movies"}, args.Labels)
+}
+
+// TestLabelRemoveIsCaseSensitive pins Decision 3 on the subtraction: "HD" does
+// not match an existing "hd", so the torrent is left alone and nothing is sent.
+func TestLabelRemoveIsCaseSensitive(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "remove", "--config", cfgPath, "1", "--label", "HD")
+	require.NoError(t, err)
+
+	assert.Empty(t, labelSetBodies(stub), "removing 'HD' leaves 'hd' alone")
+
+	rows := labelRows(t, out)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []string{"1", "ubuntu-24.04.iso", "hd,movies"}, rows[0])
+}
+
+// TestLabelRemoveAllGroupsByResultingSet covers --all together with the grouped
+// write: two labels come off three torrents, one of which is unaffected, and the
+// two that change land on different resulting sets — so two writes, in
+// key-sorted (deterministic) order. It also pins Decision 4: no confirmation
+// prompt, even under --all.
+func TestLabelRemoveAllGroupsByResultingSet(t *testing.T) {
+	cases := []struct {
+		name     string
+		rpcVer   string
+		listBody string
+	}{
+		{"bespoke", "", bespokeLabelResponse},
+		{"jsonrpc", "6.0.0", jsonrpcLabelResponse},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := labelConfigPath(t, tc.rpcVer, tc.listBody)
+			defer closeSrv()
+
+			_, _, err := runLabel(t, "remove", "--config", cfgPath, "--all",
+				"--label", "linux", "--label", "movies")
+			require.NoError(t, err)
+
+			bodies := labelSetBodies(stub)
+			require.Len(t, bodies, 2, "one write per distinct resulting label set")
+
+			// Torrent 2 has no labels and is untouched. The remaining buckets are
+			// written in NUL-joined key order: "" (torrent 3, stripped bare) before
+			// "hd" (torrent 1).
+			want := []labelSetArgs{
+				{IDs: []int64{3}, Labels: []string{}},
+				{IDs: []int64{1}, Labels: []string{"hd"}},
+			}
+
+			for i, expected := range want {
+				args := labelSetBody(t, bodies[i])
+				assert.Equal(t, expected.IDs, args.IDs, "request %d targets the right torrent", i)
+				assert.Equal(t, expected.Labels, args.Labels, "request %d writes the right set", i)
+			}
+		})
+	}
+}
+
+// TestLabelRemoveRequiresLabels covers the rule that separates remove from set:
+// a missing --label is an error returned before anything is dialed, never a
+// fallback to clearing every label.
+func TestLabelRemoveRequiresLabels(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "remove", "--config", cfgPath, "1")
+	require.Error(t, err)
+	assert.Equal(t, "nothing to remove: provide --label", err.Error())
+
+	assert.Empty(t, stub.bodies("torrent-get", "torrent_get", "torrent-set", "torrent_set"),
+		"a missing --label is rejected before any round-trip")
+}
+
+func TestLabelRemoveJSON(t *testing.T) {
+	cfgPath, _, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelHDRemovedResponse,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "remove", "--config", cfgPath, "1", "--label", "hd", "--json")
+	require.NoError(t, err)
+
+	var got mutationResult
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+
+	assert.Equal(t, "label-remove", got.Action)
+	assert.Equal(t, 1, got.Count)
+	require.Len(t, got.Torrents, 1)
+	assert.Equal(t, int64(1), got.Torrents[0].ID)
+	assert.Equal(t, infoHash1, got.Torrents[0].Hash)
+	require.NotNil(t, got.Torrents[0].Labels)
+	assert.Equal(t, []string{"movies"}, *got.Torrents[0].Labels,
+		"the reported labels are the server's post-write view")
+}
+
+// TestLabelRemoveJQWinsOverJSON pins the fixed output precedence on remove too.
+func TestLabelRemoveJQWinsOverJSON(t *testing.T) {
+	cfgPath, _, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelHDRemovedResponse,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "remove", "--config", cfgPath, "1", "--label", "hd",
+		"--json", "--jq", ".action")
+	require.NoError(t, err)
+
+	assert.Equal(t, `"label-remove"`, strings.TrimSpace(out))
+}
+
+// TestLabelRemoveNothingMatchedWritesNothing proves selector resolution happens
+// before any write, so a typo'd id never half-applies a batch.
+func TestLabelRemoveNothingMatchedWritesNothing(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "remove", "--config", cfgPath, "99", "--label", "hd")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no torrents matched: 99")
+	assert.Empty(t, out)
+
+	assert.Empty(t, labelSetBodies(stub), "nothing is written when no selector matched")
+}
+
+func TestLabelRemoveWriteFailureWrapsServerURL(t *testing.T) {
+	cfgPath, stub, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody: bespokeLabelResponse,
+		failSet:  true,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "remove", "--config", cfgPath, "1", "--label", "hd")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connecting to ")
+	assert.Empty(t, out, "nothing is rendered on a write failure")
+
+	require.Len(t, labelSetBodies(stub), 1, "the failure is the write itself")
+}
+
+// TestLabelRemoveRegistersFlags pins remove's flag surface, which matches add's.
+func TestLabelRemoveRegistersFlags(t *testing.T) {
+	cmd := NewLabelCmd()
+
+	remove, _, err := cmd.Find([]string{"remove"})
+	require.NoError(t, err)
+
+	for _, name := range []string{"server", "json", "jq", "all", "label", "fields"} {
+		assert.NotNil(t, remove.Flags().Lookup(name), "--%s is registered", name)
+	}
+
+	for _, name := range []string{"config", "theme", "no-nerd-font"} {
+		assert.Nil(t, remove.Flags().Lookup(name), "--%s is inherited from the root, not re-declared", name)
+	}
+
+	flag := remove.Flags().Lookup("label")
+	require.NotNil(t, flag)
+	assert.Equal(t, "stringArray", flag.Value.Type())
+}

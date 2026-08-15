@@ -1426,6 +1426,74 @@ Also available, but not shown by default:
 .BR hash .
 .RE
 .TP
+.B snatcher torrent label remove \fR[\fIoptions\fR] [\fIid | hash\fR]...
+.RB ( rm )
+Remove the given labels from the selected torrents,
+.B leaving the other labels each torrent has alone.
+Select torrents by numeric id, 40-character SHA1 hash, or
+.BR \-\-all ;
+at least one selector is required, so a bare
+.B snatcher torrent label remove
+with no selector is an error, not a no-op. At least one
+.B \-\-label
+is required too \(em
+.B remove
+never falls back to stripping every label, so clearing a selection is
+.BR "snatcher torrent label set" 's
+job (run it with no
+.BR \-\-label ).
+No confirmation is asked for, even under
+.BR \-\-all .
+.IP
+.B \-\-label
+may be repeated, and each occurrence is exactly one label: the value is never
+split on commas. A label is trimmed of surrounding whitespace, and one that is
+empty afterwards, or that contains a comma, is rejected before anything is
+sent. Matching is exact and case-sensitive, so removing
+.B foo
+from a torrent holding
+.B Foo
+leaves it alone. The set that gets written is de-duplicated and sorted
+byte-wise, so the order of a torrent's remaining labels is not preserved.
+.IP
+Removing a label a torrent does not have
+.B changes nothing
+for that torrent: it is left out of the write entirely and is not an error, and
+when no torrent would change nothing is sent at all. Torrents that do change are
+grouped by their resulting labels and written one group at a time, so a
+selection landing on a single resulting set costs one request however many
+torrents it names. Removing a torrent's last label leaves it with no labels at
+all.
+.IP
+The labels are read, filtered locally, and written back. Transmission's RPC has
+no compare-and-set, so another client changing a torrent's labels between that
+read and the write loses, and this command does not guard against it. After the
+write the labels are re-read from the server and printed in the same columns as
+.BR "snatcher torrent label list" .
+With
+.B \-\-json
+the output is the mutation contract \(em
+.BR action ", " count ", and " torrents ,
+where each torrent additionally carries its post-write
+.BR labels ,
+always an array and
+.B []
+for a torrent left with none. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Remove the labels from every torrent.
+.TP
+.BR \-\-label " " \fIname\fR
+Label to remove, leaving the torrent's other labels. May be repeated. Required.
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order. The default set is
+.BR id ", " name ", " labels .
+Also available, but not shown by default:
+.BR hash .
+.RE
+.TP
 .B snatcher torrent label set \fR[\fIoptions\fR] [\fIid | hash\fR]...
 Replace the labels on the selected torrents with the labels given. Select
 torrents by numeric id, 40-character SHA1 hash, or

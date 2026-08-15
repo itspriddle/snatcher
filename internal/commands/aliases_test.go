@@ -20,6 +20,21 @@ func TestLabelListCmdHasLsAlias(t *testing.T) {
 	}
 }
 
+// TestLabelRemoveCmdHasRmAlias goes through the parent group because the write
+// verbs share one constructor: the alias lives in the spec passed to it, so
+// asserting on a locally built command would only re-state the test's own
+// literal rather than what "torrent label" actually registers.
+func TestLabelRemoveCmdHasRmAlias(t *testing.T) {
+	remove, _, err := NewLabelCmd().Find([]string{"remove"})
+	if err != nil {
+		t.Fatalf("expected a label remove command: %v", err)
+	}
+
+	if got := remove.Aliases; len(got) != 1 || got[0] != "rm" {
+		t.Fatalf("expected label remove command alias [rm], got %v", got)
+	}
+}
+
 func TestMoveCmdHasMvAlias(t *testing.T) {
 	if got := NewMoveCmd().Aliases; len(got) != 1 || got[0] != "mv" {
 		t.Fatalf("expected move command alias [mv], got %v", got)
