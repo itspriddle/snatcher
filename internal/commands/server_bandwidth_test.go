@@ -545,20 +545,26 @@ func TestBandwidthUpdateWritesValueAndEnablesLimit(t *testing.T) {
 		name       string
 		rpcVersion string
 		direction  string
+		speed      string
 		wantValue  string
 		wantSwitch string
 	}{
-		{"jsonrpc download", "6.0.0", "download", `"speed_limit_down":500`, `"speed_limit_down_enabled":true`},
-		{"jsonrpc upload", "6.0.0", "upload", `"speed_limit_up":500`, `"speed_limit_up_enabled":true`},
-		{"bespoke download", "", "download", `"speed-limit-down":500`, `"speed-limit-down-enabled":true`},
-		{"bespoke upload", "", "upload", `"speed-limit-up":500`, `"speed-limit-up-enabled":true`},
+		{"jsonrpc download", "6.0.0", "download", "500", `"speed_limit_down":500`, `"speed_limit_down_enabled":true`},
+		{"jsonrpc upload", "6.0.0", "upload", "500", `"speed_limit_up":500`, `"speed_limit_up_enabled":true`},
+		{"bespoke download", "", "download", "500", `"speed-limit-down":500`, `"speed-limit-down-enabled":true`},
+		{"bespoke upload", "", "upload", "500", `"speed-limit-up":500`, `"speed-limit-up-enabled":true`},
+		// 0 is a real 0 KB/s limit, not a synonym for "off": it takes the same
+		// path as any other number, writing the value and enabling it, so the
+		// direction stops rather than becoming unlimited.
+		{"jsonrpc download zero", "6.0.0", "download", "0", `"speed_limit_down":0`, `"speed_limit_down_enabled":true`},
+		{"bespoke download zero", "", "download", "0", `"speed-limit-down":0`, `"speed-limit-down-enabled":true`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var captured []string
 			cfgPath, closeSrv := capturedBandwidthServer(t, &captured, tc.rpcVersion)
 			defer closeSrv()
 
-			_, _, err := runBandwidth(t, "update", tc.direction, "500", "--config", cfgPath)
+			_, _, err := runBandwidth(t, "update", tc.direction, tc.speed, "--config", cfgPath)
 			require.NoError(t, err)
 
 			// The value and its enabled companion travel together: setting a limit
