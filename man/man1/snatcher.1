@@ -668,7 +668,19 @@ write never touches it and
 .B off
 is rejected with an error \(em use
 .B snatcher server bandwidth alt off
-to leave turtle mode. After writing, the server's actual values are read back
+to leave turtle mode. An alt limit therefore has no per-direction
+.BR off :
+a
+.I speed
+of
+.B 0
+under
+.B \-\-alt
+writes a real 0 KB/s alt limit that halts that direction whenever turtle mode
+is active, and
+.B snatcher server bandwidth alt off
+leaves turtle mode rather than clearing the limit.
+After writing, the server's actual values are read back
 and reported in the same shape as
 .BR "snatcher server bandwidth show" ,
 narrowed to the direction and profile that was written. A negative
@@ -697,7 +709,23 @@ write the switch directly without reading it first;
 .B toggle
 reads the current state and writes its inverse, and because Transmission's RPC
 offers no compare-and-set, another client flipping the switch between that read
-and the write wins. After the write the complete state is read back and
+and the write wins. A configured alt-speed schedule is the likelier surprise:
+with one in place the server flips this switch itself at the schedule
+boundaries, so a manual
+.B on
+or
+.B off
+holds only until the next boundary \(em no second client involved.
+.B snatcher server bandwidth show
+reports whether a schedule is configured, as
+.B alt_schedule_enabled
+in
+.B \-\-json
+and as
+.B (schedule: yes)
+on the plaintext
+.B Alt\-speed
+line. After the write the complete state is read back and
 reported unnarrowed \(em both directions and every limit field \(em in the same
 shape as
 .BR "snatcher server bandwidth show" ,

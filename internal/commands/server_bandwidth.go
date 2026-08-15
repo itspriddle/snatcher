@@ -191,8 +191,11 @@ func newBandwidthUpdateCmd() *cobra.Command {
 			"--alt writes the alt (turtle) profile's limit instead. The alt profile " +
 			"has a single switch governing both directions, so an --alt write never " +
 			"touches it and 'off' is rejected — use 'snatcher server bandwidth alt " +
-			"off' to leave turtle mode. After writing, the server's actual values " +
-			"are read back and reported.",
+			"off' to leave turtle mode. An alt limit therefore has no per-direction " +
+			"off: an --alt speed of 0 writes a real 0 KB/s alt limit that halts that " +
+			"direction whenever turtle mode is active, and 'snatcher server bandwidth " +
+			"alt off' leaves turtle mode rather than clearing the limit. After " +
+			"writing, the server's actual values are read back and reported.",
 		Args:          cobra.ExactArgs(2),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -261,6 +264,12 @@ func newBandwidthAltCmd() *cobra.Command {
 			"RPC has no compare-and-set, so another client flipping the switch between " +
 			"that read and the write wins, and this command does not guard against " +
 			"it.\n\n" +
+			"A configured alt-speed schedule is the likelier surprise: with one in " +
+			"place the server flips this switch itself at the schedule boundaries, so " +
+			"a manual 'on' or 'off' holds only until the next boundary — no second " +
+			"client involved. 'snatcher server bandwidth show' reports whether a " +
+			"schedule is configured, as alt_schedule_enabled in --json and as " +
+			"'(schedule: yes)' on the plaintext Alt-speed line.\n\n" +
 			"Because the switch decides which limits apply to both directions, the " +
 			"complete state is read back and reported afterwards.",
 		Args:          cobra.ExactArgs(1),
