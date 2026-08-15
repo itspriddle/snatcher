@@ -2484,8 +2484,31 @@ Selects the configured server alias to connect to, equivalent to passing
 .BR \-\-server .
 The
 .B \-\-server
-flag takes precedence; when neither is set, the configured default server is
-used.
+flag takes precedence; when neither is set, the configured default server for
+the type the command needs is used.
+.IP
+It applies to Transmission and Prowlarr commands alike. Unlike
+.BR SNATCHER_PASSWORD " and " SNATCHER_API_KEY ,
+which are each scoped to one server type, this variable names one alias for
+every command, so an alias of the wrong type is an error rather than a silent
+fallback. A Transmission command that resolves a Prowlarr alias \(em or a
+.B search
+command, or
+.B "snatcher api"
+with
+.BR \-\-prowlarr ,
+that resolves a Transmission one \(em fails naming the alias, its actual type,
+the type the command needs, and the fact that the alias came from
+.BR SNATCHER_SERVER ,
+instead of falling back to
+.BR default_server " or " default_prowlarr_server .
+.IP
+That is a deliberate choice, not an oversight: quietly ignoring an exported
+variable would leave no way to tell which server a command actually reached. To
+run a command of the other type, pass
+.B \-\-server
+to override the variable for that invocation, or unset it and let the per-type
+default apply.
 .TP
 .B SNATCHER_SECRET_STORE
 Selects the secret store passwords are read from and written to, for every
