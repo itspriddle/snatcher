@@ -479,6 +479,18 @@ func TestLabelListFetchFailureWrapsServerURL(t *testing.T) {
 	assert.Empty(t, out, "nothing is rendered on a read failure")
 }
 
+// TestLabelListNotConfigured covers the read verb's dial: with no server in the
+// config there is nothing to resolve, so the command fails before any round-trip
+// with the registry's own "not configured" error rather than a connection error.
+func TestLabelListNotConfigured(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runLabel(t, "list", "--config", cfgPath, "1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
+
 // TestLabelListTableEmpty covers the TTY branch of the empty case, which isTTY
 // makes unreachable through the command with a *bytes.Buffer.
 func TestLabelListTableEmpty(t *testing.T) {
@@ -841,6 +853,37 @@ func TestLabelSetRegistersFlags(t *testing.T) {
 	}
 }
 
+// TestLabelSetFieldsUsesTheLabelRegistry exercises --fields on a write verb
+// rather than merely asserting it is registered: the projection selects the same
+// labelFields registry the read verb renders, and an unknown key is rejected
+// before dial, so nothing at all reaches the wire.
+func TestLabelSetFieldsUsesTheLabelRegistry(t *testing.T) {
+	cfgPath, _, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelArchivedResponse,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "set", "--config", cfgPath, "1", "--label", "archive", "--fields", "hash,labels")
+	require.NoError(t, err)
+
+	rows := labelRows(t, out)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []string{infoHash1, "archive"}, rows[0],
+		"the post-write row renders the selected columns, in order")
+
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	_, _, err = runLabel(t, "set", "--config", cfgPath, "1", "--label", "archive", "--fields", "status")
+	require.Error(t, err)
+	assert.Equal(t, `invalid field "status": valid fields are `+validFieldKeys(labelFields), err.Error(),
+		"the error lists only the label commands' own keys")
+
+	assert.Empty(t, stub.bodies("torrent-get", "torrent_get", "torrent-set", "torrent_set"),
+		"a bad field is rejected before dial, so nothing is read and nothing is written")
+}
+
 func TestLabelSetJSON(t *testing.T) {
 	cfgPath, _, closeSrv := labelStubConfigPath(t, &labelStub{
 		listBody:      bespokeLabelResponse,
@@ -934,6 +977,19 @@ func TestLabelSetWriteFailureWrapsServerURL(t *testing.T) {
 	assert.Empty(t, out, "nothing is rendered on a write failure")
 
 	require.Len(t, labelSetBodies(stub), 1, "the failure is the write itself")
+}
+
+// TestLabelSetNotConfigured covers the write verbs' own dial, which is a second
+// call site from the read verb's: with no server in the config the command fails
+// before any round-trip, so a mis-wired server resolution can never reach the
+// point of writing labels.
+func TestLabelSetNotConfigured(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runLabel(t, "set", "--config", cfgPath, "1", "--label", "archive")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
 }
 
 // TestMutationTorrentLabelsOmittedByOtherCommands guards the JSON contract of
