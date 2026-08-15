@@ -107,6 +107,7 @@ or any subcommand and exit.
 These options are accepted by the
 .BR server ,
 .BR torrent ,
+.BR search ,
 and
 .B config
 subcommands. They do not all apply everywhere: the named-server registry
@@ -147,7 +148,12 @@ It is also absent from
 .BR "snatcher server show" ,
 which names the server it reports on with a positional
 .I alias
-instead.
+instead. On
+.B snatcher search
+the alias must name a
+.B prowlarr
+server rather than a Transmission one, and an omitted alias falls back to the
+configured default Prowlarr server.
 .TP
 .B \-\-json
 Emit JSON instead of plaintext.
@@ -1858,6 +1864,91 @@ on the command line can never end up persisted.
 .BR client.theme ", " client.nerd_font ", and " client.poll_interval
 are stored and validated but nothing renders them yet; they exist for the
 forthcoming TUI.
+.SS "search"
+.B snatcher search
+.RI [ options "] [" query ]
+.br
+Search the indexers a configured Prowlarr instance knows about. This is the one
+command group that talks to Prowlarr rather than to Transmission, so its
+.B \-\-server
+names a configured
+.B prowlarr
+alias (see
+.BR "snatcher server add \-\-type" );
+with it omitted the configured
+.B default_prowlarr_server
+is used, and its API key is read from that server's secret store or from
+.BR SNATCHER_API_KEY .
+.PP
+The query is a positional argument, or
+.B \-\-query
+for the same thing. Supplying both is an error, and supplying neither is an
+error naming both forms.
+.PP
+Results are rendered in Prowlarr's own order across the indexers it queried;
+snatcher does not sort, filter, or de-duplicate them. On a terminal the output
+is an aligned table with the columns
+.RB ( # ", " AGE ", " TITLE ", " INDEXER ", " SIZE ", " GRABS ", " SEEDERS ", " LEECHERS );
+when piped (or when
+.B NO_COLOR
+is set) it is tab-separated, full-value rows with no header \(em a stable
+scripting contract. A search that matches nothing prints
+.B "No results."
+on a terminal, nothing when piped, and
+.B []
+with
+.BR \-\-json ,
+exiting 0 in all three cases.
+.PP
+.B AGE
+is whole days since the release was published, and
+.BR GRABS ", " SEEDERS ", and " LEECHERS
+render as a dash when the indexer does not publish the count \(em a usenet
+release has no seeders \(em which is distinct from a published zero. The
+leading
+.B #
+column numbers the rendered order from 1 and is present as the
+.B index
+field in
+.BR \-\-json / \-\-jq
+output, so a human reading the table and a script reading JSON name a release
+the same way. Besides the common options:
+.RS
+.TP
+.BR \-\-query " " \fIterm\fR
+The search query, the flag form of the positional argument.
+.TP
+.BR \-\-indexer " " \fIid\fR
+Restrict the search to the indexer with this numeric id, as Prowlarr numbers
+its configured indexers. Repeatable.
+.TP
+.BR \-\-category " " \fIid\fR
+Restrict the search to this torznab category id. Repeatable.
+.TP
+.BR \-\-limit " " \fIn\fR
+Maximum results to request per page. Always sent, so paging steps a
+deterministic offset. Default:
+.BR 100 .
+.TP
+.BR \-\-offset " " \fIn\fR
+Results to skip before the first page. Default:
+.BR 0 .
+.TP
+.BR \-\-pages " " \fIn\fR
+Request
+.I n
+sequential pages, each stepping the offset by
+.BR \-\-limit ,
+concatenating the results in order. A page returning fewer results than it
+asked for ends the walk, so the remaining pages cost no round trips. Default:
+.BR 1 .
+.TP
+.BR \-\-search\-type " " \fItype\fR
+The torznab search type: one of
+.BR search ", " tvsearch ", " movie ", " music ", or " book .
+An indexer may implement only some of the typed searches. Default:
+.BR search .
+.RE
 .SS "api"
 .B snatcher api
 .RI [ options "] " method

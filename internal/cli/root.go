@@ -45,6 +45,7 @@ func NewRootCmd() *cobra.Command {
 
 	cmd.AddCommand(commands.NewAPICmd())
 	cmd.AddCommand(commands.NewConfigCmd())
+	cmd.AddCommand(commands.NewSearchCmd())
 	cmd.AddCommand(commands.NewServerCmd())
 	cmd.AddCommand(commands.NewTorrentCmd())
 
