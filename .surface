@@ -1,4 +1,4 @@
-ARG snatcher api 0 method
+ARG snatcher api 0 method|path
 ARG snatcher config get 0 key
 ARG snatcher config set 0 key
 ARG snatcher config set 1 value
@@ -81,6 +81,8 @@ FLAG snatcher --version type=bool
 FLAG snatcher api --field type=stringArray
 FLAG snatcher api --input type=string
 FLAG snatcher api --jq type=string
+FLAG snatcher api --method type=string
+FLAG snatcher api --prowlarr type=bool
 FLAG snatcher api --raw type=bool
 FLAG snatcher api --raw-field type=stringArray
 FLAG snatcher api --server type=string

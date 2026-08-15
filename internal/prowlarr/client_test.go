@@ -992,3 +992,83 @@ func (zeroReader) Read(p []byte) (int, error) {
 func ptr[T any](v T) *T {
 	return &v
 }
+
+func TestCallAPIReturnsTheServersExactAnswer(t *testing.T) {
+	const body = `{"appName":"Prowlarr","version":"1.30.2"}`
+
+	var got recordedRequest
+
+	srv := jsonServer(t, body, &got)
+	client := newTestClient(t, srv.URL+"/prowlarr", WithAPIKey(testAPIKey))
+
+	resp, err := client.CallAPI(t.Context(), Request{Path: APIPath("system/status")})
+	require.NoError(t, err)
+
+	assert.Equal(t, http.MethodGet, got.Method)
+	assert.Equal(t, "/prowlarr/api/v1/system/status", got.URL.Path)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.True(t, resp.OK)
+	// The body is carried through untouched — no envelope, no re-encoding — so
+	// this is deliberately byte-for-byte: JSONEq would pass on a re-encode too.
+	assert.Equal(t, body, string(resp.Raw)) //nolint:testifylint // encoded-compare: byte-exactness is the assertion
+}
+
+func TestCallAPIReportsANonSuccessStatusWithoutAnError(t *testing.T) {
+	srv := statusServer(t, http.StatusNotFound)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	// A non-2xx is the escape hatch's business to print, not a sentinel: the
+	// command shows the instance's own message before exiting non-zero.
+	resp, err := client.CallAPI(t.Context(), Request{Path: APIPath("indexer/999")})
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	assert.False(t, resp.OK)
+	assert.JSONEq(t, `{"message":"nope"}`, string(resp.Raw))
+}
+
+func TestCallAPIStillReportsAnUnreachableServer(t *testing.T) {
+	client := newTestClient(t, "http://127.0.0.1:1", WithAPIKey(testAPIKey))
+
+	_, err := client.CallAPI(t.Context(), Request{Path: APIPath("indexer")})
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.NotContains(t, err.Error(), testAPIKey)
+}
+
+func TestCallAPISendsTheBodyAndQueryItIsGiven(t *testing.T) {
+	var (
+		gotMethod string
+		gotQuery  string
+		gotBody   string
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotMethod, gotQuery, gotBody = r.Method, r.URL.RawQuery, string(body)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.CallAPI(t.Context(), Request{
+		Method: http.MethodPost,
+		Path:   APIPath("search"),
+		Query:  url.Values{"apply": {"true"}},
+		Body:   []byte(`{"guid":"abc"}`),
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Equal(t, "apply=true", gotQuery)
+	assert.JSONEq(t, `{"guid":"abc"}`, gotBody)
+}
+
+func TestAPIPath(t *testing.T) {
+	// A bare path is expanded to the v1 API; an absolute one is used verbatim,
+	// so an endpoint outside the versioned API stays reachable.
+	assert.Equal(t, "/api/v1/indexer", APIPath("indexer"))
+	assert.Equal(t, "/api/v1/indexer/7", APIPath("  indexer/7  "))
+	assert.Equal(t, "/ping", APIPath("/ping"))
+	assert.Equal(t, "/api/v1/indexer", APIPath("/api/v1/indexer"))
+}

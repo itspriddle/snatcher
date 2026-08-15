@@ -186,12 +186,19 @@ func (t *Transport) BaseURL() *url.URL {
 // exchange maps to ErrUnreachable. The supplied context governs cancellation
 // and deadlines on top of the client's own timeout.
 func (t *Transport) Do(ctx context.Context, req Request) ([]byte, error) {
-	httpReq, err := t.newRequest(ctx, req)
+	status, body, err := t.call(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return t.do(httpReq)
+	switch {
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return nil, fmt.Errorf("%w (status %d)", ErrAuth, status)
+	case status < 200 || status >= 300:
+		return nil, fmt.Errorf("%w: unexpected status %d%s", ErrServer, status, t.detail(body))
+	}
+
+	return body, nil
 }
 
 // newRequest builds the HTTP request for req, joining its path onto the base
@@ -238,28 +245,33 @@ func (t *Transport) authorize(req *http.Request) {
 	}
 }
 
-// do performs the request and maps the outcome onto the sentinels.
-func (t *Transport) do(req *http.Request) ([]byte, error) {
-	resp, err := t.httpClient.Do(req)
+// call performs req and returns the status the server answered with alongside
+// the response body. Only a failure to complete the HTTP exchange is an error
+// (ErrUnreachable); classifying the status is left to the caller.
+//
+// Do maps it onto the sentinels, which is what every typed call wants. The raw
+// api escape hatch instead prints whatever the instance said and exits non-zero,
+// so it needs the status and the untouched body rather than a bounded excerpt
+// wrapped in ErrServer.
+func (t *Transport) call(ctx context.Context, req Request) (int, []byte, error) {
+	httpReq, err := t.newRequest(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s %s: %w",
-			ErrUnreachable, req.Method, t.safeURL(req.URL), unwrapURLError(err))
+		return 0, nil, err
+	}
+
+	resp, err := t.httpClient.Do(httpReq)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%w: %s %s: %w",
+			ErrUnreachable, httpReq.Method, t.safeURL(httpReq.URL), unwrapURLError(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: reading response body: %w", ErrUnreachable, unwrapURLError(err))
+		return 0, nil, fmt.Errorf("%w: reading response body: %w", ErrUnreachable, unwrapURLError(err))
 	}
 
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, fmt.Errorf("%w (status %d)", ErrAuth, resp.StatusCode)
-	case resp.StatusCode < 200 || resp.StatusCode >= 300:
-		return nil, fmt.Errorf("%w: unexpected status %d%s", ErrServer, resp.StatusCode, t.detail(body))
-	}
-
-	return body, nil
+	return resp.StatusCode, body, nil
 }
 
 // fetch performs a bare GET against an absolute URL snatcher did not construct —

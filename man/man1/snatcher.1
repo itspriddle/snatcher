@@ -150,7 +150,11 @@ which names the server it reports on with a positional
 .I alias
 instead. On
 .B snatcher search
-the alias must name a
+\(em and on
+.B "snatcher api"
+with
+.B \-\-prowlarr
+\(em the alias must name a
 .B prowlarr
 server rather than a Transmission one, and an omitted alias falls back to the
 configured default Prowlarr server.
@@ -2167,6 +2171,9 @@ sequences in the plaintext output only. Accepts
 .B snatcher api
 .RI [ options "] " method
 .br
+.B snatcher api \-\-prowlarr
+.RI [ options "] " path
+.br
 Power-user escape hatch, modeled on
 .BR "gh api" ,
 that issues an arbitrary Transmission RPC
@@ -2177,8 +2184,40 @@ and prints a normalized response envelope that is identical whether the server
 speaks the bespoke dialect (Transmission 4.0 and earlier) or JSON-RPC 2.0
 (4.1 and later). snatcher translates the method name only; it never rewrites
 argument keys or values, which are not portable across dialect versions. An
-RPC-level failure still prints the envelope, then exits non-zero. Options:
+RPC-level failure still prints the envelope, then exits non-zero.
+.PP
+With
+.B \-\-prowlarr
+the positional is a Prowlarr REST
+.I path
+instead, issued against the configured Prowlarr server. A
+.I path
+beginning with
+.B /
+is used verbatim against that server's base URL; a bare one is expanded to
+.IB /api/v1/ path \fR,
+where every documented endpoint lives. This is how the parts of Prowlarr's API
+.B "snatcher search"
+does not model \(em history, statistics, notifications, indexer management \(em
+stay reachable. Options:
 .RS
+.TP
+.B \-\-prowlarr
+Treat the positional as a Prowlarr REST path and call the configured Prowlarr
+server.
+.B \-\-server
+must then name a
+.B prowlarr
+alias.
+.TP
+.BR \-X ", " \-\-method " " \fIverb\fR
+HTTP method for
+.BR \-\-prowlarr :
+one of
+.BR GET " (default), " HEAD ", " POST ", " PUT ", " PATCH ", " DELETE ", or " OPTIONS ,
+matched case-insensitively. It is an error without
+.BR \-\-prowlarr ,
+since a Transmission RPC call is always a POST of the method name.
 .TP
 .BR \-F ", " \-\-field " " \fIkey=value\fR
 Add a type-inferred argument field:
@@ -2213,6 +2252,48 @@ command also accepts
 it has no
 .B \-\-json
 flag, since the normalized envelope is already JSON.
+.PP
+.B "The two modes print different shapes."
+A Transmission call prints the normalized
+.BR result / arguments / tag
+envelope, so a
+.B \-\-jq
+expression addresses the payload as \fI.arguments\fR.
+A Prowlarr call has no envelope to normalize \(em its REST API answers with the
+resource itself \(em so the response body is printed as indented JSON exactly as
+the server sent it, and a
+.B \-\-jq
+expression addresses that body directly
+.RI ( .[].name ", not " .arguments.[].name ).
+.B \-\-raw
+prints the exact response bytes in both modes, and a body that is not JSON at
+all (an HTML page from a reverse proxy, or the empty body of a successful
+.BR DELETE )
+is written verbatim.
+.PP
+Under
+.B \-\-prowlarr
+the field flags follow the verb.
+.BR \-f ", " \-F ", and " \-\-input
+become
+.B "query parameters"
+for
+.BR GET " and " DELETE
+\(em a repeated key stays repeated, which is how Prowlarr binds an array
+parameter such as
+.IR indexerIds ,
+and an
+.B \-\-input
+document must be a JSON object, whose top-level keys become the parameters.
+For every other verb they become a
+.B "JSON request body"
+instead, with
+.B \-\-input
+supplying that body verbatim. A non-2xx response prints the server's own body,
+then exits non-zero, mirroring how the Transmission mode prints its envelope
+before failing. The Prowlarr API key travels as a header and never reaches the
+output, including under
+.BR \-\-raw .
 .SS "version, completion, help"
 .B snatcher version
 prints version information.
