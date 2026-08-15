@@ -392,6 +392,42 @@ func TestSearchGrabNeverPrintsTheAPIKey(t *testing.T) {
 	}
 }
 
+// TestSearchGrabReportsAServerError pins that the POST half of a grab is not
+// swallowed: the re-run succeeds, Prowlarr refuses the grab, and the error says
+// which instance refused it.
+func TestSearchGrabReportsAServerError(t *testing.T) {
+	keyring.MockInit()
+
+	searches := new([]url.Values)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message": "no download client configured"}`))
+
+			return
+		}
+
+		*searches = append(*searches, r.URL.Query())
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(searchResultsBody))
+	}))
+	t.Cleanup(srv.Close)
+
+	cfgPath := writeConfigFile(t, fmt.Sprintf(
+		`{"servers": {"indexers": {"url": %q, "type": "prowlarr"}}, "default_prowlarr_server": "indexers"}`,
+		srv.URL))
+
+	_, _, err := runSearch(t, "--config", cfgPath, "grab", "ubuntu", "1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "grabbing on "+srv.URL)
+	assert.Contains(t, err.Error(), "no download client configured",
+		"the instance's own explanation survives the wrap")
+
+	assert.Len(t, *searches, 1, "the re-run succeeded; it is the grab that failed")
+}
+
 func TestSearchGrabRefusesATransmissionServer(t *testing.T) {
 	keyring.MockInit()
 

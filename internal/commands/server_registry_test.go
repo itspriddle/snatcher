@@ -2007,6 +2007,32 @@ func TestServerListJSONCarriesTheType(t *testing.T) {
 	assert.False(t, results[2].IsDefault, "only the alias named by default_prowlarr_server is the Prowlarr default")
 }
 
+// TestServerListShowsAStoredAPIKey covers the positive half of the secret
+// column for the second server type: an API key is stored under the server's URL
+// exactly as a password is, so one type-agnostic lookup reports both. The
+// existing type tests store no secret, which would let a Prowlarr row read "no"
+// forever without anything noticing.
+func TestServerListShowsAStoredAPIKey(t *testing.T) {
+	keyring.MockInit()
+
+	const prowlarrURL = "http://prowlarr:9696"
+
+	cfgPath := saveProwlarrOnlyConfig(t, prowlarrURL, "abc123")
+
+	out, errOut, err := runServer(t, "", "list", "--config", cfgPath)
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 1)
+
+	assert.Equal(t,
+		strings.Join([]string{"indexers", "prowlarr", prowlarrURL, "", "yes", "yes"}, "\t"),
+		lines[0],
+		"a stored API key reads yes in the SECRET column")
+
+	assert.NotContains(t, out+errOut, "abc123", "the column reports presence, never the key itself")
+}
+
 // saveProwlarrOnlyConfig registers url as the sole configured server: a Prowlarr
 // instance aliased "indexers", holding apiKey, and the Prowlarr default.
 func saveProwlarrOnlyConfig(t *testing.T, url, apiKey string) string {

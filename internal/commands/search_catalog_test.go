@@ -368,6 +368,18 @@ func TestSearchCategoriesJQ(t *testing.T) {
 	assert.Equal(t, "2010\n2040", strings.TrimSpace(out))
 }
 
+// TestSearchCategoriesJQTakesPrecedenceOverJSON pins the fixed --jq -> --json ->
+// plaintext order for this subcommand. The precedence block is written once per
+// subcommand rather than shared, so it has to be covered once per subcommand.
+func TestSearchCategoriesJQTakesPrecedenceOverJSON(t *testing.T) {
+	cfgPath, _ := catalogConfig(t, "[]", searchCategoriesBody)
+
+	out, _, err := runSearch(t, "--config", cfgPath, "categories", "--json", "--jq", ".[].id")
+	require.NoError(t, err)
+
+	assert.Equal(t, "2000\n2010\n2040\n5000\n5040", strings.TrimSpace(out))
+}
+
 // TestFlattenCategoriesRecursesBeyondTwoLevels covers a tree deeper than
 // Prowlarr's own default two, since the wire shape is recursive and nothing
 // caps it.

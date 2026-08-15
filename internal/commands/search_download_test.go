@@ -391,6 +391,8 @@ func TestSearchDownloadSharesTheSelectionValidation(t *testing.T) {
 	}{
 		{args: []string{"download"}, want: "name a release by position with a query and a result number"},
 		{args: []string{"download", "ubuntu"}, want: "name a release by position with a query and a result number"},
+		{args: []string{"download", "", "1"}, want: "the query is empty"},
+		{args: []string{"download", "   ", "1"}, want: "the query is empty"},
 		{args: []string{"download", "ubuntu", "0"}, want: "invalid result number 0"},
 		{args: []string{"download", "--pages", "0", "ubuntu", "1"}, want: "invalid --pages 0"},
 		{args: []string{"download", "--search-type", "anime", "ubuntu", "1"}, want: `invalid --search-type "anime"`},
@@ -415,6 +417,49 @@ func TestSearchDownloadRejectsAnOutOfRangeNumber(t *testing.T) {
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	assert.Empty(t, entries, "nothing is written when the number names no result")
+}
+
+// TestSearchDownloadReportsAFetchFailure is the download half of the grab's
+// server-error guard: the search succeeds and the release resolves, but its
+// download url answers non-2xx. The error names the release and the url that
+// refused, and — the part that matters on disk — nothing is left behind, not
+// even the temp file the atomic write goes through.
+func TestSearchDownloadReportsAFetchFailure(t *testing.T) {
+	keyring.MockInit()
+
+	var base string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == downloadReleasePath {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("indexer is unreachable"))
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(downloadReleaseBody("Ubuntu")(base)))
+	}))
+	t.Cleanup(srv.Close)
+
+	base = srv.URL
+
+	cfgPath := writeConfigFile(t, fmt.Sprintf(
+		`{"servers": {"indexers": {"url": %q, "type": "prowlarr"}}, "default_prowlarr_server": "indexers"}`,
+		srv.URL))
+
+	dir := downloadInDir(t)
+
+	_, _, err := runSearch(t, "--config", cfgPath, "download", "ubuntu", "1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "downloading Ubuntu [Example Tracker]")
+	assert.Contains(t, err.Error(), "unexpected status 500")
+	assert.Contains(t, err.Error(), srv.URL+downloadReleasePath, "the error names the url that failed")
+	assert.Contains(t, err.Error(), "indexer is unreachable", "the server's own explanation survives the wrap")
+
+	entries, readErr := os.ReadDir(dir)
+	require.NoError(t, readErr)
+	assert.Empty(t, entries, "a failed fetch writes no file, and leaves no partial one")
 }
 
 func TestSearchDownloadRefusesATransmissionServer(t *testing.T) {
