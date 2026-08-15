@@ -559,24 +559,64 @@ func redactURL(u *url.URL) string {
 	}
 
 	clone := *u
+	redactQuery(&clone)
 
-	if clone.RawQuery != "" {
-		query := clone.Query()
+	return clone.Redacted()
+}
 
-		found := false
-		for key := range query {
-			if strings.EqualFold(key, apiKeyParam) {
-				query.Set(key, redactedValue)
-				found = true
-			}
-		}
+// redactURLString renders a URL that arrived as server data with the value of
+// any apikey query parameter replaced. Unlike redactURL it masks nothing else
+// and re-encodes nothing: a URL carrying no apikey parameter is returned
+// byte-for-byte as it arrived, so the only URL this rewrites is one that
+// actually holds a secret.
+//
+// Prowlarr rewrites a release's downloadUrl into a proxy link of the form
+// http://prowlarr/<indexerId>/download?apikey=<KEY>&link=…, since a torrent
+// client fetching that URL cannot send a header. An indexer may build an info or
+// comment URL the same way. Those URLs are the one place a server-derived string
+// must be rewritten before snatcher emits it.
+func redactURLString(raw string) string {
+	if raw == "" {
+		return raw
+	}
 
-		if found {
-			clone.RawQuery = query.Encode()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		// An unparseable URL cannot have its parameters located reliably, so the
+		// whole query goes.
+		return redactRawURL(raw)
+	}
+
+	if !redactQuery(parsed) {
+		return raw
+	}
+
+	return parsed.String()
+}
+
+// redactQuery replaces the value of every apikey query parameter on u in place,
+// reporting whether it found one. A URL with no such parameter is left untouched
+// rather than re-encoded.
+func redactQuery(u *url.URL) bool {
+	if u.RawQuery == "" {
+		return false
+	}
+
+	query := u.Query()
+
+	found := false
+	for key := range query {
+		if strings.EqualFold(key, apiKeyParam) {
+			query.Set(key, redactedValue)
+			found = true
 		}
 	}
 
-	return clone.Redacted()
+	if found {
+		u.RawQuery = query.Encode()
+	}
+
+	return found
 }
 
 // unwrapURLError strips the *url.Error wrapper net/url and net/http add, whose

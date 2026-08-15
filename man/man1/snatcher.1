@@ -1951,7 +1951,31 @@ column numbers the rendered order from 1 and is present as the
 field in
 .BR \-\-json / \-\-jq
 output, so a human reading the table and a script reading JSON name a release
-the same way. Besides the common options:
+the same way.
+.PP
+Prowlarr hands back a
+.B download_url
+that proxies through Prowlarr itself and carries the API key as a query
+parameter, because a torrent client fetching that url has nowhere to put a
+header; an indexer may build
+.BR info_url " or " comment_url
+the same way. The value of any
+.B apikey
+parameter is therefore replaced with
+.B REDACTED
+in the
+.BR \-\-json / \-\-jq
+output of
+.B search
+and
+.BR "search grab" ,
+so a filtered result can be logged or pasted without leaking the key. The
+rewrite is made on the way out only:
+.B "snatcher search download"
+fetches the url Prowlarr gave it, and
+.B "snatcher search grab"
+hands Prowlarr back the exact release resource it received. Besides the common
+options:
 .RS
 .TP
 .BR \-\-query " " \fIterm\fR

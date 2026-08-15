@@ -17,14 +17,16 @@ import (
 
 // grabbedReleaseBody is what Prowlarr echoes back from a successful grab: the
 // accepted ReleaseResource, which for the exact form is the first description of
-// the release snatcher has seen at all.
+// the release snatcher has seen at all. Its downloadUrl is a proxy link carrying
+// searchFixtureAPIKey, as Prowlarr's really is, so the never-prints-the-key
+// guard below has something to catch.
 const grabbedReleaseBody = `{
 	"guid": "https://tracker.example/1",
 	"title": "Ubuntu 24.04 LTS",
 	"indexer": "Example Tracker",
 	"indexerId": 3,
 	"protocol": "torrent",
-	"downloadUrl": "http://prowlarr.example/download/1"
+	"downloadUrl": "http://prowlarr.example/3/download?apikey=super-secret-api-key&link=abc"
 }`
 
 // prowlarrGrabStub answers both halves of a grab on /api/v1/search: a GET is the
@@ -114,7 +116,8 @@ func TestSearchGrabPostsTheRetainedResourceVerbatim(t *testing.T) {
 	var sent map[string]any
 	require.NoError(t, json.Unmarshal((*posted)[0], &sent))
 	assert.Equal(t, "ubuntu 24.04 lts", sent["sortTitle"], "a field snatcher does not model still reaches Prowlarr")
-	assert.Equal(t, "http://prowlarr.example/download/1", sent["downloadUrl"])
+	assert.Equal(t, "http://prowlarr.example/3/download?apikey="+searchFixtureAPIKey+"&link=abc", sent["downloadUrl"],
+		"the retained bytes are re-POSTed unredacted; the strip is a render-boundary rewrite only")
 }
 
 func TestSearchGrabEchoesTheResolvedReleaseBeforeActing(t *testing.T) {
@@ -306,6 +309,9 @@ func TestSearchGrabJSONEmitsTheGrabbedRelease(t *testing.T) {
 	assert.InDelta(t, 3.0, got["indexer_id"], 0)
 	assert.NotContains(t, got, "index", "a grab acts on one release; there is no rendered order to number")
 	assert.NotContains(t, got, "raw")
+
+	assert.Equal(t, "http://prowlarr.example/3/download?apikey=REDACTED&link=abc", got["download_url"],
+		"the echoed proxy link carries the API key and is stripped at the render boundary")
 }
 
 func TestSearchGrabJQTakesPrecedenceOverJSON(t *testing.T) {
@@ -367,20 +373,22 @@ func TestSearchGrabSanitizesPlaintextOnly(t *testing.T) {
 }
 
 func TestSearchGrabNeverPrintsTheAPIKey(t *testing.T) {
-	const apiKey = "super-secret-api-key"
+	require.Contains(t, grabbedReleaseBody, "apikey="+searchFixtureAPIKey,
+		"the echoed resource must carry the key in a URL, or this guard passes vacuously")
 
 	cfgPath, _, _ := grabConfig(t, searchResultsBody)
-	t.Setenv(envAPIKey, apiKey)
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
 
 	for _, args := range [][]string{
 		{"grab", "ubuntu", "1"},
 		{"--json", "grab", "ubuntu", "1"},
 		{"--jq", ".", "grab", "ubuntu", "1"},
 		{"grab", "--guid", "https://tracker.example/1", "--indexer", "3"},
+		{"--json", "grab", "--guid", "https://tracker.example/1", "--indexer", "3"},
 	} {
 		out, errOut, err := runSearch(t, append([]string{"--config", cfgPath}, args...)...)
 		require.NoErrorf(t, err, "%v", args)
-		assert.NotContainsf(t, out+errOut, apiKey, "%v", args)
+		assert.NotContainsf(t, out+errOut, searchFixtureAPIKey, "%v", args)
 	}
 }
 

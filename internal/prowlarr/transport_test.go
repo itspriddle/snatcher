@@ -2,6 +2,7 @@ package prowlarr
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -453,6 +454,85 @@ func TestRedactURLMasksUserinfoAndAPIKeyParameter(t *testing.T) {
 	assert.NotContains(t, got, testAPIKey)
 	assert.NotContains(t, got, "hunter2")
 	assert.Contains(t, got, "query=ubuntu")
+}
+
+// TestRedactURLStringOnlyRewritesAKeyBearingURL pins the render-boundary strip:
+// it touches the apikey parameter and nothing else, so a URL that holds no key
+// survives byte-for-byte rather than being re-encoded.
+func TestRedactURLStringOnlyRewritesAKeyBearingURL(t *testing.T) {
+	for _, tc := range []struct{ name, raw, want string }{
+		{
+			name: "proxy link",
+			raw:  "http://prowlarr.test/3/download?apikey=" + testAPIKey + "&link=abc",
+			want: "http://prowlarr.test/3/download?apikey=" + redactedValue + "&link=abc",
+		},
+		{
+			name: "parameter name is matched case-insensitively",
+			raw:  "http://prowlarr.test/3/details?ApiKey=" + testAPIKey,
+			want: "http://prowlarr.test/3/details?ApiKey=" + redactedValue,
+		},
+		{
+			name: "fragment survives",
+			raw:  "https://tracker.test/1?apikey=" + testAPIKey + "#comments",
+			want: "https://tracker.test/1?apikey=" + redactedValue + "#comments",
+		},
+		{
+			name: "no query",
+			raw:  "https://tracker.test/details/1",
+			want: "https://tracker.test/details/1",
+		},
+		{
+			name: "query without the key is untouched",
+			raw:  "https://tracker.test/dl?id=7&x=%2Fa+b",
+			want: "https://tracker.test/dl?id=7&x=%2Fa+b",
+		},
+		{
+			name: "magnet",
+			raw:  "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Ubuntu",
+			want: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Ubuntu",
+		},
+		{
+			name: "empty",
+			raw:  "",
+			want: "",
+		},
+		{
+			name: "unparseable loses its whole query",
+			raw:  "http://%zz.test/x?apikey=" + testAPIKey,
+			want: "http://%zz.test/x?" + redactedValue,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, redactURLString(tc.raw))
+		})
+	}
+}
+
+// TestReleaseRedactedLeavesTheReceiverAlone pins that the strip is a copy: the
+// release the caller keeps still carries the URL Download must fetch and the raw
+// bytes Grab must re-POST.
+func TestReleaseRedactedLeavesTheReceiverAlone(t *testing.T) {
+	release := Release{
+		DownloadURL: "http://prowlarr.test/3/download?apikey=" + testAPIKey,
+		InfoURL:     "http://prowlarr.test/3/details?apikey=" + testAPIKey,
+		CommentURL:  "https://tracker.test/1?apikey=" + testAPIKey,
+		MagnetURL:   "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+		Raw:         json.RawMessage(`{"downloadUrl":"http://prowlarr.test/3/download?apikey=` + testAPIKey + `"}`),
+	}
+
+	redacted := release.Redacted()
+
+	for _, got := range []string{redacted.DownloadURL, redacted.InfoURL, redacted.CommentURL} {
+		assert.NotContains(t, got, testAPIKey)
+		assert.Contains(t, got, "apikey="+redactedValue)
+	}
+
+	assert.Equal(t, release.MagnetURL, redacted.MagnetURL)
+	assert.Equal(t, string(release.Raw), string(redacted.Raw), "the retained resource is never rewritten")
+
+	assert.Contains(t, release.DownloadURL, testAPIKey, "the receiver is untouched")
+	assert.Contains(t, release.InfoURL, testAPIKey)
+	assert.Contains(t, release.CommentURL, testAPIKey)
 }
 
 func TestRedactRawURLDropsTheQueryOfAnUnparseableURL(t *testing.T) {

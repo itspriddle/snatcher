@@ -118,6 +118,27 @@ type Release struct {
 	CommentURL string `json:"comment_url"`
 }
 
+// Redacted returns a copy of r with the value of any apikey query parameter
+// stripped from the URLs the server supplied, ready to be emitted.
+//
+// Prowlarr hands back a downloadUrl that proxies through Prowlarr itself and
+// carries the API key as a query parameter, because a torrent client fetching
+// that URL has nowhere to put a header; an indexer may build an info or comment
+// URL the same way. Emitting one verbatim would put the key in a --json payload,
+// a --jq filter, or whatever a script does with either.
+//
+// This is a credential strip, not sanitization, and it belongs at the render
+// boundary only. The receiver is untouched, so the DownloadURL that Download
+// fetches and the Raw bytes that Grab re-POSTs stay byte-exact — a redacted URL
+// is for reading, never for acting on.
+func (r Release) Redacted() Release {
+	r.DownloadURL = redactURLString(r.DownloadURL)
+	r.InfoURL = redactURLString(r.InfoURL)
+	r.CommentURL = redactURLString(r.CommentURL)
+
+	return r
+}
+
 // releaseWire is Prowlarr's ReleaseResource as it arrives on the wire. Only the
 // modeled fields are listed; the rest survive on Release.Raw.
 type releaseWire struct {

@@ -165,11 +165,11 @@ func NewSearchCmd() *cobra.Command {
 			results := numberSearchResults(releases)
 
 			if jqExpr != "" {
-				return output.JQ(cmd.OutOrStdout(), jsonSlice(results), jqExpr)
+				return output.JQ(cmd.OutOrStdout(), jsonSlice(redactSearchResults(results)), jqExpr)
 			}
 
 			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), jsonSlice(results))
+				return output.JSON(cmd.OutOrStdout(), jsonSlice(redactSearchResults(results)))
 			}
 
 			writeListPlaintext(cmd, results, searchColumns, "No results.")
@@ -306,6 +306,29 @@ func numberSearchResults(releases []prowlarr.Release) []searchResult {
 	}
 
 	return results
+}
+
+// redactSearchResults returns the results with the API key stripped from every
+// release's URL fields, for the structured output modes only.
+//
+// The plaintext table renders no URL at all, so this is the whole exposure:
+// Prowlarr's downloadUrl is a proxy link that carries the key as a query
+// parameter (a torrent client fetching it cannot send a header), and an indexer
+// may build its info or comment URL the same way. --json and --jq are a
+// scripting contract, which is exactly what makes emitting the key there
+// dangerous — a filtered result lands in a log, a pipeline, or a paste.
+//
+// It runs on a copy at the render boundary, so the releases the rest of the
+// command holds — the DownloadURL search download fetches, the Raw bytes search
+// grab re-POSTs — stay byte-exact. A redacted URL is for reading, not for
+// acting on.
+func redactSearchResults(results []searchResult) []searchResult {
+	redacted := make([]searchResult, len(results))
+	for i, result := range results {
+		redacted[i] = searchResult{Index: result.Index, Release: result.Redacted()}
+	}
+
+	return redacted
 }
 
 // searchAge renders a release's age in whole days, the unit Prowlarr reports it

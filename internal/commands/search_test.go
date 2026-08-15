@@ -17,10 +17,19 @@ import (
 	"github.com/itspriddle/snatcher/internal/prowlarr"
 )
 
+// searchFixtureAPIKey is the API key the fixture bodies carry inside their
+// downloadUrl and that the never-prints-the-key guards configure. Prowlarr
+// really does hand the key back that way — a downloadUrl is a proxy link, and a
+// torrent client fetching it has nowhere to put a header — so a fixture whose
+// URLs carry no query string would let those guards pass whether or not any
+// redaction exists.
+const searchFixtureAPIKey = "super-secret-api-key"
+
 // searchResultsBody is a Prowlarr /api/v1/search payload (camelCase wire fields)
 // covering a torrent release that reports every count and a usenet release that
 // reports none, so the null-vs-zero rendering is exercised end to end. The
-// unmodeled sortTitle key stands in for whatever a newer Prowlarr adds.
+// unmodeled sortTitle key stands in for whatever a newer Prowlarr adds, and both
+// downloadUrls are proxy links carrying searchFixtureAPIKey.
 const searchResultsBody = `[
 	{
 		"guid": "https://tracker.example/1",
@@ -36,7 +45,7 @@ const searchResultsBody = `[
 		"leechers": 7,
 		"protocol": "torrent",
 		"infoHash": "aaa111",
-		"downloadUrl": "http://prowlarr.example/download/1",
+		"downloadUrl": "http://prowlarr.example/3/download?apikey=super-secret-api-key&link=abc",
 		"magnetUrl": "magnet:?xt=urn:btih:aaa111",
 		"infoUrl": "https://tracker.example/details/1",
 		"commentUrl": "https://tracker.example/details/1#comments",
@@ -53,7 +62,7 @@ const searchResultsBody = `[
 		"seeders": null,
 		"leechers": null,
 		"protocol": "usenet",
-		"downloadUrl": "http://prowlarr.example/download/2"
+		"downloadUrl": "http://prowlarr.example/5/download?apikey=super-secret-api-key&link=def"
 	}
 ]`
 
@@ -446,11 +455,16 @@ func TestSearchSanitizesPlaintextOnly(t *testing.T) {
 
 // TestSearchNeverPrintsTheAPIKey covers every render mode: the key reaches the
 // wire and nothing else.
+//
+// The guard is only worth anything if the fixture can actually leak, so it first
+// pins that searchResultsBody hands back a key-bearing downloadUrl the way
+// Prowlarr does. Delete the render-boundary redaction and this test fails.
 func TestSearchNeverPrintsTheAPIKey(t *testing.T) {
-	const apiKey = "super-secret-api-key"
+	require.Contains(t, searchResultsBody, "apikey="+searchFixtureAPIKey,
+		"the fixture must carry the key in a URL, or this guard passes vacuously")
 
 	cfgPath, _ := searchConfig(t, searchResultsBody)
-	t.Setenv(envAPIKey, apiKey)
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
 
 	for _, args := range [][]string{
 		{"ubuntu"},
@@ -459,8 +473,61 @@ func TestSearchNeverPrintsTheAPIKey(t *testing.T) {
 	} {
 		out, errOut, err := runSearch(t, append([]string{"--config", cfgPath}, args...)...)
 		require.NoErrorf(t, err, "%v", args)
-		assert.NotContainsf(t, out+errOut, apiKey, "%v", args)
+		assert.NotContainsf(t, out+errOut, searchFixtureAPIKey, "%v", args)
 	}
+}
+
+// TestSearchRedactsTheAPIKeyFromResultURLs pins the credential strip itself: the
+// three URL fields Prowlarr or an indexer may build as a key-bearing proxy link
+// are rewritten for --json/--jq, and a URL that holds no key is emitted exactly
+// as it arrived.
+func TestSearchRedactsTheAPIKeyFromResultURLs(t *testing.T) {
+	body := `[{
+		"guid": "https://tracker.example/1",
+		"title": "Ubuntu 24.04 LTS",
+		"indexer": "Example Tracker",
+		"indexerId": 3,
+		"downloadUrl": "http://prowlarr.example/3/download?apikey=` + searchFixtureAPIKey + `&link=abc",
+		"infoUrl": "http://prowlarr.example/3/details?ApiKey=` + searchFixtureAPIKey + `",
+		"commentUrl": "https://tracker.example/details/1?apikey=` + searchFixtureAPIKey + `#comments",
+		"magnetUrl": "magnet:?xt=urn:btih:aaa111"
+	}]`
+
+	cfgPath, _ := searchConfig(t, body)
+
+	out, _, err := runSearch(t, "--config", cfgPath, "--json", "ubuntu")
+	require.NoError(t, err)
+
+	var got []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1)
+
+	assert.Equal(t, "http://prowlarr.example/3/download?apikey=REDACTED&link=abc", got[0]["download_url"])
+	assert.Equal(t, "http://prowlarr.example/3/details?ApiKey=REDACTED", got[0]["info_url"],
+		"the parameter name is matched case-insensitively")
+	assert.Equal(t, "https://tracker.example/details/1?apikey=REDACTED#comments", got[0]["comment_url"])
+
+	assert.Equal(t, "magnet:?xt=urn:btih:aaa111", got[0]["magnet_url"],
+		"a URL carrying no key is emitted byte-for-byte as it arrived")
+	assert.Equal(t, "https://tracker.example/1", got[0]["guid"])
+}
+
+// TestSearchLeavesTheReleaseItActsOnUnredacted is the other half of the strip:
+// the rewrite happens on a copy at the render boundary, so the release the rest
+// of the command holds — the URL search download fetches, the bytes search grab
+// re-POSTs — is still the one Prowlarr sent.
+func TestSearchLeavesTheReleaseItActsOnUnredacted(t *testing.T) {
+	releases := searchReleases(t, searchResultsBody)
+	before := releases[0].DownloadURL
+	raw := string(releases[0].Raw)
+
+	results := numberSearchResults(releases)
+	redacted := redactSearchResults(results)
+
+	assert.Contains(t, redacted[0].DownloadURL, "apikey=REDACTED")
+	assert.Equal(t, before, results[0].DownloadURL, "the rendered copy does not mutate the release")
+	assert.Contains(t, before, "apikey="+searchFixtureAPIKey)
+	assert.Equal(t, raw, string(results[0].Raw), "the retained ReleaseResource bytes stay byte-exact")
 }
 
 func TestSearchAttachesTheAPIKeyHeader(t *testing.T) {
