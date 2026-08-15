@@ -1,10 +1,11 @@
 // Package config loads and persists snatcher's non-secret configuration.
 //
-// Config holds a map of named servers (each with a URL and username), an
-// optional default server alias, and a client section holding snatcher's own
-// settings (theme, icon set, poll cadence, list defaults). Server selection (the
-// --server flag / SNATCHER_SERVER env var) is resolved by callers via Resolve;
-// the config file itself stores only the inventory of servers and the default.
+// Config holds a map of named servers (each with a URL, a username, and a
+// type), an optional default alias per type, and a client section holding
+// snatcher's own settings (theme, icon set, poll cadence, list defaults). Server
+// selection (the --server flag / SNATCHER_SERVER env var) is resolved by callers
+// via Resolve or ResolveProwlarr; the config file itself stores only the
+// inventory of servers and the defaults.
 //
 // The file is operator-owned and hand-editable, so Load and Save preserve keys
 // this package does not model — both at the top level and inside the client
@@ -13,9 +14,10 @@
 // a hand-edited "Theme" is read as theme and written back as "theme", never as
 // both.
 //
-// Secrets (passwords) are never stored here — they live in whichever secret
-// store the server names (see internal/secrets). This file records only that
-// store's name, in the per-server secret_store field.
+// Secrets (Transmission passwords, Prowlarr API keys) are never stored here —
+// they live in whichever secret store the server names (see internal/secrets).
+// This file records only that store's name, in the per-server secret_store
+// field.
 package config
 
 import (
@@ -42,6 +44,12 @@ var ErrUnknownServer = errors.New("config: unknown server")
 // server is configured to fall back to.
 var ErrNoDefaultServer = errors.New("config: no default server")
 
+// ErrNoDefaultProwlarrServer signals that no server alias was requested and no
+// default Prowlarr server is configured to fall back to. It is deliberately
+// distinct from ErrNoDefaultServer: a Transmission default says nothing about
+// whether a Prowlarr instance is registered.
+var ErrNoDefaultProwlarrServer = errors.New("config: no default prowlarr server")
+
 const (
 	// dirPerm is the permission for created parent directories.
 	dirPerm = 0o700
@@ -50,13 +58,34 @@ const (
 	filePerm = 0o600
 )
 
-// Server holds the non-secret connection details for one named Transmission
-// server. The password is never stored here; it lives in a secret store keyed
-// by URL (see internal/secrets).
+// The kinds of backend a configured server can name. The type is structural
+// rather than policy — Resolve/ResolveProwlarr and NamesOfType need it to do
+// their job — so unlike the per-server SecretStore field it lives here rather
+// than in the command layer.
+const (
+	// TypeTransmission is a Transmission RPC server. It is the resolved type of
+	// a server whose type field is absent, so every config file written before
+	// the field existed keeps behaving identically.
+	TypeTransmission = "transmission"
+
+	// TypeProwlarr is a Prowlarr indexer-manager instance.
+	TypeProwlarr = "prowlarr"
+)
+
+// Server holds the non-secret connection details for one named server. The
+// secret — a Transmission password or a Prowlarr API key — is never stored
+// here; it lives in a secret store keyed by URL (see internal/secrets).
 //
-// SecretStore names which store holds that password. It is written by
+// Type names which kind of backend the URL points at (see TypeTransmission /
+// TypeProwlarr). An empty value means Transmission, so a config file written
+// before the field existed loads unchanged. As with every other value in this
+// package, an unrecognized string is stored rather than rejected: a
+// structurally valid file always loads so the CLI stays a route back to a
+// working one. Read it through ResolvedType rather than directly.
+//
+// SecretStore names which store holds that secret. It is written by
 // "server add" — always the store that add actually wrote to — and read back by
-// every command that needs the password, so a store is chosen once rather than
+// every command that needs the secret, so a store is chosen once rather than
 // re-passed. An empty value means the
 // default store, so a config file written before the field existed loads
 // unchanged; the valid values and their precedence are owned by the command
@@ -64,7 +93,21 @@ const (
 type Server struct {
 	URL         string `json:"url"`
 	Username    string `json:"username"`
+	Type        string `json:"type,omitempty"`
 	SecretStore string `json:"secret_store,omitempty"`
+}
+
+// ResolvedType returns the server's type normalized for comparison: trimmed and
+// lowercased, with an empty value resolving to TypeTransmission. It does not
+// check that the result names a type snatcher knows about — an unrecognized
+// value is returned as-is so the caller can name it in an error.
+func (s Server) ResolvedType() string {
+	t := strings.ToLower(strings.TrimSpace(s.Type))
+	if t == "" {
+		return TypeTransmission
+	}
+
+	return t
 }
 
 // Client holds snatcher's own settings — how the CLI and TUI behave, as opposed
@@ -212,10 +255,17 @@ func putField[T any](obj map[string]json.RawMessage, key string, value *T) error
 // Config holds snatcher's non-secret configuration: the set of named servers,
 // which one to use by default, and snatcher's own client settings. It is also
 // the persisted JSON shape: the file decodes directly into a Config.
+//
+// The default is per type: DefaultServer names the Transmission server, and
+// DefaultProwlarrServer the Prowlarr instance, so registering one never shadows
+// the other. DefaultProwlarrServer is omitted from the file entirely when empty
+// (see MarshalJSON), which is what keeps a Transmission-only config file
+// byte-identical across a Load/Save round trip.
 type Config struct {
-	Servers       map[string]Server `json:"servers"`
-	DefaultServer string            `json:"default_server"`
-	Client        Client            `json:"client"`
+	Servers               map[string]Server `json:"servers"`
+	DefaultServer         string            `json:"default_server"`
+	DefaultProwlarrServer string            `json:"default_prowlarr_server"`
+	Client                Client            `json:"client"`
 
 	// unknown holds top-level keys this package does not model, preserved across
 	// a Load/Save round trip for the same reason as Client.unknown.
@@ -224,7 +274,7 @@ type Config struct {
 
 // configKeys is every top-level key Config models, in its canonical spelling.
 // Anything else is preserved in Config.unknown (see unknownKeys).
-var configKeys = []string{"servers", "default_server", "client"}
+var configKeys = []string{"servers", "default_server", "default_prowlarr_server", "client"}
 
 // UnmarshalJSON decodes the modeled top-level keys and stashes every other one
 // so Save can write it back.
@@ -248,7 +298,9 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON writes the modeled top-level keys alongside the unknown keys
-// captured on load. An empty client section is omitted entirely.
+// captured on load. An empty client section is omitted entirely, and so is an
+// empty default_prowlarr_server: a config file that names no Prowlarr instance
+// stays byte-identical to what a version predating the key would have written.
 func (c Config) MarshalJSON() ([]byte, error) {
 	obj := make(map[string]json.RawMessage, len(c.unknown)+len(configKeys))
 	maps.Copy(obj, c.unknown)
@@ -269,6 +321,18 @@ func (c Config) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("config: encoding default_server: %w", err)
 	}
 	obj["default_server"] = rawDefault
+
+	// Deleting rather than skipping is what stops a hand-edited empty key from
+	// being written back, exactly as putField does for the client section.
+	if c.DefaultProwlarrServer == "" {
+		delete(obj, "default_prowlarr_server")
+	} else {
+		rawProwlarr, prowlarrErr := json.Marshal(c.DefaultProwlarrServer)
+		if prowlarrErr != nil {
+			return nil, fmt.Errorf("config: encoding default_prowlarr_server: %w", prowlarrErr)
+		}
+		obj["default_prowlarr_server"] = rawProwlarr
+	}
 
 	if c.Client.IsZero() {
 		delete(obj, "client")
@@ -307,7 +371,8 @@ func DefaultPath() (string, error) {
 // ErrNotConfigured so first-run callers can detect the "not configured" state
 // without a hard failure.
 //
-// A default_server that names a missing server is reported as an error.
+// A default_server or default_prowlarr_server that names a missing server is
+// reported as an error. An unrecognized server type is not.
 //
 // Client values are not checked for meaning: a structurally valid file always
 // loads, so an operator who hand-edits a nonsense theme can still fix it with
@@ -439,6 +504,28 @@ func Resolve(cfg Config, name string) (string, Server, error) {
 	return name, srv, nil
 }
 
+// ResolveProwlarr returns the requested server, falling back to the configured
+// default Prowlarr server when name is empty. It mirrors Resolve, and like
+// Resolve it does not check the resolved server's type — the caller reports the
+// mismatch, because only the caller knows which flag or env var supplied the
+// alias. It returns ErrUnknownServer for an unknown name and
+// ErrNoDefaultProwlarrServer when name is empty and no Prowlarr default is set.
+func ResolveProwlarr(cfg Config, name string) (string, Server, error) {
+	if name == "" {
+		if cfg.DefaultProwlarrServer == "" {
+			return "", Server{}, ErrNoDefaultProwlarrServer
+		}
+		name = cfg.DefaultProwlarrServer
+	}
+
+	srv, ok := cfg.Servers[name]
+	if !ok {
+		return "", Server{}, fmt.Errorf("%w: %q", ErrUnknownServer, name)
+	}
+
+	return name, srv, nil
+}
+
 // Names returns the configured server aliases sorted ascending.
 func (c Config) Names() []string {
 	names := make([]string, 0, len(c.Servers))
@@ -450,15 +537,37 @@ func (c Config) Names() []string {
 	return names
 }
 
-// validate guards against a default_server that names a server which is not
-// present in the servers map (e.g. after a hand-edit).
+// NamesOfType returns the configured server aliases whose resolved type equals
+// serverType, sorted ascending. serverType is compared as given, so pass one of
+// the Type constants rather than raw operator input.
+func (c Config) NamesOfType(serverType string) []string {
+	names := make([]string, 0, len(c.Servers))
+	for name, srv := range c.Servers {
+		if srv.ResolvedType() == serverType {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	return names
+}
+
+// validate guards against a default server alias — of either type — that names
+// a server which is not present in the servers map (e.g. after a hand-edit).
+//
+// An unrecognized server type is deliberately not an error: a structurally
+// valid file always loads, so the CLI stays a route back to a working one.
 func validate(cfg Config) error {
-	if cfg.DefaultServer == "" || len(cfg.Servers) == 0 {
+	if len(cfg.Servers) == 0 {
 		return nil
 	}
 
-	if _, ok := cfg.Servers[cfg.DefaultServer]; !ok {
+	if _, ok := cfg.Servers[cfg.DefaultServer]; cfg.DefaultServer != "" && !ok {
 		return fmt.Errorf("config: default_server %q does not match any configured server", cfg.DefaultServer)
+	}
+
+	if _, ok := cfg.Servers[cfg.DefaultProwlarrServer]; cfg.DefaultProwlarrServer != "" && !ok {
+		return fmt.Errorf("config: default_prowlarr_server %q does not match any configured server", cfg.DefaultProwlarrServer)
 	}
 
 	return nil
