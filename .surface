@@ -25,6 +25,8 @@ CMD snatcher config list
 CMD snatcher config set
 CMD snatcher config unset
 CMD snatcher search
+CMD snatcher search categories
+CMD snatcher search indexers
 CMD snatcher server
 CMD snatcher server add
 CMD snatcher server bandwidth
@@ -98,6 +100,12 @@ FLAG snatcher search --pages type=int
 FLAG snatcher search --query type=string
 FLAG snatcher search --search-type type=string
 FLAG snatcher search --server type=string
+FLAG snatcher search categories --jq type=string
+FLAG snatcher search categories --json type=bool
+FLAG snatcher search categories --server type=string
+FLAG snatcher search indexers --jq type=string
+FLAG snatcher search indexers --json type=bool
+FLAG snatcher search indexers --server type=string
 FLAG snatcher server add --api-key-stdin type=bool
 FLAG snatcher server add --name type=string
 FLAG snatcher server add --password-stdin type=bool

@@ -87,6 +87,14 @@ var searchColumns = []column[searchResult]{
 // Results are rendered in the server's own order — Prowlarr's own ranking across
 // the indexers it queried. snatcher does not sort, filter, or de-duplicate them,
 // so the "#" a user reads off the table is a position in a list Prowlarr chose.
+//
+// Unlike the torrent and server groups, this one both runs an action of its own
+// and carries subcommands, so a subcommand name shadows a bare positional query.
+// That trade-off is deliberate — it keeps the common case, "snatcher search
+// ubuntu", the shortest thing to type — and --query is the complete escape. The
+// Long text says so at the point of confusion rather than only in the man page,
+// and enumerates the subcommands in the same parenthesized form the torrent
+// group uses (pinned by TestSearchGroupLongNamesEverySubcommand).
 func NewSearchCmd() *cobra.Command {
 	var (
 		server      string
@@ -105,6 +113,10 @@ func NewSearchCmd() *cobra.Command {
 		Use:   "search [query]",
 		Short: "Search indexers with Prowlarr",
 		Long: "Search the indexers a configured Prowlarr instance knows about.\n\n" +
+			"The subcommands (indexers, categories) list the ids --indexer and " +
+			"--category take. A subcommand name wins over a bare query, so " +
+			"\"snatcher search indexers\" runs the subcommand; search for that " +
+			"literal word with \"snatcher search --query indexers\".\n\n" +
 			"The query is a positional argument, or --query for the same thing. " +
 			"Restrict the search with the repeatable --indexer and --category id " +
 			"flags, and walk further into the results with --pages.\n\n" +
@@ -176,6 +188,9 @@ func NewSearchCmd() *cobra.Command {
 	cmd.Flags().IntVar(&offset, "offset", 0, "results to skip before the first page")
 	cmd.Flags().IntVar(&pages, "pages", 1, "sequential pages to request, each stepping the offset by --limit")
 	cmd.Flags().StringVar(&searchType, "search-type", defaultSearchType, fmt.Sprintf("torznab search type (%s)", strings.Join(searchTypes, ", ")))
+
+	cmd.AddCommand(newSearchIndexersCmd())
+	cmd.AddCommand(newSearchCategoriesCmd())
 
 	return cmd
 }

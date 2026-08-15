@@ -1885,6 +1885,24 @@ The query is a positional argument, or
 for the same thing. Supplying both is an error, and supplying neither is an
 error naming both forms.
 .PP
+.B search
+is the only group that both runs an action of its own and carries subcommands,
+so a subcommand name wins over a bare positional query:
+.B "snatcher search indexers"
+runs the subcommand rather than searching for the word
+.IR indexers ,
+and the same holds for
+.BR categories .
+That is deliberate \(em it keeps the common case,
+.BR "snatcher search ubuntu" ,
+the shortest thing to type \(em and
+.B \-\-query
+is the complete escape:
+.B "snatcher search \-\-query indexers"
+searches for the literal word. The subcommands are listed under
+.B "snatcher search \-\-help"
+with the same note.
+.PP
 Results are rendered in Prowlarr's own order across the indexers it queried;
 snatcher does not sort, filter, or de-duplicate them. On a terminal the output
 is an aligned table with the columns
@@ -1949,6 +1967,69 @@ The torznab search type: one of
 An indexer may implement only some of the typed searches. Default:
 .BR search .
 .RE
+.TP
+.B snatcher search indexers \fR[\fIoptions\fR]
+List the indexers the Prowlarr instance is configured with, in the server's own
+order, as
+.BR ID ", " NAME ", " PROTOCOL ", " PRIVACY ", " ENABLED ", and " PRIORITY .
+.B ID
+is the number
+.B \-\-indexer
+takes, which is what this listing is for: Prowlarr's web UI names indexers, and
+nothing else in snatcher maps a name to an id.
+.B ENABLED
+and
+.B PRIORITY
+explain a search's results \(em a disabled indexer contributes nothing to a
+search that does not name it, and priority is how Prowlarr breaks ties. On a
+terminal the output is an aligned table with a header; when piped (or when
+.B NO_COLOR
+is set) it is tab-separated, full-value rows with no header. An instance with no
+indexers prints
+.B "No indexers configured."
+on a terminal, nothing when piped, and
+.B []
+with
+.BR \-\-json .
+Names, protocols, and privacy levels come from the server, so they are
+neutralized of terminal control sequences in the plaintext output;
+.BR \-\-json " and " \-\-jq
+emit them verbatim. A private indexer's settings hold its passkey or API key;
+those fields are never decoded, so no output mode can print them. Accepts
+.BR \-\-server ", " \-\-json ", and " \-\-jq .
+.TP
+.B snatcher search categories \fR[\fIoptions\fR]
+List the torznab categories the Prowlarr instance knows about as
+.BR ID " and " NAME ,
+where
+.B ID
+is the number
+.B \-\-category
+takes. Prowlarr returns the categories as a tree; the listing flattens it
+depth-first in the server's own order, so a parent is always the row above its
+first child. On a terminal a sub-category is indented under its parent; when
+piped the name is the server's own, undecorated \(em the piped rows are a
+full-value scripting contract, and a torznab category name already spells its
+parent
+.RB ( Movies/HD " under " Movies ).
+With
+.BR \-\-json " or " \-\-jq
+each row carries
+.BR id ", " name ", " description ", and " parent_id ,
+the last being
+.B null
+for a top-level category; the nested tree itself is not emitted, since every
+child is already its own row. The full default tree is listed, not only the
+categories the configured indexers happen to support. An instance with no
+categories prints
+.B "No categories."
+on a terminal, nothing when piped, and
+.B []
+with
+.BR \-\-json .
+Category names are server-derived and are neutralized of terminal control
+sequences in the plaintext output only. Accepts
+.BR \-\-server ", " \-\-json ", and " \-\-jq .
 .SS "api"
 .B snatcher api
 .RI [ options "] " method
