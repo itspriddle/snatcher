@@ -63,9 +63,10 @@ const maxErrorBody = 512
 // unbounded.
 const maxDownloadBytes = 32 << 20 // 32 MiB
 
-// maxDownloadRedirects bounds the redirect chain a fetch may follow, matching
-// net/http's own default.
-const maxDownloadRedirects = 10
+// maxRedirects bounds the redirect chain a request may follow, matching
+// net/http's own default. Installing a redirect policy replaces that default
+// outright, so both policies re-impose the bound themselves.
+const maxRedirects = 10
 
 // ErrAuth signals that the server rejected the supplied API key (HTTP 401 or
 // 403). It is matchable with errors.Is.
@@ -112,13 +113,17 @@ type Request struct {
 // Transport issues HTTP requests against a Prowlarr instance and classifies the
 // failures. A zero Transport is not usable; build one with NewTransport.
 type Transport struct {
-	base       *url.URL
-	apiKey     string
+	base   *url.URL
+	apiKey string
+
+	// httpClient performs API calls against the configured Prowlarr instance.
+	// It carries a redirect policy that refuses to leave that instance's
+	// origin; see apiRedirect.
 	httpClient HTTPDoer
 
 	// fetchClient performs fetch requests against URLs that did not come from
-	// snatcher. It is httpClient with a redirect policy that re-applies the
-	// same-origin rule at every hop; see withFetchRedirectPolicy.
+	// snatcher. It carries a redirect policy that re-applies the same-origin
+	// rule at every hop; see fetchRedirect.
 	fetchClient HTTPDoer
 }
 
@@ -137,10 +142,9 @@ func WithAPIKey(key string) Option {
 // WithHTTPClient overrides the HTTP client used to perform requests. The default
 // is a private *http.Client with a defaultTimeout request ceiling.
 //
-// A supplied *http.Client is cloned for fetch requests so its redirect policy
-// can drop the API key off-origin (see withFetchRedirectPolicy). A custom
-// HTTPDoer cannot be given that policy, so one used for a fetch must not follow
-// redirects transparently.
+// A supplied *http.Client is cloned so its redirect policy can keep the API key
+// from leaving the Prowlarr origin (see withRedirectPolicy). A custom HTTPDoer
+// cannot be given that policy, so one must not follow redirects transparently.
 func WithHTTPClient(c HTTPDoer) Option {
 	return func(t *Transport) {
 		if c != nil {
@@ -168,7 +172,11 @@ func NewTransport(baseURL string, opts ...Option) (*Transport, error) {
 		opt(t)
 	}
 
-	t.fetchClient = t.withFetchRedirectPolicy(t.httpClient)
+	// Both clients clone the configured doer, so derive them from the same
+	// source before either replaces it.
+	doer := t.httpClient
+	t.httpClient = t.withRedirectPolicy(doer, t.apiRedirect)
+	t.fetchClient = t.withRedirectPolicy(doer, t.fetchRedirect)
 
 	return t, nil
 }
@@ -331,34 +339,62 @@ func (t *Transport) fetch(ctx context.Context, rawURL string) ([]byte, error) {
 	return body, nil
 }
 
-// withFetchRedirectPolicy returns doer with a redirect policy that re-applies
-// the same-origin rule at every hop and bounds the chain. net/http copies custom
-// headers across a redirect, so without this an off-origin hop would carry the
-// API key straight to a third-party host.
+// withRedirectPolicy returns doer with check installed as its redirect policy.
+// net/http strips only Authorization, WWW-Authenticate, Cookie, and Cookie2
+// across a cross-host redirect — every other header, X-Api-Key included, is
+// copied — so without a policy of its own a single off-origin hop would hand the
+// API key to a third-party host.
 //
-// The policy lives on *http.Client, which is what NewTransport builds and what a
+// A policy lives on *http.Client, which is what NewTransport builds and what a
 // caller realistically supplies. Any other HTTPDoer is returned unchanged and
 // owns its own redirect handling.
-func (t *Transport) withFetchRedirectPolicy(doer HTTPDoer) HTTPDoer {
+func (t *Transport) withRedirectPolicy(doer HTTPDoer, check func(*http.Request, []*http.Request) error) HTTPDoer {
 	client, ok := doer.(*http.Client)
 	if !ok {
 		return doer
 	}
 
 	clone := *client
-	clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= maxDownloadRedirects {
-			return fmt.Errorf("stopped after %d redirects", maxDownloadRedirects)
-		}
-
-		if !t.sameOrigin(req.URL) {
-			req.Header.Del(apiKeyHeader)
-		}
-
-		return nil
-	}
+	clone.CheckRedirect = check
 
 	return &clone
+}
+
+// apiRedirect is the redirect policy for calls against the configured Prowlarr
+// instance: every typed method, and the raw api --prowlarr escape hatch. A REST
+// endpoint has no legitimate reason to send the client to another origin, so the
+// hop is refused outright rather than followed with the key stripped — which
+// would only surface later as a puzzling authentication failure. net/http never
+// issues a request its CheckRedirect rejected, so the foreign origin sees
+// nothing at all.
+func (t *Transport) apiRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+
+	if !t.sameOrigin(req.URL) {
+		return fmt.Errorf("refusing to follow a redirect to %s: it leaves the configured server",
+			t.safeURL(req.URL))
+	}
+
+	return nil
+}
+
+// fetchRedirect is the redirect policy for fetches of a URL that arrived on
+// server data rather than being built by snatcher. Unlike an API call, such a
+// fetch legitimately ends up off-origin — a release's download URL often points
+// straight at the indexer — so the hop is followed with the API key dropped the
+// moment it leaves the Prowlarr origin.
+func (t *Transport) fetchRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+
+	if !t.sameOrigin(req.URL) {
+		req.Header.Del(apiKeyHeader)
+	}
+
+	return nil
 }
 
 // sameOrigin reports whether u names the same origin — scheme, host, and port —

@@ -311,6 +311,87 @@ func TestDoRedactsAnAPIKeyQueryParameterQuotedInAnError(t *testing.T) {
 	assert.Contains(t, err.Error(), apiKeyParam+"="+redactedValue)
 }
 
+func TestDoRefusesARedirectThatLeavesTheProwlarrOrigin(t *testing.T) {
+	var foreignSeen recordedFetch
+
+	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		values, had := r.Header[apiKeyHeader]
+
+		foreignSeen = recordedFetch{Path: r.URL.Path, HadKey: had}
+		if had {
+			foreignSeen.APIKey = values[0]
+		}
+
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer foreign.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, foreign.URL+pathSystemStatus, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	tr := newTestTransport(t, srv.URL, WithAPIKey(testAPIKey))
+
+	// net/http copies X-Api-Key across a cross-host redirect, so an API call that
+	// followed one would hand the key to whatever host answered.
+	_, err := tr.Do(t.Context(), Request{Path: pathSystemStatus})
+	require.ErrorIs(t, err, ErrUnreachable)
+
+	assert.Contains(t, err.Error(), "refusing to follow a redirect")
+	assert.NotContains(t, err.Error(), testAPIKey)
+	assert.Empty(t, foreignSeen.Path, "a foreign origin must never be sent the request")
+	assert.False(t, foreignSeen.HadKey, "a foreign origin must never receive the API key")
+}
+
+func TestDoFollowsARedirectWithinTheProwlarrOrigin(t *testing.T) {
+	var got recordedFetch
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/system/status" {
+			http.Redirect(w, r, "/api/v1/system/status", http.StatusFound)
+
+			return
+		}
+
+		values, had := r.Header[apiKeyHeader]
+
+		got = recordedFetch{Path: r.URL.Path, HadKey: had}
+		if had {
+			got.APIKey = values[0]
+		}
+
+		_, _ = w.Write([]byte(`{"appName":"Prowlarr"}`))
+	}))
+	defer srv.Close()
+
+	// A reverse proxy normalizing a path is an ordinary same-origin redirect and
+	// must still be followed, key intact.
+	tr := newTestTransport(t, srv.URL+"/prowlarr", WithAPIKey(testAPIKey))
+
+	body, err := tr.Do(t.Context(), Request{Path: pathSystemStatus})
+	require.NoError(t, err)
+
+	assert.JSONEq(t, `{"appName":"Prowlarr"}`, string(body))
+	assert.True(t, got.HadKey, "a redirect within the Prowlarr origin keeps the key")
+	assert.Equal(t, testAPIKey, got.APIKey)
+}
+
+func TestDoBoundsTheRedirectChain(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/api/v1/again", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	tr := newTestTransport(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := tr.Do(t.Context(), Request{Path: pathSystemStatus})
+	require.ErrorIs(t, err, ErrUnreachable)
+
+	assert.Contains(t, err.Error(), "redirects")
+	assert.NotContains(t, err.Error(), testAPIKey)
+}
+
 func TestNewTransportDefaultsToTimeoutClient(t *testing.T) {
 	tr := newTestTransport(t, "http://127.0.0.1:9696")
 
