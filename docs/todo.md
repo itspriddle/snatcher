@@ -26,8 +26,8 @@ one. The "unblocks" line on each milestone says which pane is waiting.
 2. **M2**, **M3** detail-pane surface + rename - unblocks TUI detail pane
 3. ~~**M4** client config - unblocks TUI settings window, needed before the
    settings window is built, not after~~ **done**
-4. ~~**M5** `server bandwidth`~~ **done**; **M6**-**M7** small helpers - cheap,
-   each unblocks a keybinding
+4. ~~**M5** `server bandwidth`~~ and ~~**M6** `torrent label`~~ **done**; **M7**
+   small helpers - cheap, each unblocks a keybinding
 5. **M8** Prowlarr - the only genuinely new backend; largest by far
 6. **M9** hygiene pass before the TUI starts
 
@@ -264,7 +264,7 @@ integer `KB/s`.
 
 ---
 
-## M6. `torrent label`
+## M6. `torrent label` - **done**
 
 **Unblocks:** the TUI `L` labels editor.
 
@@ -285,6 +285,39 @@ snatcher torrent label set <id|hash> <label...>
 
 **Done when:** labels can be edited incrementally without a read-modify-write
 in the caller's shell.
+
+**Shipped.** `snatcher torrent label list|add|remove|set` wraps the same
+`labels` field `torrent update` already writes, and no RPC-layer code changed -
+`labels` was decoded in both wire schemes and writable through `SetTorrents`
+already. Every subcommand takes the same `[id|hash]... | --all` selector grammar
+the other mutation commands take, so a TUI marked set maps onto exactly one
+command. The three write verbs share one constructor and one engine: read the
+current labels in a single four-field `ListTorrents`, resolve the selector
+before anything is written, compute each torrent's resulting set, drop the
+torrents that would not change, group the rest by resulting set and issue one
+`torrent-set` per distinct set in a deterministic order, then re-read so the
+labels reported are the server's view rather than a local echo. A `--label`
+value is trimmed and rejected before `dial` if it is empty or contains a comma,
+so a bad label costs no round-trip and writes nothing. A bare `label set <sel>`
+clears, as the sketch specified; `add` and `rm` with no `--label` are errors
+instead, since there is no coherent "add nothing". All four subcommands render
+the same `id, name, labels` table (`hash` selectable through `--fields`), and
+the write verbs emit the existing mutation contract with each torrent's
+post-write `labels` attached.
+
+Four things differ from the sketch above. **Labels come from a repeatable
+`--label` flag, not positional arguments** - `label add 5 12 movies` is
+undecidable once a multi-torrent selector is in scope, so selectors stay
+positional and labels moved onto the same flag name `torrent update --label`
+already uses for the same field. **The canonical subcommands are `list` and
+`remove`, with `ls` and `rm` as aliases** - the reverse of the sketch, but the
+same polarity as `torrent list`/`ls`, `torrent remove`/`rm`, and both `server`
+pairs. **Every write normalizes to a sorted, de-duplicated set**, so the order
+the labels were supplied in is not preserved; that is what keeps the grouping
+key stable and the verbs idempotent. **`add` and `rm` are idempotent** - adding
+a label a torrent already has, or removing one it does not have, is not an error
+and issues no write at all, and when no torrent in the selection would change
+nothing is sent.
 
 ---
 

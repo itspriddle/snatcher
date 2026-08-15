@@ -102,7 +102,7 @@ Sequenced in `docs/todo.md` (CLI) and `docs/tui-todo.md` (TUI).
     - show old torrents with low seeding?
     - top X largest torrents?
 - [ ] `snatcher torrent verify --all-with-errors` - verify all torrents with error status
-- [ ] `snatcher torrent label add|rm|set|ls ...` - manage labels for torrent(s)
+- [x] `snatcher torrent label list|add|remove|set [id|hash]... [--all] [--label name]...` - manage labels for torrent(s). Shipped with `ls`/`rm` as aliases of `list`/`remove` (matching every other pair in the CLI), and labels on a repeatable `--label` flag rather than positional - positional labels are ambiguous next to a multi-torrent selector.
 - [ ] `snatcher torrent ls --top=N` - list top N torrents by seeding size/etc
 
 ## TUI

@@ -757,8 +757,10 @@ Manage individual torrents. All torrent operations live under the
 command group:
 .BR add ", " show ", " files ", " peers ", " trackers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " rename ", " queue ", " remove ", " update ", and " label .
 The mutation subcommands
-.RB ( start ", " stop ", " verify ", " reannounce ", " remove )
-select torrents by numeric id, 40-character SHA1 hash, or
+.RB ( start ", " stop ", " verify ", " reannounce ", " remove ", " update ),
+and every
+.B label
+subcommand, select torrents by numeric id, 40-character SHA1 hash, or
 .BR \-\-all ;
 at least one selector is required, so a bare invocation is an error, not a
 no-op. Every subcommand accepts the common options.
@@ -1323,10 +1325,16 @@ This group is a wrapper over the same
 .B labels
 field
 .B "snatcher torrent update"
-writes; unlike
+writes. Unlike
 .BR \-\-label / \-\-clear\-labels ,
-which replace a torrent's whole label set, it exists so a label can be read
-without a
+which replace a torrent's whole label set,
+.B add
+and
+.B remove
+merge into the labels each torrent already has \(em the read\-modify\-write
+happens here rather than in your shell, across a whole selection \(em while
+.B list
+reads the labels back without a
 .B \-\-fields
 projection.
 .RS
@@ -2095,6 +2103,31 @@ $ snatcher torrent add ubuntu.iso.torrent 'magnet:?xt=urn:btih:...' \(rs
 
 # add every source listed in a file (one per line)
 $ snatcher torrent add < sources.txt
+.EE
+.SS "Manage labels"
+.EX
+# what labels does torrent 5 have?
+$ snatcher torrent label list 5
+
+# add a label to two torrents, keeping the labels they already have
+$ snatcher torrent label add 5 12 \-\-label hd
+
+# repeat \-\-label to add more than one at a time
+$ snatcher torrent label add 5 \-\-label hd \-\-label movies
+
+# take one label off every torrent that has it (torrents without it are
+# untouched, and nothing is sent for them)
+$ snatcher torrent label rm \-\-all \-\-label stale
+
+# replace torrent 5's labels with exactly these two
+$ snatcher torrent label set 5 \-\-label hd \-\-label movies
+
+# a bare set with no \-\-label removes every label from torrent 5
+$ snatcher torrent label set 5
+
+# every torrent tagged hd, by name (script-friendly)
+$ snatcher torrent label list \-\-all \(rs
+    \-\-jq '.[] | select(.labels | index("hd")) | .name'
 .EE
 .SS "Rename a file or a torrent"
 .EX
