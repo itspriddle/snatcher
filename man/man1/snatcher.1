@@ -2308,10 +2308,14 @@ expression addresses that body directly
 .RI ( .[].name ", not " .arguments.[].name ).
 .B \-\-raw
 prints the exact response bytes in both modes \(em save for the API-key
-substitution described below \(em and a body that is not JSON at all (an HTML
-page from a reverse proxy, or the empty body of a successful
+substitution described below.
+A body that is not JSON at all (an HTML page from a reverse proxy, or the empty
+body of a successful
 .BR DELETE )
-is written verbatim.
+has nothing to indent or filter, so the body itself is the output; on the
+default path it is sanitized like any other server-derived text, and only
+.B \-\-raw
+writes its escape sequences through untouched.
 .PP
 Under
 .B \-\-prowlarr

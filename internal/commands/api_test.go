@@ -540,7 +540,10 @@ func TestAPIProwlarrNonSuccessPrintsTheBodyAndExits(t *testing.T) {
 	assert.JSONEq(t, body, out)
 }
 
-func TestAPIProwlarrPrintsANonJSONBodyVerbatim(t *testing.T) {
+// TestAPIProwlarrPrintsANonJSONBody covers the body there is nothing to indent
+// or filter: it is written as it stands. Sanitizing it changes nothing here,
+// since it carries no control characters.
+func TestAPIProwlarrPrintsANonJSONBody(t *testing.T) {
 	const body = "<html><body>502 Bad Gateway</body></html>"
 
 	cfgPath, _ := prowlarrAPIConfig(t, http.StatusBadGateway, body)
@@ -548,6 +551,29 @@ func TestAPIProwlarrPrintsANonJSONBodyVerbatim(t *testing.T) {
 	out, _, err := runAPI(t, "--config", cfgPath, "--prowlarr", "indexer")
 	require.Error(t, err)
 	assert.Equal(t, body, out)
+}
+
+// TestAPIProwlarrSanitizesANonJSONBody pins the un-opted-in half of that path.
+// An HTML error page from a hostile or compromised reverse proxy is
+// server-derived text on a human path, so its escape sequences are stripped
+// unless the operator asked for the exact bytes with --raw.
+func TestAPIProwlarrSanitizesANonJSONBody(t *testing.T) {
+	// Built rather than written literally: a control byte must not sit in a Go
+	// source file. ESC ] 0 ; ... BEL is an OSC title-set — it rewrites the
+	// terminal's window title and prints nothing.
+	esc, bel := string(rune(0o33)), string(rune(0o07))
+	body := "<html>" + esc + "]0;pwned" + bel + "<body>502 Bad Gateway</body></html>"
+
+	cfgPath, _ := prowlarrAPIConfig(t, http.StatusBadGateway, body)
+
+	out, _, err := runAPI(t, "--config", cfgPath, "--prowlarr", "indexer")
+	require.Error(t, err, "a non-2xx response still exits non-zero")
+	assert.NotContains(t, out, esc, "the escape is stripped on the default path")
+	assert.Contains(t, out, "502 Bad Gateway", "the readable text survives")
+
+	rawOut, _, err := runAPI(t, "--config", cfgPath, "--prowlarr", "indexer", "--raw")
+	require.Error(t, err)
+	assert.Equal(t, body, rawOut, "--raw is the opt-in for unfiltered bytes and stays byte-exact")
 }
 
 func TestAPIMethodRequiresProwlarr(t *testing.T) {

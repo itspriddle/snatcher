@@ -427,19 +427,29 @@ func queryValue(value json.RawMessage) string {
 // — so the default rendering is the response body re-indented, --raw echoes the
 // exact bytes, and --jq filters the decoded body. A body that is not JSON at all
 // (an HTML page from a reverse proxy, or the empty body of a successful DELETE)
-// is written verbatim in every mode, there being nothing to indent or filter.
+// has nothing to indent or filter, so the body itself is the output — sanitized,
+// because it is server-derived text on a human path and the operator did not ask
+// for unfiltered bytes. --raw is that opt-in, and stays byte-exact.
 //
 // Every mode renders APIResponse.Redacted rather than Raw. An instance hands its
 // own API key back in ordinary answers — a release's proxy downloadUrl,
 // config/host's apiKey field — and --raw is not an opt-in to printing a
-// credential, only to skipping the re-indent. A body carrying no key is
+// credential, only to skipping normalization. A body carrying no key is
 // byte-identical either way.
 func renderProwlarrAPIResponse(cmd *cobra.Command, resp prowlarr.APIResponse, jqExpr string, raw bool) error {
 	out := cmd.OutOrStdout()
 
-	if raw || !json.Valid(resp.Redacted) {
+	if raw {
 		if _, err := out.Write(resp.Redacted); err != nil {
 			return fmt.Errorf("writing raw response: %w", err)
+		}
+
+		return nil
+	}
+
+	if !json.Valid(resp.Redacted) {
+		if _, err := io.WriteString(out, output.SanitizeTerminal(string(resp.Redacted))); err != nil {
+			return fmt.Errorf("writing response: %w", err)
 		}
 
 		return nil
