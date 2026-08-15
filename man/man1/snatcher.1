@@ -139,10 +139,15 @@ instead of the default. When omitted, snatcher uses the
 environment variable if set, otherwise the configured default server. This
 option is accepted only by commands that connect to a server; it never appears
 on the named-server registry subcommands
-.RB ( server\ add ", " server\ list ", " server\ default ", " server\ show ", " server\ ping ", " server\ remove ),
+.RB ( server\ add ", " server\ list ", " server\ default ", " server\ ping ", " server\ remove ),
 .BR version ,
 or
 .BR completion .
+It is also absent from
+.BR "snatcher server show" ,
+which names the server it reports on with a positional
+.I alias
+instead.
 .TP
 .B \-\-json
 Emit JSON instead of plaintext.
@@ -160,7 +165,7 @@ group maintains an inventory of named servers \(em the registry:
 .BR add ", " list ", " default ", " ping ", " remove
 \(em and operates on the selected server: its session settings, statistics,
 BitTorrent listening port, global speed limits, and download-path free space
-.RB ( show ", " update ", " stats ", " port ", " bandwidth ", " free-space ).
+.RB ( show ", " update ", " reset ", " stats ", " port ", " bandwidth ", " free-space ).
 .TP
 .B snatcher server add \fR[\fIoptions\fR]
 Add or update a named server. Its URL and username are stored in the config
