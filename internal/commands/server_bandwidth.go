@@ -185,7 +185,9 @@ func newBandwidthUpdateCmd() *cobra.Command {
 			"The speed is a non-negative integer in KB/s, exactly as Transmission " +
 			"stores it (suffixed values like 5M are not accepted), or the literal " +
 			"'off'. Setting a limit also turns it on; 'off' turns it off while " +
-			"leaving the stored value in place, so re-enabling restores it.\n\n" +
+			"leaving the stored value in place, so re-enabling restores it. A speed " +
+			"of 0 is a real 0 KB/s limit that stops traffic in that direction — it " +
+			"does not mean unlimited; use 'off' to remove a limit.\n\n" +
 			"--alt writes the alt (turtle) profile's limit instead. The alt profile " +
 			"has a single switch governing both directions, so an --alt write never " +
 			"touches it and 'off' is rejected — use 'snatcher server bandwidth alt " +

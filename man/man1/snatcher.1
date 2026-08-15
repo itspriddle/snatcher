@@ -157,10 +157,10 @@ Implies JSON and takes precedence over
 Manage configured servers and the server itself. The
 .B server
 group maintains an inventory of named servers \(em the registry:
-.BR add ", " list ", " default ", " show ", " ping ", " remove
-\(em and operates on the selected server's session settings, statistics,
+.BR add ", " list ", " default ", " ping ", " remove
+\(em and operates on the selected server: its session settings, statistics,
 BitTorrent listening port, global speed limits, and download-path free space
-.RB ( settings ", " stats ", " port ", " bandwidth ", " free-space ).
+.RB ( show ", " update ", " stats ", " port ", " bandwidth ", " free-space ).
 .TP
 .B snatcher server add \fR[\fIoptions\fR]
 Add or update a named server. Its URL and username are stored in the config
@@ -642,7 +642,14 @@ are not accepted \(em or the literal
 its enabled companion in a single call;
 .B off
 turns the limit off while leaving the stored value in place, so re-enabling
-restores it. Besides the common options:
+restores it. A
+.I speed
+of
+.B 0
+is a real 0 KB/s limit \(em traffic in that direction stops \(em and does not
+mean unlimited; use
+.B off
+to remove a limit. Besides the common options:
 .RS
 .TP
 .B \-\-alt
