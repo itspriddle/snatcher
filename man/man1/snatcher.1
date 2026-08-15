@@ -1334,9 +1334,8 @@ and
 merge into the labels each torrent already has \(em the read\-modify\-write
 happens here rather than in your shell, across a whole selection \(em while
 .B list
-reads the labels back without a
-.B \-\-fields
-projection.
+reads the labels back as a command in its own right rather than as a column of
+.BR "snatcher torrent list" .
 .RS
 .TP
 .B snatcher torrent label list \fR[\fIoptions\fR] [\fIid | hash\fR]...

@@ -132,6 +132,7 @@ func NewLabelCmd() *cobra.Command {
 			"as 'snatcher torrent label list'.",
 		action:      "label-add",
 		labelUsage:  "label to add, keeping the torrent's existing labels (repeatable)",
+		allUsage:    "add the labels to every torrent",
 		noLabelsErr: "nothing to add: provide --label",
 		merge: func(current, requested []string) []string {
 			return slices.Concat(current, requested)
@@ -182,6 +183,7 @@ func NewLabelCmd() *cobra.Command {
 			"as 'snatcher torrent label list'.",
 		action:      "label-remove",
 		labelUsage:  "label to remove, leaving the torrent's other labels (repeatable)",
+		allUsage:    "remove the labels from every torrent",
 		noLabelsErr: "nothing to remove: provide --label",
 		merge: func(current, requested []string) []string {
 			remaining := make([]string, 0, len(current))
@@ -218,6 +220,7 @@ func NewLabelCmd() *cobra.Command {
 			"in the same columns as 'snatcher torrent label list'.",
 		action:     "label-set",
 		labelUsage: "label to write, replacing the torrent's labels (repeatable)",
+		allUsage:   "replace the labels on every torrent",
 		merge: func(_, requested []string) []string {
 			return requested
 		},
@@ -261,6 +264,11 @@ type labelWriteSpec struct {
 	// labelUsage is the --label flag's help text, which names the verb's own
 	// effect ("replacing", "to add", "to remove").
 	labelUsage string
+
+	// allUsage is the --all flag's help text. Every selector-taking command in
+	// the CLI names its own verb there rather than saying "apply to every
+	// torrent", so a shared constructor has to carry one per verb.
+	allUsage string
 
 	// noLabelsErr is the error message returned when no --label was given. An
 	// empty string means the verb is legal with no labels — that is what makes a
@@ -370,7 +378,7 @@ func newLabelWriteCmd(spec labelWriteSpec) *cobra.Command {
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
-	cmd.Flags().BoolVar(&all, "all", false, "apply to every torrent")
+	cmd.Flags().BoolVar(&all, "all", false, spec.allUsage)
 	cmd.Flags().StringArrayVar(&rawLabels, "label", nil, spec.labelUsage)
 	cmd.Flags().StringVar(&fieldsFlag, "fields", "", fmt.Sprintf("comma-separated columns to show, in order (%s)", strings.Join(labelAllFieldKeys, ", ")))
 
@@ -430,10 +438,16 @@ func normalizeLabels(labels []string) []string {
 // Grouping is what makes a per-torrent merge affordable: SetTorrents writes one
 // changes map to one selector, so a selection landing on N distinct label sets
 // costs N writes — exactly one in the common case (and always for set), and zero
-// when nothing changes. Buckets are keyed on the NUL-joined set rather than the
-// comma-joined one so the key cannot collide even if a server ever hands back a
-// label containing the display separator, and they are written in key order so
-// the request sequence is deterministic.
+// when nothing changes.
+//
+// The bucket key must be injective: joining the set with a separator is not,
+// because a label may itself contain that separator, and two sets sharing a key
+// would see one torrent written the other's labels. Labels reach here from the
+// server as well as from --label, so no byte can be assumed absent — %q escapes
+// and quotes every element, which no other set can reproduce. The key's own
+// ordering is then irrelevant, so buckets are written in order of the label sets
+// themselves; the request sequence stays deterministic without depending on how
+// the key happens to encode.
 func applyLabelChanges(ctx context.Context, backend *transmission.Client, torrents []transmission.Torrent, requested []string, merge labelMerge) error {
 	ids := make(map[string][]int64)
 	sets := make(map[string][]string)
@@ -444,12 +458,16 @@ func applyLabelChanges(ctx context.Context, backend *transmission.Client, torren
 			continue
 		}
 
-		key := strings.Join(next, "\x00")
+		key := fmt.Sprintf("%q", next)
 		ids[key] = append(ids[key], t.ID)
 		sets[key] = next
 	}
 
-	for _, key := range slices.Sorted(maps.Keys(ids)) {
+	keys := slices.SortedFunc(maps.Keys(ids), func(a, b string) int {
+		return slices.Compare(sets[a], sets[b])
+	})
+
+	for _, key := range keys {
 		sel := transmission.Selector{IDs: ids[key]}
 		if err := backend.SetTorrents(ctx, sel, map[string]any{"labels": sets[key]}); err != nil {
 			return err

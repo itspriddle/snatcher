@@ -1046,6 +1046,48 @@ const bespokeLabelSharedResponse = `{
 	"tag": 1
 }`
 
+// bespokeLabelCollisionResponse holds two torrents whose label sets join to the
+// same string under a NUL separator: ["a\x00b"] and ["a", "b"]. A NUL can never
+// arrive through --label — argv cannot carry one — so the only way a label
+// containing the separator reaches the bucketing is from the server, which is
+// what this fixture injects.
+const bespokeLabelCollisionResponse = `{
+	"arguments": {"torrents": [
+		{"id": 1, "hashString": "` + infoHash1 + `", "name": "ubuntu-24.04.iso", "labels": ["a\u0000b"]},
+		{"id": 2, "hashString": "` + infoHash2 + `", "name": "debian.iso", "labels": ["a", "b"]}
+	]},
+	"result": "success",
+	"tag": 1
+}`
+
+// TestLabelAddBucketKeyIsInjective pins the grouped write against a colliding
+// bucket key. Under a joined key the two torrents share one bucket, and the set
+// stored last wins — so one torrent is written the other's labels. Each must get
+// its own request carrying its own resulting set.
+func TestLabelAddBucketKeyIsInjective(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelCollisionResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "add", "--config", cfgPath, "--all", "--label", "z")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 2, "label sets that share a joined key are still two buckets")
+
+	// Written in label-set order: "a" is a prefix of "a\x00b", so torrent 2's
+	// set sorts first.
+	want := []labelSetArgs{
+		{IDs: []int64{2}, Labels: []string{"a", "b", "z"}},
+		{IDs: []int64{1}, Labels: []string{"a\x00b", "z"}},
+	}
+
+	for i, expected := range want {
+		args := labelSetBody(t, bodies[i])
+		assert.Equal(t, expected.IDs, args.IDs, "request %d targets the right torrent", i)
+		assert.Equal(t, expected.Labels, args.Labels, "request %d writes the right set", i)
+	}
+}
+
 // TestLabelAddPreservesExistingLabels is the story's headline behavior, on both
 // wire schemes: the added label joins the torrent's existing ones in the written
 // set rather than replacing them, and the rendered rows come from the re-read.
