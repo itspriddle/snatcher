@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -55,6 +56,16 @@ const redactedValue = "REDACTED"
 // ErrServer message, so a server answering with an HTML error page cannot flood
 // the terminal with it.
 const maxErrorBody = 512
+
+// maxDownloadBytes bounds how large a fetched file may be. A .torrent is
+// kilobytes and a .nzb is at worst a few megabytes; anything past this ceiling
+// is a misdirected URL or a hostile server, and must not be buffered into memory
+// unbounded.
+const maxDownloadBytes = 32 << 20 // 32 MiB
+
+// maxDownloadRedirects bounds the redirect chain a fetch may follow, matching
+// net/http's own default.
+const maxDownloadRedirects = 10
 
 // ErrAuth signals that the server rejected the supplied API key (HTTP 401 or
 // 403). It is matchable with errors.Is.
@@ -104,6 +115,11 @@ type Transport struct {
 	base       *url.URL
 	apiKey     string
 	httpClient HTTPDoer
+
+	// fetchClient performs fetch requests against URLs that did not come from
+	// snatcher. It is httpClient with a redirect policy that re-applies the
+	// same-origin rule at every hop; see withFetchRedirectPolicy.
+	fetchClient HTTPDoer
 }
 
 // Option configures a Transport built by NewTransport (and, through it, a
@@ -120,6 +136,11 @@ func WithAPIKey(key string) Option {
 
 // WithHTTPClient overrides the HTTP client used to perform requests. The default
 // is a private *http.Client with a defaultTimeout request ceiling.
+//
+// A supplied *http.Client is cloned for fetch requests so its redirect policy
+// can drop the API key off-origin (see withFetchRedirectPolicy). A custom
+// HTTPDoer cannot be given that policy, so one used for a fetch must not follow
+// redirects transparently.
 func WithHTTPClient(c HTTPDoer) Option {
 	return func(t *Transport) {
 		if c != nil {
@@ -146,6 +167,8 @@ func NewTransport(baseURL string, opts ...Option) (*Transport, error) {
 	for _, opt := range opts {
 		opt(t)
 	}
+
+	t.fetchClient = t.withFetchRedirectPolicy(t.httpClient)
 
 	return t, nil
 }
@@ -237,6 +260,169 @@ func (t *Transport) do(req *http.Request) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+// fetch performs a bare GET against an absolute URL snatcher did not construct —
+// a release's download URL, which may point at the Prowlarr instance itself or
+// straight at the indexer that published the release — and returns the response
+// body.
+//
+// The API key travels only when the URL's origin (scheme plus host and port)
+// matches the configured Prowlarr instance, and is dropped again the moment a
+// redirect leaves that origin: an indexer must never be handed the key that
+// controls Prowlarr. The body is capped at maxDownloadBytes.
+func (t *Transport) fetch(ctx context.Context, rawURL string) ([]byte, error) {
+	target, err := parseFetchURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: building request for %s: %w",
+			ErrUnreachable, t.safeURL(target), unwrapURLError(err))
+	}
+
+	if t.sameOrigin(target) {
+		t.authorize(req)
+	}
+
+	resp, err := t.fetchClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: GET %s: %w",
+			ErrUnreachable, t.safeURL(target), unwrapURLError(err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return nil, fmt.Errorf("%w (status %d) fetching %s",
+			ErrAuth, resp.StatusCode, t.safeURL(target))
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		excerpt, _, _ := readCapped(resp.Body, maxErrorBody)
+
+		return nil, fmt.Errorf("%w: unexpected status %d fetching %s%s",
+			ErrServer, resp.StatusCode, t.safeURL(target), t.detail(excerpt))
+	}
+
+	body, capped, err := readCapped(resp.Body, maxDownloadBytes)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reading %s: %w",
+			ErrUnreachable, t.safeURL(target), unwrapURLError(err))
+	}
+
+	if capped {
+		return nil, fmt.Errorf("%w: %s returned more than %d bytes",
+			ErrServer, t.safeURL(target), maxDownloadBytes)
+	}
+
+	return body, nil
+}
+
+// withFetchRedirectPolicy returns doer with a redirect policy that re-applies
+// the same-origin rule at every hop and bounds the chain. net/http copies custom
+// headers across a redirect, so without this an off-origin hop would carry the
+// API key straight to a third-party host.
+//
+// The policy lives on *http.Client, which is what NewTransport builds and what a
+// caller realistically supplies. Any other HTTPDoer is returned unchanged and
+// owns its own redirect handling.
+func (t *Transport) withFetchRedirectPolicy(doer HTTPDoer) HTTPDoer {
+	client, ok := doer.(*http.Client)
+	if !ok {
+		return doer
+	}
+
+	clone := *client
+	clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxDownloadRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxDownloadRedirects)
+		}
+
+		if !t.sameOrigin(req.URL) {
+			req.Header.Del(apiKeyHeader)
+		}
+
+		return nil
+	}
+
+	return &clone
+}
+
+// sameOrigin reports whether u names the same origin — scheme, host, and port —
+// as the configured Prowlarr instance. It is the test that decides whether the
+// API key is attached to a fetch; the request path is deliberately not part of
+// it, since Prowlarr serves downloads from its own API paths.
+func (t *Transport) sameOrigin(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+
+	return strings.EqualFold(u.Scheme, t.base.Scheme) &&
+		strings.EqualFold(originHost(u), originHost(t.base))
+}
+
+// originHost renders a URL's authority with its scheme's default port made
+// explicit, so http://host and http://host:80 compare equal — they name the same
+// origin.
+func originHost(u *url.URL) string {
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+
+	return net.JoinHostPort(u.Hostname(), port)
+}
+
+// parseFetchURL validates a URL that arrived on a release rather than being
+// built by snatcher. Only absolute http(s) URLs are fetchable: a magnet link is
+// not something to GET, and no other scheme has any business here.
+//
+// A URL snatcher cannot use is classified as ErrServer — the Prowlarr instance
+// answered, it just handed back a release that cannot be downloaded.
+func parseFetchURL(raw string) (*url.URL, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, fmt.Errorf("%w: no URL to fetch", ErrServer)
+	}
+
+	target, err := url.Parse(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid URL %q: %w",
+			ErrServer, redactRawURL(trimmed), unwrapURLError(err))
+	}
+
+	if target.Scheme != "http" && target.Scheme != "https" {
+		return nil, fmt.Errorf("%w: cannot fetch a %q URL: only http and https are supported",
+			ErrServer, target.Scheme)
+	}
+
+	if target.Host == "" {
+		return nil, fmt.Errorf("%w: URL %q has no host", ErrServer, redactURL(target))
+	}
+
+	return target, nil
+}
+
+// readCapped reads at most limit bytes from r, reporting whether the reader had
+// more to give. It reads one byte past the limit to tell a body that exactly
+// fills it from one that overruns it.
+func readCapped(r io.Reader, limit int64) (data []byte, capped bool, err error) {
+	data, err = io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, false, err
+	}
+
+	if int64(len(data)) > limit {
+		return data[:limit], true, nil
+	}
+
+	return data, false, nil
 }
 
 // detail renders a bounded, single-line excerpt of a failing response body for

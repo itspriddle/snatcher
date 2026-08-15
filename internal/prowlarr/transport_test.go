@@ -380,6 +380,67 @@ func TestRedactRawURLDropsTheQueryOfAnUnparseableURL(t *testing.T) {
 	assert.Equal(t, "http://example.test/x", redactRawURL("http://example.test/x"))
 }
 
+func TestSameOriginIgnoresPathAndDefaultPorts(t *testing.T) {
+	tr := newTestTransport(t, "http://example.test/prowlarr")
+
+	sameOrigin := func(raw string) bool {
+		t.Helper()
+
+		u, err := url.Parse(raw)
+		require.NoError(t, err)
+
+		return tr.sameOrigin(u)
+	}
+
+	assert.True(t, sameOrigin("http://example.test/api/v1/indexer/3/download"))
+	assert.True(t, sameOrigin("http://EXAMPLE.TEST/whatever"))
+	assert.True(t, sameOrigin("http://example.test:80/whatever"), "80 is http's own port")
+
+	assert.False(t, sameOrigin("https://example.test/whatever"), "a different scheme is a different origin")
+	assert.False(t, sameOrigin("http://example.test:8080/whatever"), "a different port is a different origin")
+	assert.False(t, sameOrigin("http://evil.test/whatever"))
+	assert.False(t, sameOrigin("http://example.test.evil.test/whatever"), "a suffix match is not an origin match")
+}
+
+func TestParseFetchURLRejectsWhatCannotBeFetched(t *testing.T) {
+	_, err := parseFetchURL("   ")
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "no URL")
+
+	_, err = parseFetchURL("magnet:?xt=urn:btih:0123456789abcdef")
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), `"magnet"`)
+
+	_, err = parseFetchURL("file:///etc/passwd")
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), `"file"`)
+
+	_, err = parseFetchURL("http:///1.torrent")
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "no host")
+
+	target, err := parseFetchURL("  https://tracker.test/download/1.torrent  ")
+	require.NoError(t, err)
+	assert.Equal(t, "https://tracker.test/download/1.torrent", target.String())
+}
+
+func TestReadCappedReportsAnOverrun(t *testing.T) {
+	data, capped, err := readCapped(strings.NewReader("abcdef"), 10)
+	require.NoError(t, err)
+	assert.Equal(t, "abcdef", string(data))
+	assert.False(t, capped)
+
+	data, capped, err = readCapped(strings.NewReader("abcdef"), 6)
+	require.NoError(t, err)
+	assert.Equal(t, "abcdef", string(data))
+	assert.False(t, capped, "a body that exactly fills the limit is not an overrun")
+
+	data, capped, err = readCapped(strings.NewReader("abcdefg"), 6)
+	require.NoError(t, err)
+	assert.Equal(t, "abcdef", string(data))
+	assert.True(t, capped)
+}
+
 var errDoer = errors.New("boom")
 
 type failingDoer struct{}

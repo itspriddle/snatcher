@@ -6,11 +6,14 @@
 package prowlarr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // pathSystemStatus is the endpoint describing the Prowlarr instance itself.
@@ -173,6 +176,71 @@ func (c *Client) Categories(ctx context.Context) ([]Category, error) {
 	}
 
 	return cats, nil
+}
+
+// Grab hands a release back to Prowlarr with a POST /api/v1/search round trip
+// and returns the release as the server echoed it.
+//
+// What is POSTed is the exact ReleaseResource the search returned, retained on
+// Release.Raw, so fields snatcher does not model reach Prowlarr intact rather
+// than being silently dropped by a re-encode of the typed fields.
+//
+// A grab hands the release to *Prowlarr's* configured download client, which is
+// not necessarily the Transmission server snatcher is pointed at.
+func (c *Client) Grab(ctx context.Context, release Release) (Release, error) {
+	if len(bytes.TrimSpace(release.Raw)) == 0 {
+		return Release{}, fmt.Errorf("%w: release %q carries no server payload to grab", ErrServer, release.Title)
+	}
+
+	body, err := c.transport.Do(ctx, Request{
+		Method: http.MethodPost,
+		Path:   pathSearch,
+		Body:   release.Raw,
+	})
+	if err != nil {
+		return Release{}, err
+	}
+
+	// A 2xx is the grab being accepted. Prowlarr answers with the accepted
+	// ReleaseResource, but an empty answer is still a success, so echo the
+	// release back rather than failing after the server has already acted.
+	if isBlankJSON(body) {
+		return release, nil
+	}
+
+	grabbed, err := decodeRelease(body)
+	if err != nil {
+		return Release{}, fmt.Errorf("%w: decoding grabbed release: %w", ErrServer, err)
+	}
+
+	return grabbed, nil
+}
+
+// Download fetches the release's .torrent (or .nzb) bytes from its download URL.
+//
+// That URL may point at the Prowlarr instance or straight at the indexer, so the
+// API key is attached only for the Prowlarr origin and is dropped at any
+// redirect that leaves it. The response is capped at 32 MiB.
+func (c *Client) Download(ctx context.Context, release Release) ([]byte, error) {
+	if strings.TrimSpace(release.DownloadURL) == "" {
+		if release.MagnetURL != "" {
+			return nil, fmt.Errorf(
+				"%w: release %q has no download_url; it publishes only a magnet_url",
+				ErrServer, release.Title)
+		}
+
+		return nil, fmt.Errorf("%w: release %q has no download_url", ErrServer, release.Title)
+	}
+
+	return c.transport.fetch(ctx, release.DownloadURL)
+}
+
+// isBlankJSON reports whether body carries no JSON value at all: an empty body,
+// whitespace, or a literal null.
+func isBlankJSON(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+
+	return len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))
 }
 
 // decodeReleases decodes a ReleaseResource array, retaining each element's exact

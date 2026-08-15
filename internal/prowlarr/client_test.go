@@ -2,6 +2,7 @@ package prowlarr
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -579,6 +580,373 @@ func TestSearchIndexersAndCategoriesUseThePathPrefixOfTheBaseURL(t *testing.T) {
 	_, err = client.Categories(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "/prowlarr/api/v1/indexer/categories", got.URL.Path)
+}
+
+// grabbedReleaseBody is the ReleaseResource Prowlarr echoes back from a
+// POST /api/v1/search. It carries an unmodeled key so the echoed release is
+// proven to retain its own raw bytes.
+const grabbedReleaseBody = `{
+  "guid": "https://tracker.invalid/torrent/1",
+  "title": "Ubuntu 24.04 LTS Desktop amd64",
+  "indexer": "Linux Tracker",
+  "indexerId": 3,
+  "protocol": "torrent",
+  "downloadUrl": "https://tracker.invalid/download/1",
+  "sortTitle": "ubuntu 24 04 lts desktop amd64"
+}`
+
+// recordedBody is what the grab fixture server keeps about the request it saw.
+type recordedBody struct {
+	Method string
+	Path   string
+	Body   []byte
+}
+
+// grabServer starts a test server that records the request it was POSTed and
+// answers with body.
+func grabServer(t *testing.T, body string, got *recordedBody) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, _ := io.ReadAll(r.Body)
+		*got = recordedBody{Method: r.Method, Path: r.URL.Path, Body: payload}
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+func TestGrabPostsTheRetainedReleaseResourceVerbatim(t *testing.T) {
+	var got recordedBody
+
+	srv := grabServer(t, grabbedReleaseBody, &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Grab(t.Context(), Release{Raw: json.RawMessage(grabbedReleaseBody)})
+	require.NoError(t, err)
+
+	assert.Equal(t, http.MethodPost, got.Method)
+	assert.Equal(t, "/api/v1/search", got.Path)
+
+	// The whole resource goes back, including the fields snatcher does not model.
+	assert.JSONEq(t, grabbedReleaseBody, string(got.Body))
+}
+
+func TestGrabUsesThePathPrefixOfTheBaseURL(t *testing.T) {
+	var got recordedBody
+
+	srv := grabServer(t, grabbedReleaseBody, &got)
+	client := newTestClient(t, srv.URL+"/prowlarr", WithAPIKey(testAPIKey))
+
+	_, err := client.Grab(t.Context(), Release{Raw: json.RawMessage(grabbedReleaseBody)})
+	require.NoError(t, err)
+	assert.Equal(t, "/prowlarr/api/v1/search", got.Path)
+}
+
+func TestGrabDecodesTheEchoedRelease(t *testing.T) {
+	var got recordedBody
+
+	srv := grabServer(t, grabbedReleaseBody, &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	grabbed, err := client.Grab(t.Context(), Release{Raw: json.RawMessage(`{"guid":"stale"}`)})
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://tracker.invalid/torrent/1", grabbed.GUID)
+	assert.Equal(t, "Ubuntu 24.04 LTS Desktop amd64", grabbed.Title)
+	assert.Equal(t, "Linux Tracker", grabbed.Indexer)
+	assert.Equal(t, 3, grabbed.IndexerID)
+	assert.JSONEq(t, grabbedReleaseBody, string(grabbed.Raw))
+}
+
+func TestGrabEchoesTheReleaseWhenTheServerAnswersWithNoBody(t *testing.T) {
+	var got recordedBody
+
+	// A 2xx means the grab was accepted. An answer carrying no resource must not
+	// turn a completed grab into an error.
+	srv := grabServer(t, "", &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	sent := Release{Title: "Ubuntu 24.04 LTS Desktop amd64", Raw: json.RawMessage(grabbedReleaseBody)}
+
+	grabbed, err := client.Grab(t.Context(), sent)
+	require.NoError(t, err)
+	assert.Equal(t, sent.Title, grabbed.Title)
+}
+
+func TestGrabRefusesAReleaseCarryingNoRetainedPayload(t *testing.T) {
+	var got recordedBody
+
+	srv := grabServer(t, grabbedReleaseBody, &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Grab(t.Context(), Release{Title: "Ubuntu 24.04 LTS Desktop amd64"})
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "no server payload")
+	assert.Empty(t, got.Method, "nothing should be sent for a release with no payload")
+}
+
+func TestGrabMapsUnauthorizedToAuthError(t *testing.T) {
+	srv := statusServer(t, http.StatusUnauthorized)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Grab(t.Context(), Release{Raw: json.RawMessage(grabbedReleaseBody)})
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotContains(t, err.Error(), testAPIKey)
+}
+
+func TestGrabMapsAnUndecodableBodyToServerError(t *testing.T) {
+	var got recordedBody
+
+	srv := grabServer(t, `<html>not json</html>`, &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Grab(t.Context(), Release{Raw: json.RawMessage(grabbedReleaseBody)})
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "decoding grabbed release")
+}
+
+// torrentBytes stands in for the .torrent file a download returns.
+var torrentBytes = []byte("d8:announce20:http://tracker.teste")
+
+// recordedFetch is what a download fixture server keeps about the request it
+// saw, including whether the API key header reached it at all.
+type recordedFetch struct {
+	Path   string
+	APIKey string
+	HadKey bool
+}
+
+// fileServer starts a test server that records the request it was sent and
+// answers with torrentBytes.
+func fileServer(t *testing.T, got *recordedFetch) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		values, had := r.Header[apiKeyHeader]
+
+		*got = recordedFetch{Path: r.URL.Path, HadKey: had}
+		if had {
+			got.APIKey = values[0]
+		}
+
+		_, _ = w.Write(torrentBytes)
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+func TestDownloadSendsTheAPIKeyToTheProwlarrOrigin(t *testing.T) {
+	var got recordedFetch
+
+	srv := fileServer(t, &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	body, err := client.Download(t.Context(), Release{
+		Title:       "Ubuntu 24.04 LTS Desktop amd64",
+		DownloadURL: srv.URL + "/api/v1/indexer/3/download?link=abc",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, torrentBytes, body)
+	assert.Equal(t, "/api/v1/indexer/3/download", got.Path)
+	assert.True(t, got.HadKey, "the Prowlarr instance itself must receive the API key")
+	assert.Equal(t, testAPIKey, got.APIKey)
+}
+
+func TestDownloadWithholdsTheAPIKeyFromAForeignHost(t *testing.T) {
+	var (
+		gotProwlarr recordedFetch
+		gotIndexer  recordedFetch
+	)
+
+	prowlarr := fileServer(t, &gotProwlarr)
+	indexer := fileServer(t, &gotIndexer)
+
+	client := newTestClient(t, prowlarr.URL, WithAPIKey(testAPIKey))
+
+	body, err := client.Download(t.Context(), Release{
+		Title:       "Ubuntu 24.04 LTS Desktop amd64",
+		DownloadURL: indexer.URL + "/download/1.torrent",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, torrentBytes, body)
+	assert.Equal(t, "/download/1.torrent", gotIndexer.Path)
+	assert.False(t, gotIndexer.HadKey, "an indexer must never be handed the Prowlarr API key")
+	assert.Empty(t, gotProwlarr.Path, "the Prowlarr instance is not involved in a third-party download")
+}
+
+func TestDownloadDropsTheAPIKeyWhenARedirectLeavesTheProwlarrOrigin(t *testing.T) {
+	var (
+		gotProwlarr recordedFetch
+		gotIndexer  recordedFetch
+	)
+
+	indexer := fileServer(t, &gotIndexer)
+
+	prowlarr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		values, had := r.Header[apiKeyHeader]
+
+		gotProwlarr = recordedFetch{Path: r.URL.Path, HadKey: had}
+		if had {
+			gotProwlarr.APIKey = values[0]
+		}
+
+		http.Redirect(w, r, indexer.URL+"/download/1.torrent", http.StatusFound)
+	}))
+	t.Cleanup(prowlarr.Close)
+
+	client := newTestClient(t, prowlarr.URL, WithAPIKey(testAPIKey))
+
+	body, err := client.Download(t.Context(), Release{
+		Title:       "Ubuntu 24.04 LTS Desktop amd64",
+		DownloadURL: prowlarr.URL + "/api/v1/indexer/3/download",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, torrentBytes, body)
+	assert.True(t, gotProwlarr.HadKey, "the first hop is the Prowlarr instance itself")
+	assert.False(t, gotIndexer.HadKey, "the key must be dropped the moment a redirect leaves Prowlarr")
+}
+
+func TestDownloadKeepsTheAPIKeyAcrossASameOriginRedirect(t *testing.T) {
+	var got recordedFetch
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/files/1.torrent" {
+			http.Redirect(w, r, "/files/1.torrent", http.StatusFound)
+
+			return
+		}
+
+		values, had := r.Header[apiKeyHeader]
+
+		got = recordedFetch{Path: r.URL.Path, HadKey: had}
+		if had {
+			got.APIKey = values[0]
+		}
+
+		_, _ = w.Write(torrentBytes)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	body, err := client.Download(t.Context(), Release{DownloadURL: srv.URL + "/api/v1/indexer/3/download"})
+	require.NoError(t, err)
+
+	assert.Equal(t, torrentBytes, body)
+	assert.True(t, got.HadKey, "a redirect within the Prowlarr origin keeps the key")
+	assert.Equal(t, testAPIKey, got.APIKey)
+}
+
+func TestDownloadBoundsTheRedirectChain(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/again", http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Download(t.Context(), Release{DownloadURL: srv.URL + "/loop"})
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.Contains(t, err.Error(), "redirects")
+	assert.NotContains(t, err.Error(), testAPIKey)
+}
+
+func TestDownloadRefusesAReleaseWithNoDownloadURL(t *testing.T) {
+	client := newTestClient(t, "http://127.0.0.1:9696", WithAPIKey(testAPIKey))
+
+	_, err := client.Download(t.Context(), Release{
+		Title:     "Ubuntu 24.04 LTS Desktop amd64",
+		MagnetURL: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+	})
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "no download_url")
+	assert.Contains(t, err.Error(), "magnet_url", "the magnet must be named as the alternative")
+}
+
+func TestDownloadRefusesAReleaseWithNeitherURL(t *testing.T) {
+	client := newTestClient(t, "http://127.0.0.1:9696", WithAPIKey(testAPIKey))
+
+	_, err := client.Download(t.Context(), Release{Title: "Ubuntu 24.04 LTS Desktop amd64"})
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "no download_url")
+}
+
+func TestDownloadRefusesANonHTTPScheme(t *testing.T) {
+	client := newTestClient(t, "http://127.0.0.1:9696", WithAPIKey(testAPIKey))
+
+	// Some indexers publish the magnet link as the download URL. It is not
+	// something to GET, and no scheme other than http(s) is fetchable.
+	_, err := client.Download(t.Context(), Release{
+		DownloadURL: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+	})
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), `"magnet"`, "the refused scheme must be named")
+}
+
+func TestDownloadCapsTheResponseBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.CopyN(w, zeroReader{}, maxDownloadBytes+1)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Download(t.Context(), Release{DownloadURL: srv.URL + "/huge.torrent"})
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "more than")
+}
+
+func TestDownloadMapsUnauthorizedToAuthError(t *testing.T) {
+	srv := statusServer(t, http.StatusUnauthorized)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Download(t.Context(), Release{DownloadURL: srv.URL + "/1.torrent"})
+	require.ErrorIs(t, err, ErrAuth)
+	assert.NotContains(t, err.Error(), testAPIKey)
+}
+
+func TestDownloadMapsAnErrorStatusToServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("no such release"))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := client.Download(t.Context(), Release{DownloadURL: srv.URL + "/1.torrent"})
+	require.ErrorIs(t, err, ErrServer)
+	assert.Contains(t, err.Error(), "404")
+	assert.Contains(t, err.Error(), "no such release")
+}
+
+func TestDownloadMapsAnUnreachableHostToUnreachable(t *testing.T) {
+	client := newTestClient(t, "http://127.0.0.1:9696",
+		WithAPIKey(testAPIKey),
+		WithHTTPClient(failingDoer{}),
+	)
+
+	_, err := client.Download(t.Context(), Release{
+		DownloadURL: "http://127.0.0.1:9696/1.torrent?apikey=" + testAPIKey,
+	})
+	require.ErrorIs(t, err, ErrUnreachable)
+	assert.NotContains(t, err.Error(), testAPIKey)
+}
+
+// zeroReader is an endless stream of zero bytes, so a fixture can answer with a
+// body larger than the download cap without building one.
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	clear(p)
+
+	return len(p), nil
 }
 
 // ptr returns a pointer to v. The nullable release counts are pointers so a
