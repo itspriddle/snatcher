@@ -132,6 +132,21 @@ The main event. Reuses everything above.
 - Optimistic update or immediate refetch after each mutation - pick one and
   apply it uniformly
 
+**Label discovery is client-side.** The sidebar's `Labels (dynamic)` group needs
+the distinct labels in use on the server. CLI M6 (`torrent label`) shipped
+`list|add|remove|set` and **no** server-side discovery verb, because
+Transmission's RPC has none to wrap - the distinct set is a union over every
+torrent's `labels`, and any verb snatcher added would still be a full read.
+It is derivable from the CLI today:
+
+```
+snatcher torrent label list --all --jq '[.[].labels[]] | unique'
+```
+
+The TUI gets it cheaper still: project `FieldLabels` in the poll T4 already
+makes and compute the union - and the per-label counts the group renders - from
+the model the list pane already holds, with no extra round-trip.
+
 **Done when:** every list-pane binding in vision.md works against a real
 server, and no action can hit more torrents than the confirmation stated.
 
@@ -203,3 +218,11 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
   The CLI contract supports either, so this is a TUI cost decision.
 - Does the torrent action menu's "trackers" entry edit trackers in place, or
   defer to the trackers tab?
+- Does the `Labels (dynamic)` filter group derive its labels client-side from
+  the polled torrent list (see T5), or does CLI M6 grow a server-side discovery
+  verb first? Leaning client-side: the union is already in the poll payload once
+  `labels` is projected, the counts the group renders need the per-torrent list
+  anyway, and a discovery verb would be the same full read wearing a different
+  name. Revisit only if recomputing the union every tick costs too much on a
+  large library - the fix there is a cached union invalidated on label writes,
+  not a new RPC call.
