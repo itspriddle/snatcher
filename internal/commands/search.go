@@ -266,6 +266,17 @@ func validateSearchPaging(limit, offset, pages int) error {
 	return nil
 }
 
+// searchPreallocLimit bounds the accumulator's initial capacity in searchPages.
+//
+// --limit is a user-supplied count of results to *ask for*, not a promise of
+// what arrives, so sizing the slice straight from it hands a typo to the
+// allocator: --limit 100000000 reserves tens of gigabytes of address space that
+// no result set will ever fill, and a limit near the integer maximum overflows
+// makeslice's size computation and panics before the first request is even
+// issued. Past this bound append grows the slice from data actually received,
+// as every other list path does.
+const searchPreallocLimit = 1024
+
 // searchPages issues the sequential requests --pages asks for, stepping the
 // offset by the limit each time and concatenating the results in the order they
 // arrive.
@@ -275,7 +286,7 @@ func validateSearchPaging(limit, offset, pages int) error {
 // That also keeps an indexer that ignores limit/offset entirely — and so answers
 // every page identically — from being asked N times.
 func searchPages(ctx context.Context, client *prowlarr.Client, params prowlarr.SearchParams, pages int) ([]prowlarr.Release, error) {
-	all := make([]prowlarr.Release, 0, params.Limit)
+	all := make([]prowlarr.Release, 0, min(params.Limit, searchPreallocLimit))
 
 	for page := range pages {
 		request := params

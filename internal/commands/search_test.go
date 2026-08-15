@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -415,6 +417,29 @@ func TestSearchPagesStepFromTheGivenOffset(t *testing.T) {
 	require.Len(t, *requests, 2)
 	assert.Equal(t, "10", (*requests)[0].Get("offset"))
 	assert.Equal(t, "12", (*requests)[1].Get("offset"))
+}
+
+// TestSearchToleratesAnEnormousLimit pins that --limit sizes the *request* and
+// nothing else. It is a user-supplied count of results to ask for, not a promise
+// of what arrives, so it must never reach the allocator as a capacity hint: a
+// fat-fingered limit has to travel to the wire and come back empty like any
+// other, rather than abort the process before the first round trip.
+//
+// The value is the largest one pflag will accept, which makes the guard
+// deterministic — a merely large limit (say 100000000) reserves tens of
+// gigabytes of address space that an overcommitting kernel hands over without
+// complaint, so it would not fail reliably.
+func TestSearchToleratesAnEnormousLimit(t *testing.T) {
+	cfgPath, requests := searchConfig(t, "[]")
+
+	limit := strconv.Itoa(math.MaxInt)
+
+	out, _, err := runSearch(t, "--config", cfgPath, "--limit", limit, "ubuntu")
+	require.NoError(t, err)
+	assert.Empty(t, out)
+
+	require.Len(t, *requests, 1)
+	assert.Equal(t, limit, (*requests)[0].Get("limit"))
 }
 
 // TestSearchSanitizesPlaintextOnly pins the sanitizer boundary: a crafted title
