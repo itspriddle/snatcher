@@ -148,6 +148,28 @@ func resolveMutation(action string, sel transmission.Selector, torrents []transm
 	return result, nil
 }
 
+// filterSelection narrows torrents to the ones satisfying f and returns both the
+// matched torrents and a Selector naming exactly those torrents by id. It is the
+// seam a mutation command uses to turn a status filter into a selection, so the
+// server is told which torrents to act on rather than being asked to re-derive
+// the filter — the same list the CLI already fetched is the authority.
+//
+// The returned Selector never sets All, so a filter that matched everything is
+// still an explicit id list. Callers must check the matched length themselves: a
+// filter legitimately matching nothing is not an error the way an explicit
+// selector matching nothing is (see resolveMutation), and an empty Selector must
+// never reach the server.
+func filterSelection(torrents []transmission.Torrent, f transmission.Filter) ([]transmission.Torrent, transmission.Selector) {
+	matched := transmission.FilterByStatus(torrents, f)
+
+	sel := transmission.Selector{IDs: make([]int64, 0, len(matched))}
+	for _, t := range matched {
+		sel.IDs = append(sel.IDs, t.ID)
+	}
+
+	return matched, sel
+}
+
 // renderMutation writes the result of a mutation in the appropriate output mode:
 // --jq filters the JSON, --json emits the structured contract, and otherwise a
 // plain human confirmation is printed. Render precedence mirrors list:

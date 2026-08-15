@@ -1141,11 +1141,33 @@ Stop every torrent.
 .TP
 .B snatcher torrent verify \fR[\fIoptions\fR] [\fIid | hash\fR]...
 Verify local torrent data by queueing a re-hash of the downloaded files against
-the torrent metadata. Besides the common options:
+the torrent metadata. The bulk forms
+.RB ( \-\-all " and " \-\-all\-with\-errors )
+confirm first, naming the number of torrents: on a terminal they prompt
+.RB [ y/N ],
+and when standard input is not a terminal they refuse unless
+.B \-\-yes
+is given. An explicit id or hash selection is never prompted. Besides the common
+options:
 .RS
 .TP
 .B \-\-all
 Verify every torrent.
+.TP
+.B \-\-all\-with\-errors
+Verify every torrent the server currently reports an error for (the same set as
+.BR "snatcher torrent list \-\-filter error" ).
+Cannot be combined with
+.B \-\-all
+or with positional selectors. When no torrent has an error nothing is verified,
+which is not an error: the plaintext path prints
+.BR "No torrents with errors." ,
+and
+.BR \-\-json " / " \-\-jq
+see a result with a count of 0 and an empty torrent list.
+.TP
+.BR \-y ", " \-\-yes
+Skip the confirmation prompt.
 .RE
 .TP
 .B snatcher torrent reannounce \fR[\fIoptions\fR] [\fIid | hash\fR]...
