@@ -22,8 +22,10 @@ import (
 // rpc-spec-411.md (snake_case fields) carrying the seven bandwidth keys, used
 // for the JSON-RPC 2.0 protocol path. Its values are deliberately distinct from
 // the bespoke fixture's (asymmetric limits, an enabled download limit, alt-speed
-// on, schedule off) so a test can tell the two schemes — and the two alt
-// booleans — apart.
+// on, schedule on) so a test can tell the two schemes — and the two alt
+// booleans — apart. The schedule flag is true here and false in the bespoke
+// fixture so neither value is the Go zero value in every test: a decoder that
+// dropped the field would fail this scheme's assertions.
 const jsonrpcBandwidthSessionResponse = `{
 	"jsonrpc": "2.0",
 	"result": {
@@ -36,7 +38,7 @@ const jsonrpcBandwidthSessionResponse = `{
 		"alt_speed_enabled": true,
 		"alt_speed_down": 50,
 		"alt_speed_up": 25,
-		"alt_speed_time_enabled": false
+		"alt_speed_time_enabled": true
 	},
 	"id": 1
 }`
@@ -163,7 +165,7 @@ func TestBandwidthShowPlaintextJSONRPC(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, strings.Join([]string{
-		"Alt-speed:      yes (schedule: no)",
+		"Alt-speed:      yes (schedule: yes)",
 		"Download:",
 		"  Current:      1.5 MiB/s",
 		"  Limit:        500 KB/s",
@@ -210,7 +212,7 @@ func TestBandwidthShowJSONJSONRPC(t *testing.T) {
 		"download": {"current_speed": 1572864, "limit": 500, "limit_enabled": true, "alt_limit": 50},
 		"upload": {"current_speed": 524288, "limit": 100, "limit_enabled": false, "alt_limit": 25},
 		"alt_enabled": true,
-		"alt_schedule_enabled": false
+		"alt_schedule_enabled": true
 	}`, out)
 }
 
@@ -240,7 +242,7 @@ func TestBandwidthShowDownloadOnly(t *testing.T) {
 	assert.JSONEq(t, `{
 		"download": {"current_speed": 1572864, "limit": 500, "limit_enabled": true, "alt_limit": 50},
 		"alt_enabled": true,
-		"alt_schedule_enabled": false
+		"alt_schedule_enabled": true
 	}`, out)
 	assert.NotContains(t, out, "upload")
 }
@@ -283,7 +285,7 @@ func TestBandwidthShowAltNarrowsBothDirections(t *testing.T) {
 		"download": {"current_speed": 1572864, "alt_limit": 50},
 		"upload": {"current_speed": 524288, "alt_limit": 25},
 		"alt_enabled": true,
-		"alt_schedule_enabled": false
+		"alt_schedule_enabled": true
 	}`, out)
 	assert.NotContains(t, out, "limit_enabled")
 }
@@ -298,7 +300,7 @@ func TestBandwidthShowDirectionAndAltCombined(t *testing.T) {
 	assert.JSONEq(t, `{
 		"download": {"current_speed": 1572864, "alt_limit": 50},
 		"alt_enabled": true,
-		"alt_schedule_enabled": false
+		"alt_schedule_enabled": true
 	}`, out)
 }
 
@@ -312,7 +314,7 @@ func TestBandwidthShowNarrowedPlaintextMatchesJSON(t *testing.T) {
 	// The plaintext field set matches the narrowed JSON exactly: no Upload block
 	// and no normal-profile Limit line.
 	assert.Equal(t, strings.Join([]string{
-		"Alt-speed:      yes (schedule: no)",
+		"Alt-speed:      yes (schedule: yes)",
 		"Download:",
 		"  Current:      1.5 MiB/s",
 		"  Alt limit:    50 KB/s",
@@ -615,7 +617,7 @@ func TestBandwidthUpdateRendersNarrowedReadBack(t *testing.T) {
 	assert.JSONEq(t, `{
 		"download": {"current_speed": 1572864, "limit": 500, "limit_enabled": true, "alt_limit": 50},
 		"alt_enabled": true,
-		"alt_schedule_enabled": false
+		"alt_schedule_enabled": true
 	}`, out)
 }
 
@@ -629,7 +631,7 @@ func TestBandwidthUpdateAltRendersAltReadBack(t *testing.T) {
 	assert.JSONEq(t, `{
 		"download": {"current_speed": 1572864, "alt_limit": 50},
 		"alt_enabled": true,
-		"alt_schedule_enabled": false
+		"alt_schedule_enabled": true
 	}`, out)
 }
 
@@ -835,7 +837,7 @@ func TestBandwidthAltRendersUnnarrowedReadBack(t *testing.T) {
 		"download": {"current_speed": 1572864, "limit": 500, "limit_enabled": true, "alt_limit": 50},
 		"upload": {"current_speed": 524288, "limit": 100, "limit_enabled": false, "alt_limit": 25},
 		"alt_enabled": true,
-		"alt_schedule_enabled": false
+		"alt_schedule_enabled": true
 	}`, out)
 }
 
