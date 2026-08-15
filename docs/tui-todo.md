@@ -194,5 +194,12 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
   survive-with-a-count, since the status bar shows the number.
 - Poll cadence vs. server load: one interval for everything, or a cheap
   `PollFields` tick for the list plus a slower full refresh?
+- Where does the status bar (T4) get its global speed limits: poll
+  `snatcher server bandwidth show`'s object on the refresh interval, or reuse
+  the `stats` call the bar already makes and refresh the limits on a slower
+  tick? `bandwidth show` returns the current rates, both limit pairs, and the
+  alt-speed switch together, but costs two round-trips (`session-get` +
+  `session-stats`); `stats` alone is one round-trip and carries the rates only.
+  The CLI contract supports either, so this is a TUI cost decision.
 - Does the torrent action menu's "trackers" entry edit trackers in place, or
   defer to the trackers tab?

@@ -400,3 +400,17 @@ saved locally, with indexers and categories enumerable for the TUI dropdowns.
 - **Tracker mutation commands** - `torrent update --tracker/--clear-trackers`
   covers it today; a `torrent trackers add|remove` verb pair only if the TUI
   trackers tab wants direct editing.
+- **Effective limit in `server bandwidth show`** - the command reports both
+  limit pairs plus `alt_enabled` and leaves the caller to work out which pair is
+  actually in force; a derived per-direction `effective_limit` would answer that
+  in one field. Deferred because a consumer can already compute it from the
+  object as shipped, and adding the field later is purely additive - no existing
+  key in the `bandwidthState` JSON contract changes or moves for it.
+- **A friendlier `alt-speed-time-day`** - the alt-speed schedule's day selector
+  is a bitfield (Sun=1 ... Sat=64, 127 = every day) and `server update
+  --alt-speed-time-day` takes that raw integer. A named spelling
+  (`mon,wed,fri`, `weekdays`, `all`) belongs on the **settings** surface - the
+  registry in `internal/commands/settings.go` plus `server update` - and not on
+  `server bandwidth`, which reports the schedule read-only and writes none of
+  its keys. Worth doing only if the TUI settings window's Bandwidth tab wants
+  it.
