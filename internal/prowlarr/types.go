@@ -166,6 +166,37 @@ func (w releaseWire) release() Release {
 	}
 }
 
+// ReleaseRef returns the minimal Release naming the release guid published by
+// the indexer with indexerID, built without a search behind it.
+//
+// Prowlarr identifies a release to grab by exactly those two fields and resolves
+// the rest itself from the releases it recently searched, so a guid plus its
+// indexer is the whole payload an exact grab needs. That is what makes naming a
+// release by guid cost no re-run: nothing is re-derived client-side, and no
+// shifting result order can be resolved to the wrong release.
+//
+// The returned Release carries nothing else — a title, size, or download URL is
+// not knowable without a search — so it is a reference to act on, not a release
+// to render. Prowlarr echoes the full resource back on a successful grab.
+func ReleaseRef(guid string, indexerID int) Release {
+	// A struct of a string and an int always marshals.
+	raw, _ := json.Marshal(releaseRefWire{GUID: guid, IndexerID: indexerID})
+
+	return Release{
+		Raw:       raw,
+		GUID:      guid,
+		IndexerID: indexerID,
+	}
+}
+
+// releaseRefWire is the minimal ReleaseResource ReleaseRef retains on Raw. Its
+// tags are Prowlarr's camelCase wire names, matching releaseWire, since these
+// bytes go back to the server verbatim.
+type releaseRefWire struct {
+	GUID      string `json:"guid"`
+	IndexerID int    `json:"indexerId"`
+}
+
 // Category is one torznab category, as Prowlarr's IndexerCategory. Categories
 // nest one level in Prowlarr's default tree (a parent such as "TV" holding
 // "TV/HD"), but the wire shape is recursive and so is this one.

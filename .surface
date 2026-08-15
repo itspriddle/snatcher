@@ -26,6 +26,7 @@ CMD snatcher config set
 CMD snatcher config unset
 CMD snatcher search
 CMD snatcher search categories
+CMD snatcher search grab
 CMD snatcher search indexers
 CMD snatcher server
 CMD snatcher server add
@@ -103,6 +104,16 @@ FLAG snatcher search --server type=string
 FLAG snatcher search categories --jq type=string
 FLAG snatcher search categories --json type=bool
 FLAG snatcher search categories --server type=string
+FLAG snatcher search grab --category type=intSlice
+FLAG snatcher search grab --guid type=string
+FLAG snatcher search grab --indexer type=intSlice
+FLAG snatcher search grab --jq type=string
+FLAG snatcher search grab --json type=bool
+FLAG snatcher search grab --limit type=int
+FLAG snatcher search grab --offset type=int
+FLAG snatcher search grab --pages type=int
+FLAG snatcher search grab --search-type type=string
+FLAG snatcher search grab --server type=string
 FLAG snatcher search indexers --jq type=string
 FLAG snatcher search indexers --json type=bool
 FLAG snatcher search indexers --server type=string

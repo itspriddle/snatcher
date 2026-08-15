@@ -113,10 +113,10 @@ func NewSearchCmd() *cobra.Command {
 		Use:   "search [query]",
 		Short: "Search indexers with Prowlarr",
 		Long: "Search the indexers a configured Prowlarr instance knows about.\n\n" +
-			"The subcommands (indexers, categories) list the ids --indexer and " +
-			"--category take. A subcommand name wins over a bare query, so " +
-			"\"snatcher search indexers\" runs the subcommand; search for that " +
-			"literal word with \"snatcher search --query indexers\".\n\n" +
+			"The subcommands (grab, indexers, categories) act on a result and list " +
+			"the ids --indexer and --category take. A subcommand name wins over a " +
+			"bare query, so \"snatcher search indexers\" runs the subcommand; search " +
+			"for that literal word with \"snatcher search --query indexers\".\n\n" +
 			"The query is a positional argument, or --query for the same thing. " +
 			"Restrict the search with the repeatable --indexer and --category id " +
 			"flags, and walk further into the results with --pages.\n\n" +
@@ -189,6 +189,7 @@ func NewSearchCmd() *cobra.Command {
 	cmd.Flags().IntVar(&pages, "pages", 1, "sequential pages to request, each stepping the offset by --limit")
 	cmd.Flags().StringVar(&searchType, "search-type", defaultSearchType, fmt.Sprintf("torznab search type (%s)", strings.Join(searchTypes, ", ")))
 
+	cmd.AddCommand(newSearchGrabCmd())
 	cmd.AddCommand(newSearchIndexersCmd())
 	cmd.AddCommand(newSearchCategoriesCmd())
 

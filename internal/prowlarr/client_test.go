@@ -687,6 +687,44 @@ func TestGrabRefusesAReleaseCarryingNoRetainedPayload(t *testing.T) {
 	assert.Empty(t, got.Method, "nothing should be sent for a release with no payload")
 }
 
+// TestReleaseRefIsGrabbableWithoutASearch pins the payload the exact grab form
+// rests on: a guid plus its indexer id, in Prowlarr's own camelCase wire names,
+// and nothing else.
+func TestReleaseRefIsGrabbableWithoutASearch(t *testing.T) {
+	ref := ReleaseRef("https://tracker.invalid/torrent/1", 3)
+
+	assert.Equal(t, "https://tracker.invalid/torrent/1", ref.GUID)
+	assert.Equal(t, 3, ref.IndexerID)
+	assert.JSONEq(t, `{"guid":"https://tracker.invalid/torrent/1","indexerId":3}`, string(ref.Raw))
+	assert.Empty(t, ref.Title, "a reference names a release; it does not describe one")
+}
+
+func TestReleaseRefPostsItselfVerbatim(t *testing.T) {
+	var got recordedBody
+
+	srv := grabServer(t, grabbedReleaseBody, &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	grabbed, err := client.Grab(t.Context(), ReleaseRef("https://tracker.invalid/torrent/1", 3))
+	require.NoError(t, err)
+
+	assert.Equal(t, http.MethodPost, got.Method)
+	assert.JSONEq(t, `{"guid":"https://tracker.invalid/torrent/1","indexerId":3}`, string(got.Body))
+
+	// Prowlarr resolves the rest itself and echoes the whole resource back, so a
+	// grab by reference still ends up with a describable release.
+	assert.Equal(t, "Ubuntu 24.04 LTS Desktop amd64", grabbed.Title)
+	assert.Equal(t, "Linux Tracker", grabbed.Indexer)
+}
+
+func TestReleaseRefEscapesAGUIDThatIsNotPlainText(t *testing.T) {
+	ref := ReleaseRef(`quote"and\backslash`, 7)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(ref.Raw, &decoded))
+	assert.Equal(t, `quote"and\backslash`, decoded["guid"])
+}
+
 func TestGrabMapsUnauthorizedToAuthError(t *testing.T) {
 	srv := statusServer(t, http.StatusUnauthorized)
 	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))

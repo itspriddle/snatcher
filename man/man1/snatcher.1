@@ -1892,7 +1892,7 @@ so a subcommand name wins over a bare positional query:
 runs the subcommand rather than searching for the word
 .IR indexers ,
 and the same holds for
-.BR categories .
+.BR grab " and " categories .
 That is deliberate \(em it keeps the common case,
 .BR "snatcher search ubuntu" ,
 the shortest thing to type \(em and
@@ -1966,6 +1966,57 @@ The torznab search type: one of
 .BR search ", " tvsearch ", " movie ", " music ", or " book .
 An indexer may implement only some of the typed searches. Default:
 .BR search .
+.RE
+.TP
+.B snatcher search grab \fR[\fIoptions\fR] [\fIquery\fR] [\fIn\fR]
+Hand one release from a search back to Prowlarr to grab.
+.IP
+A grab is handed to Prowlarr's
+.I own
+configured download client, which is not necessarily the Transmission server
+snatcher is pointed at. It means \(lqtell Prowlarr to grab it\(rq, not \(lqadd
+it to this server\(rq. To add a release to the server snatcher is pointed at,
+feed its download or magnet url to
+.BR "snatcher torrent add" .
+.IP
+The release is named in one of two mutually exclusive ways.
+.B "snatcher search grab \(dqubuntu\(dq 3"
+re-runs the search and resolves the 1-based result number \(em the
+.B #
+column \(em from the fresh results; snatcher caches no result state between
+invocations. That number therefore names the release that was on screen only
+when the same
+.BR \-\-indexer ", " \-\-category ", " \-\-limit ", " \-\-offset ", " \-\-pages ", and " \-\-search\-type
+are passed, and only while the results have not shifted underneath it. A number
+below 1, or past the end of the results, is an error naming the number and how
+many results came back.
+.IP
+.B "snatcher search grab \-\-guid \fIguid\fB \-\-indexer \fIid\fR"
+is the exact form: it names the release outright and re-runs nothing, so
+neither caveat applies. Every
+.B guid
+appears in
+.B "snatcher search \-\-json"
+output for exactly this reason, which makes it the form a script should use.
+.IP
+The resolved release's title and indexer are printed to standard error before
+the grab is issued, so what is being acted on is on screen in every output mode
+and a shifted result set is visible rather than silent. A single named release
+is never prompted for. On success the plaintext path prints a confirmation line
+naming the release Prowlarr accepted, while
+.BR \-\-json " and " \-\-jq
+emit the grabbed release object instead. Titles and indexer names are
+server-derived and are neutralized of terminal control sequences on the
+plaintext paths only. Besides the common options and the search filters listed
+above:
+.RS
+.TP
+.BR \-\-guid " " \fIguid\fR
+Name the release exactly by the guid its indexer assigned it, instead of by
+position in a re-run. Requires exactly one
+.BR \-\-indexer ,
+naming the indexer that issued the guid, since a guid is unique only within one
+indexer; zero or more than one is an error. Takes no positional arguments.
 .RE
 .TP
 .B snatcher search indexers \fR[\fIoptions\fR]
