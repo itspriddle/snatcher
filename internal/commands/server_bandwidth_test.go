@@ -231,6 +231,87 @@ func TestBandwidthShowJSONBespoke(t *testing.T) {
 	}`, out)
 }
 
+// bandwidthMixedAltServer stands up the stub with the two alt booleans forced to
+// opposite values in the named scheme's session payload, overriding them in a
+// locally-scoped copy so the shared fixtures are untouched. Both shared fixtures
+// hold the pair equal, which is what lets a cross-wiring of the two source fields
+// pass unnoticed; a state where they differ is what catches it.
+func bandwidthMixedAltServer(t *testing.T, rpcVersion string, altEnabled, scheduleEnabled bool) (string, func()) {
+	t.Helper()
+
+	var discarded []string
+
+	if rpcVersion == "" {
+		bespoke := withSessionBool(t, bespokeSessionResponse, "alt-speed-enabled", altEnabled)
+		bespoke = withSessionBool(t, bespoke, "alt-speed-time-enabled", scheduleEnabled)
+
+		return capturedBandwidthSessionServer(t, &discarded, rpcVersion, bespoke, jsonrpcBandwidthSessionResponse)
+	}
+
+	jsonrpc := withSessionBool(t, jsonrpcBandwidthSessionResponse, "alt_speed_enabled", altEnabled)
+	jsonrpc = withSessionBool(t, jsonrpc, "alt_speed_time_enabled", scheduleEnabled)
+
+	return capturedBandwidthSessionServer(t, &discarded, rpcVersion, bespokeSessionResponse, jsonrpc)
+}
+
+func TestBandwidthShowSeparatesTheTwoAltBooleans(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		rpcVersion      string
+		altEnabled      bool
+		scheduleEnabled bool
+		wantJSON        string
+		wantAltLine     string
+	}{
+		// The bespoke row is also the only assertion that the bespoke decoder
+		// carries alt-speed-time-enabled at all: the shared fixture reports it
+		// false, which is indistinguishable from the field being dropped.
+		{
+			name:            "bespoke schedule on, switch off",
+			rpcVersion:      "",
+			altEnabled:      false,
+			scheduleEnabled: true,
+			wantJSON: `{
+				"download": {"current_speed": 2097152, "limit": 100, "limit_enabled": false, "alt_limit": 50},
+				"upload": {"current_speed": 1048576, "limit": 100, "limit_enabled": false, "alt_limit": 50},
+				"alt_enabled": false,
+				"alt_schedule_enabled": true
+			}`,
+			wantAltLine: "Alt-speed:      no (schedule: yes)",
+		},
+		{
+			name:            "jsonrpc switch on, schedule off",
+			rpcVersion:      "6.0.0",
+			altEnabled:      true,
+			scheduleEnabled: false,
+			wantJSON: `{
+				"download": {"current_speed": 1572864, "limit": 500, "limit_enabled": true, "alt_limit": 50},
+				"upload": {"current_speed": 524288, "limit": 100, "limit_enabled": false, "alt_limit": 25},
+				"alt_enabled": true,
+				"alt_schedule_enabled": false
+			}`,
+			wantAltLine: "Alt-speed:      yes (schedule: no)",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, closeSrv := bandwidthMixedAltServer(t, tc.rpcVersion, tc.altEnabled, tc.scheduleEnabled)
+			defer closeSrv()
+
+			// The live switch and the configured schedule are separate keys with
+			// separate meanings, so each has to reach its own field: swapping the two
+			// sources fails here in both directions.
+			out, _, err := runBandwidth(t, "show", "--config", cfgPath, "--json")
+			require.NoError(t, err)
+			assert.JSONEq(t, tc.wantJSON, out)
+
+			out, _, err = runBandwidth(t, "show", "--config", cfgPath)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantAltLine, strings.SplitN(out, "\n", 2)[0],
+				"the plaintext header renders the two booleans independently")
+		})
+	}
+}
+
 func TestBandwidthShowDownloadOnly(t *testing.T) {
 	cfgPath, closeSrv := bandwidthConfigPath(t, "6.0.0")
 	defer closeSrv()
@@ -693,21 +774,25 @@ func TestBandwidthUpdateWriteFailureWrapsServerURL(t *testing.T) {
 	assert.Empty(t, out, "no state is rendered when the write fails")
 }
 
-// withAltSpeedEnabled returns a session-get fixture with its alt-speed switch
-// forced to enabled, under the given scheme's key spelling. The two shared
-// fixtures start on opposite states, so this is what lets a toggle test pick
-// either starting state in either wire scheme; requiring the literal to be
+// withSessionBool returns a session-get fixture with one boolean key forced to
+// value, under the given scheme's key spelling. The two shared fixtures start on
+// opposite alt states, so this is what lets a test pick either starting state in
+// either wire scheme without duplicating a fixture; requiring the literal to be
 // present keeps a later fixture edit from silently neutering the test.
-func withAltSpeedEnabled(t *testing.T, body, key string, enabled bool) string {
+//
+// The search literal carries the leading quote, so forcing "alt-speed-enabled"
+// never matches "alt-speed-time-enabled" — the two alt booleans stay
+// independently settable.
+func withSessionBool(t *testing.T, body, key string, value bool) string {
 	t.Helper()
 
-	want := fmt.Sprintf("%q: %t", key, enabled)
+	want := fmt.Sprintf("%q: %t", key, value)
 	if strings.Contains(body, want) {
 		return body
 	}
 
-	from := fmt.Sprintf("%q: %t", key, !enabled)
-	require.Contains(t, body, from, "the fixture carries no alt-speed switch to force")
+	from := fmt.Sprintf("%q: %t", key, !value)
+	require.Contains(t, body, from, "the fixture carries no %s key to force", key)
 
 	return strings.Replace(body, from, want, 1)
 }
@@ -718,12 +803,12 @@ func bandwidthAltServer(t *testing.T, captured *[]string, rpcVersion string, ena
 	t.Helper()
 
 	if rpcVersion == "" {
-		bespoke := withAltSpeedEnabled(t, bespokeSessionResponse, "alt-speed-enabled", enabled)
+		bespoke := withSessionBool(t, bespokeSessionResponse, "alt-speed-enabled", enabled)
 
 		return capturedBandwidthSessionServer(t, captured, rpcVersion, bespoke, jsonrpcBandwidthSessionResponse)
 	}
 
-	jsonrpc := withAltSpeedEnabled(t, jsonrpcBandwidthSessionResponse, "alt_speed_enabled", enabled)
+	jsonrpc := withSessionBool(t, jsonrpcBandwidthSessionResponse, "alt_speed_enabled", enabled)
 
 	return capturedBandwidthSessionServer(t, captured, rpcVersion, bespokeSessionResponse, jsonrpc)
 }
