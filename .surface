@@ -224,6 +224,7 @@ FLAG snatcher torrent list --reverse type=bool
 FLAG snatcher torrent list --search type=string
 FLAG snatcher torrent list --server type=string
 FLAG snatcher torrent list --sort type=string
+FLAG snatcher torrent list --top type=int
 FLAG snatcher torrent move --in-place type=bool
 FLAG snatcher torrent move --jq type=string
 FLAG snatcher torrent move --json type=bool

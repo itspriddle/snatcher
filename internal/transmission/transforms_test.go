@@ -115,6 +115,66 @@ func TestSearchByNameCaseInsensitive(t *testing.T) {
 	assert.Equal(t, []int64{1}, ids(got))
 }
 
+func TestTop(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		n    int
+		want []int64
+	}{
+		{"fewer than the set", 2, []int64{1, 2}},
+		{"exactly the set", 5, []int64{1, 2, 3, 4, 5}},
+		{"more than the set", 99, []int64{1, 2, 3, 4, 5}},
+		{"one", 1, []int64{1}},
+		{"zero is unlimited", 0, []int64{1, 2, 3, 4, 5}},
+		{"negative is unlimited", -3, []int64{1, 2, 3, 4, 5}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := transmission.Top(sampleTorrents(), tc.n)
+			assert.Equal(t, tc.want, ids(got))
+		})
+	}
+}
+
+func TestTopDoesNotMutate(t *testing.T) {
+	t.Parallel()
+
+	in := sampleTorrents()
+	got := transmission.Top(in, 2)
+	require.Len(t, got, 2)
+
+	// Writing through the returned slice must not reach the input, so the
+	// truncated view is a copy rather than a reslice of the caller's backing
+	// array.
+	got[0].Name = "clobbered"
+
+	assert.Equal(t, []int64{1, 2, 3, 4, 5}, ids(in))
+	assert.Equal(t, "Ubuntu", in[0].Name)
+}
+
+func TestTopEmptyIsNonNil(t *testing.T) {
+	t.Parallel()
+
+	// Every transform returns a non-nil slice so the command layer can hand the
+	// result straight to JSON output without a nil check.
+	assert.NotNil(t, transmission.Top(nil, 5))
+	assert.Empty(t, transmission.Top(nil, 5))
+	assert.NotNil(t, transmission.Top([]transmission.Torrent{}, 0))
+}
+
+func TestTopAppliesAfterSort(t *testing.T) {
+	t.Parallel()
+
+	// Truncating last is what makes --top "the first N rows of the rendered
+	// order": the two largest torrents, not the first two the server sent.
+	sorted := transmission.SortTorrents(sampleTorrents(), transmission.SortSize, true)
+	assert.Equal(t, []int64{5, 4}, ids(transmission.Top(sorted, 2)))
+}
+
 func TestParseSortField(t *testing.T) {
 	t.Parallel()
 

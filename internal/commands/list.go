@@ -258,6 +258,7 @@ func NewListCmd() *cobra.Command {
 		searchFlag string
 		reverse    bool
 		fieldsFlag string
+		topFlag    int
 	)
 
 	cmd := &cobra.Command{
@@ -271,6 +272,14 @@ func NewListCmd() *cobra.Command {
 			filter, err := transmission.ParseFilter(filterFlag)
 			if err != nil {
 				return err
+			}
+
+			// Presence is the flag's Changed state, never a comparison against
+			// 0: 0 is the flag's own default and means unlimited, so only a
+			// value the caller actually typed can be out of range. Rejected
+			// here, before dialing, so a typo costs no round trip.
+			if cmd.Flags().Changed("top") && topFlag < 1 {
+				return fmt.Errorf("invalid --top %d: must be at least 1", topFlag)
 			}
 
 			defaults, err := resolveListDefaults(cmd)
@@ -301,11 +310,15 @@ func NewListCmd() *cobra.Command {
 			}
 
 			// Apply the in-memory transforms in a fixed order: status filter,
-			// then name search, then sort. This order is shared by every output
-			// mode (table, piped, JSON/jq).
+			// then name search, then sort, then truncation. This order is
+			// shared by every output mode (table, piped, JSON/jq). Truncation
+			// is last on purpose, so --top means "the first N rows of the
+			// rendered order" and composes with the three transforms above
+			// rather than racing them.
 			torrents = transmission.FilterByStatus(torrents, filter)
 			torrents = transmission.SearchByName(torrents, searchFlag)
 			torrents = transmission.SortTorrents(torrents, sortField, flagOr(cmd, "reverse", reverse, defaults.reverse))
+			torrents = transmission.Top(torrents, topFlag)
 
 			if jqExpr != "" {
 				return output.JQ(cmd.OutOrStdout(), jsonSlice(torrents), jqExpr)
@@ -328,6 +341,7 @@ func NewListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sortFlag, "sort", "queue", "sort by field (queue, name, added, size, progress, ratio, speed)")
 	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to torrents whose name contains this text (case-insensitive)")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "reverse the sort order")
+	cmd.Flags().IntVar(&topFlag, "top", 0, "show only the first N rows of the rendered order")
 	cmd.Flags().StringVar(&fieldsFlag, "fields", "", fmt.Sprintf("comma-separated columns to show, in order (%s)", strings.Join(allFieldKeys, ", ")))
 
 	return cmd

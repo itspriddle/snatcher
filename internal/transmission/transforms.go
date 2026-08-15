@@ -148,6 +148,27 @@ func SearchByName(torrents []Torrent, query string) []Torrent {
 	return out
 }
 
+// Top returns a new slice holding at most the first n torrents, preserving
+// input order. It is meant to be the last transform applied — after
+// FilterByStatus, SearchByName, and SortTorrents — so "the first n" means the
+// first n rows of the rendered order rather than of the server's own.
+//
+// A non-positive n means unlimited, so an unset --top is indistinguishable from
+// no truncation at all, and an n at or beyond the length returns everything
+// rather than erroring: asking for more rows than exist is a legitimate
+// question with a shorter answer. The input is never mutated and the result is
+// non-nil even when empty, so callers can rely on a stable slice.
+func Top(torrents []Torrent, n int) []Torrent {
+	if n <= 0 || n > len(torrents) {
+		n = len(torrents)
+	}
+
+	out := make([]Torrent, n)
+	copy(out, torrents)
+
+	return out
+}
+
 // SortField names a torrent attribute the list can be ordered by, used by the
 // --sort flag.
 type SortField string

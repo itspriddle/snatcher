@@ -710,3 +710,99 @@ func TestListConfiguredSortAppliesToStructuredOutput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, `"debian.iso"`+"\n"+`"ubuntu-24.04.iso"`, strings.TrimSpace(out))
 }
+
+// US-003 (M7): --top truncates the final rendered order, in every output mode.
+
+func TestListTopTruncatesRows(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath, "--top", "1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ubuntu-24.04.iso"}, listNames(t, out), "only the first row of the rendered order survives")
+}
+
+// TestListTopAtOrAboveResultSize pins the two boundaries: asking for exactly as
+// many rows as exist, and asking for more than exist, both render everything
+// rather than erroring.
+func TestListTopAtOrAboveResultSize(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	want := []string{"ubuntu-24.04.iso", "debian.iso"}
+
+	exact, _, err := runList(t, "--config", cfgPath, "--top", "2")
+	require.NoError(t, err)
+	assert.Equal(t, want, listNames(t, exact))
+
+	over, _, err := runList(t, "--config", cfgPath, "--top", "99")
+	require.NoError(t, err)
+	assert.Equal(t, want, listNames(t, over))
+}
+
+func TestListTopOnEmptyResult(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeEmptyListResponse)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath, "--top", "5")
+	require.NoError(t, err, "a --top larger than an empty result is not an error")
+	assert.Empty(t, out)
+}
+
+// TestListTopComposesWithSortAndReverse is the reason truncation is applied
+// last: "the 1 biggest torrent" must be the largest, not whichever torrent the
+// server happened to return first.
+func TestListTopComposesWithSortAndReverse(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	biggest, _, err := runList(t, "--config", cfgPath, "--sort", "size", "--reverse", "--top", "1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ubuntu-24.04.iso"}, listNames(t, biggest), "the 2 GiB torrent")
+
+	smallest, _, err := runList(t, "--config", cfgPath, "--sort", "size", "--top", "1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"debian.iso"}, listNames(t, smallest), "the 1 GiB torrent")
+}
+
+func TestListTopAppliesToStructuredOutput(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath, "--sort", "size", "--reverse", "--top", "1", "--json")
+	require.NoError(t, err)
+
+	var got []struct {
+		Name string `json:"name"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got, 1, "the JSON array is truncated too, not only the table")
+	assert.Equal(t, "ubuntu-24.04.iso", got[0].Name)
+
+	out, _, err = runList(t, "--config", cfgPath, "--sort", "size", "--reverse", "--top", "1", "--jq", ".[].name")
+	require.NoError(t, err)
+	assert.Equal(t, `"ubuntu-24.04.iso"`, strings.TrimSpace(out))
+}
+
+func TestListWithoutTopIsUnlimited(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ubuntu-24.04.iso", "debian.iso"}, listNames(t, out), "an absent --top truncates nothing")
+}
+
+// TestListTopBelowOneIsRejectedBeforeDial points --config at an empty config
+// file, so reaching dial would fail with "not configured". Getting the --top
+// error instead is what proves the validation runs before the server is dialed.
+func TestListTopBelowOneIsRejectedBeforeDial(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	_, _, err := runList(t, "--config", cfgPath, "--top", "0")
+	require.EqualError(t, err, "invalid --top 0: must be at least 1")
+
+	_, _, err = runList(t, "--config", cfgPath, "--top", "-3")
+	require.EqualError(t, err, "invalid --top -3: must be at least 1")
+}

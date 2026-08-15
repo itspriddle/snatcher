@@ -1109,6 +1109,24 @@ or
 .BR \-\-sort ", " \-\-reverse ", " client.list_sort ", and " client.list_reverse
 do apply to the structured paths \(em only the choice of columns is
 plaintext-only.
+.TP
+.BR \-\-top " " \fIn\fR
+Show only the first
+.I n
+rows of the final rendered order \(em that is, after
+.BR \-\-filter ", " \-\-search ", " \-\-sort ", and " \-\-reverse
+have been applied, so
+.B "\-\-sort size \-\-reverse \-\-top 10"
+is the ten largest torrents. Truncation applies to
+.BR \-\-json " and " \-\-jq
+output as well as plaintext, so a scripted consumer receives the same shortened
+set a human sees. Omitting the flag is unlimited;
+.I n
+must be at least 1. There is no
+.B client.*
+key for it \(em
+.B \-\-top
+is a per-invocation question, not a stored preference.
 .RE
 .IP
 Each of
@@ -2123,6 +2141,9 @@ $ snatcher torrent list \-\-fields id,name,ratio,up
 
 # search by name
 $ snatcher torrent list \-\-search ubuntu
+
+# the ten largest torrents
+$ snatcher torrent list \-\-sort size \-\-reverse \-\-top 10
 
 # names of torrents that are not finished, via jq
 $ snatcher torrent list \-\-jq '.[] | select(.done < 100) | .name'
