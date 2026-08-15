@@ -30,6 +30,23 @@ Run
 .B snatcher server add
 once to configure a server before using the other commands.
 .PP
+One command group,
+.BR "snatcher search" ,
+talks to
+.B Prowlarr
+rather than to Transmission. It searches the indexers a Prowlarr instance is
+configured with, lists those indexers and the torznab categories they use,
+hands a release back to Prowlarr to grab, and writes a release's
+.B .torrent
+file to this machine. A Prowlarr instance is registered as a server alias of
+its own with
+.BR "snatcher server add \-\-type prowlarr" ,
+and its API key lives in the same secret store a Transmission password does.
+Searching finds a release; putting one on
+.I this
+server is still
+.BR "snatcher torrent add" .
+.PP
 Every command that produces output renders in one of three modes with a fixed
 precedence:
 .BR \-\-jq " \(-> " \-\-json " \(-> plaintext."
@@ -2336,8 +2353,9 @@ selectors matched no torrents, a confirmation was refused, or at least one
 .B add
 source failed.
 .SH SECRETS
-A server's password is the only secret snatcher holds, and it never goes in the
-config file. Each server names the store its password lives in, chosen with
+A Transmission server's password and a Prowlarr instance's API key are the only
+secrets snatcher holds, and neither ever goes in the config file. Each server
+names the store its secret lives in, chosen with
 .B \-\-store
 at
 .B "snatcher server add"
@@ -2345,6 +2363,12 @@ time, saved as
 .B secret_store
 in the config file, and overridable for one invocation with
 .BR SNATCHER_SECRET_STORE .
+Everything below is written in terms of a password; a Prowlarr API key is
+stored, read, reported, warned about, and deleted through exactly the same
+paths, with
+.B SNATCHER_API_KEY
+standing in for
+.BR SNATCHER_PASSWORD .
 .TP
 .B keyring
 The operating system keyring (macOS Keychain, or the Secret Service on Linux),
@@ -2563,16 +2587,33 @@ store mode; the keyring never touches it.
 Non-secret configuration (a
 .B servers
 map of named server aliases, each with a
-.B url
-and
+.BR url ,
+a
 .BR username ,
+and an optional
+.B type
+of
+.B transmission
+or
+.BR prowlarr ;
 a
 .B default_server
-alias, and a
+alias and a
+.B default_prowlarr_server
+alias, one default per type; and a
 .B client
 object holding snatcher's own settings \(em see
 .BR "snatcher config" ),
-created with mode 0600 under a 0700 directory. The file is operator-owned and
+created with mode 0600 under a 0700 directory. Both Prowlarr keys are written
+only when they are needed: an absent
+.B type
+means
+.BR transmission ,
+and
+.B default_prowlarr_server
+appears only once a Prowlarr instance is registered, so a config file written
+before Prowlarr support round-trips through a save unchanged. The file is
+operator-owned and
 hand-editable: keys snatcher does not recognize, at either level, survive a
 rewrite untouched. Every write is atomic \(em the new content goes to a
 temporary file created with mode 0600 in the same directory, which is then
@@ -2587,14 +2628,14 @@ or any other command that saves. Falls back to
 .I ~/.config/snatcher/config.json
 when
 .B XDG_CONFIG_HOME
-is unset. Server passwords are never written to this file; it holds only the
-name of the store each server's password lives in
+is unset. Neither a server password nor a Prowlarr API key is ever written to
+this file; it holds only the name of the store each server's secret lives in
 .RB ( secret_store ).
 .TP
 .I $XDG_STATE_HOME/snatcher/secrets.json
 The
 .B file
-secret store: server passwords in
+secret store: server passwords and Prowlarr API keys in
 .BR plaintext ,
 as a JSON object keyed by server URL. Written atomically with mode 0600 under a
 0700 directory. Falls back to
@@ -2610,7 +2651,7 @@ reached.
 .PP
 In the default
 .B keyring
-store the password is in no file at all: it lives in the operating system
+store the secret is in no file at all: it lives in the operating system
 keyring (macOS Keychain or the Linux Secret Service), under the service name
 .B snatcher
 keyed by the server URL. See
@@ -2768,6 +2809,47 @@ $ snatcher torrent list \-\-sort queue
 # override an appearance setting for one invocation, without editing the file
 $ snatcher config list \-\-theme nord
 $ SNATCHER_NO_NERD_FONT=1 snatcher config get client.nerd_font
+.EE
+.SS "Search with Prowlarr"
+.EX
+# register a Prowlarr instance beside your Transmission server
+# (prompts once, hidden, for the API key)
+$ snatcher server add \-\-name prowlarr \-\-type prowlarr \(rs
+    \-\-url http://localhost:9696
+
+# read the API key from stdin instead of a prompt (scripting)
+$ printf '%s' "$PROWLARR_API_KEY" | snatcher server add \-\-name prowlarr \(rs
+    \-\-type prowlarr \-\-url http://localhost:9696 \-\-api\-key\-stdin
+
+# confirm it answers, and see both servers with their types
+$ snatcher server ping prowlarr
+$ snatcher server list
+
+# the indexer and category ids the filters below take
+$ snatcher search indexers
+$ snatcher search categories
+
+# search two indexers and one category, three pages deep
+$ snatcher search 'ubuntu 24.04' \-\-indexer 3 \-\-indexer 7 \(rs
+    \-\-category 2000 \-\-pages 3
+
+# every result's number, guid, and indexer id \(em the guid is what the exact
+# grab form below takes
+$ snatcher search 'ubuntu 24.04' \-\-jq '.[] | {index, guid, indexer_id}'
+
+# hand one release to Prowlarr's own download client, named exactly, with no
+# re-run of the search
+$ snatcher search grab \-\-guid 'abc123' \-\-indexer 3
+
+# ... or by the # the table showed, re-running the same query and filters
+$ snatcher search grab 'ubuntu 24.04' 2 \-\-indexer 3
+
+# write result 2's .torrent here instead, and add it to this server yourself
+$ snatcher search download 'ubuntu 24.04' 2 \-o ubuntu.torrent
+$ snatcher torrent add ubuntu.torrent
+
+# raw REST call, for anything the typed commands do not cover
+$ snatcher api \-\-prowlarr indexer \-\-jq '.[] | select(.enable) | .name'
 .EE
 .SS "Raw RPC calls"
 .EX

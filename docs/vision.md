@@ -68,10 +68,10 @@ top-level `speed` command and no alias for one.
 - [x] `snatcher torrent files update ...` - file priority / wanted
 - [x] `snatcher torrent rename ...` - `torrent-rename-path`
 - [x] `snatcher config get|set|list|unset` - snatcher's own settings
-- [ ] `snatcher search ["query"] ...` - search for torrents with Prowlarr
-    - [ ] `snatcher server add --type=search|prowlarr ...`  /  - set up prowlarr connection
-    - [ ] `snatcher api --search|--prowlarr ...` - raw API access to prowlarr search
-    - [ ] `--pages N` see if we can work needing to 'grab more' from prowlarr
+- [x] `snatcher search ["query"] ...` - search for torrents with Prowlarr. Shipped as a group that both runs a search of its own and carries `grab`, `download`, `indexers`, and `categories`, so those four words are shadowed as bare positional queries - `--query` is the documented escape, called out in `search --help`. Results keep Prowlarr's own order (no client-side sort, filter, or de-duplication) and are numbered from 1 in a `#` column that is also the `index` field in `--json`, so a human reading the table and a script reading JSON name a release the same way.
+    - [x] `snatcher server add --type=search|prowlarr ...`  /  - set up prowlarr connection. Shipped as `--type prowlarr` with no `search` synonym, plus `--api-key-stdin` beside `--password-stdin`; the API key goes to the same `keyring`/`file`/`none` store a password does, keyed by server URL. Each type gets its own default (`default_prowlarr_server`), so registering Prowlarr never shadows the Transmission server, and `SNATCHER_API_KEY` is scoped to Prowlarr aliases exactly as `SNATCHER_PASSWORD` is to Transmission ones.
+    - [x] `snatcher api --search|--prowlarr ...` - raw API access to prowlarr search. Shipped as `--prowlarr` only, taking a REST *path* rather than an RPC method (a bare `indexer` expands to `/api/v1/indexer`), with `-X`/`--method`, `-f`/`-F`/`--input` as query parameters for GET/DELETE and a JSON body otherwise, and the response body emitted raw rather than wrapped in Transmission's `result`/`arguments`/`tag` envelope.
+    - [x] `--pages N` see if we can work needing to 'grab more' from prowlarr. Shipped as N sequential requests stepping the offset by `--limit`, concatenated in order and stopping early on a short page. `--limit` is always sent so the offsets stay deterministic; an indexer that ignores paging is Prowlarr's problem to fix, not snatcher's to paper over.
 
 Sequenced in `docs/todo.md` (CLI) and `docs/tui-todo.md` (TUI).
 

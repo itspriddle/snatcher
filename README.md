@@ -3,14 +3,15 @@
 A modern, scriptable CLI for the Transmission BitTorrent client.
 
 `snatcher` talks to a Transmission server over its RPC interface and exposes
-every operation as a clean, composable command. Output is built for both humans
-(aligned tables on a terminal) and scripts (`--json` and `gh`-style `--jq`
-filters), and your server password never goes in the config file — by default
-it lives in the OS keyring.
+every operation as a clean, composable command. It also searches
+[Prowlarr](https://prowlarr.com)'s indexers, so finding a torrent and managing
+it happen in the same tool. Output is built for both humans (aligned tables on
+a terminal) and scripts (`--json` and `gh`-style `--jq` filters), and your
+server password never goes in the config file — by default it lives in the OS
+keyring.
 
-> **Status:** alpha. The CLI is functional and stable; the TUI and Prowlarr
-> search integration described in [`docs/vision.md`](docs/vision.md) are on the
-> roadmap.
+> **Status:** alpha. The CLI is functional and stable; the TUI described in
+> [`docs/vision.md`](docs/vision.md) is on the roadmap.
 
 ## Highlights
 
@@ -25,8 +26,15 @@ it lives in the OS keyring.
   Linux Secret Service) unless you explicitly opt in to the plaintext file
   store. Server-derived strings are sanitized of terminal escape sequences on
   human output.
+- **Prowlarr search.** Register a Prowlarr instance beside your Transmission
+  servers (`server add --type prowlarr`) and search its indexers from the
+  command line — filtered by indexer and category, paged, rendered as a table
+  or as JSON. Hand a release back to Prowlarr to grab, or write its `.torrent`
+  locally. The API key lives in the same secret store as a password, and never
+  reaches stdout, a log line, or an error message.
 - **Power-user escape hatch.** `snatcher api` issues arbitrary RPC methods,
-  modeled on `gh api`.
+  modeled on `gh api`; `snatcher api --prowlarr <path>` does the same against
+  Prowlarr's REST API.
 
 ## Install
 
@@ -82,7 +90,11 @@ snatcher torrent list
 | `torrent queue top\|up\|down\|bottom` | Reorder torrents in the queue |
 | `torrent move` (`mv`) `<id\|hash> <location>` | Change a torrent's download location |
 | `torrent remove` (`rm`) | Remove torrents (and optionally their data) |
+| `search <query>` | Search a Prowlarr instance's indexers |
+| `search grab\|download` | Hand a result to Prowlarr's download client, or write its `.torrent` here |
+| `search indexers\|categories` | List the indexer and torznab category ids the filters take |
 | `api <method>` | Issue an arbitrary Transmission RPC method |
+| `api --prowlarr <path>` | Issue an arbitrary Prowlarr REST call |
 | `version` | Print version information |
 | `completion` | Generate shell completion (bash, zsh, fish, PowerShell) |
 
@@ -115,21 +127,28 @@ snatcher can hold an inventory of named servers and target one per invocation.
 
 - **Config (non-secret):** JSON at `$XDG_CONFIG_HOME/snatcher/config.json`
   (falls back to `~/.config/snatcher/config.json`), holding a `servers` map of
-  named aliases (each with a `url` and `username`) plus a `default_server`
-  alias. Register servers with `server add --name <alias>`; an omitted `--name`
-  defaults to the URL host. Legacy single-server configs are migrated on read.
-  The config file is trusted, operator-owned input.
+  named aliases (each with a `url`, a `username`, and an optional `type` of
+  `transmission` or `prowlarr`) plus a `default_server` and a
+  `default_prowlarr_server` — one default per type, so a Prowlarr instance
+  never shadows your Transmission server. Register servers with
+  `server add --name <alias>`; an omitted `--name` defaults to the URL host.
+  Legacy single-server configs are migrated on read. The config file is
+  trusted, operator-owned input.
 - **Password (secret):** kept in a secret store chosen per server with
   `server add --store`. The default is `keyring` — the OS keyring under the
   service name `snatcher`, keyed by server URL, never written to disk. `file`
   is an opt-in **plaintext** store at `$XDG_STATE_HOME/snatcher/secrets.json`
   (mode 0600, 0700 directory) for machines with no OS keyring; it is less safe,
   and `keyring` never falls back to it. `none` stores nothing at all.
+- **Prowlarr API key (secret):** the same three stores, keyed by the same
+  server URL, written by `server add --type prowlarr` from a hidden prompt or
+  `--api-key-stdin`.
 
 Every command that connects to a server accepts `--server <alias>` to pick one
 of your configured servers; `snatcher server default <alias>` sets the one used
-when `--server` is omitted. Selection precedence is `--server` flag >
-`SNATCHER_SERVER` env var > `default_server`.
+when `--server` is omitted, inferring from the alias which of the two defaults
+to move. Selection precedence is `--server` flag > `SNATCHER_SERVER` env var >
+`default_server` (or `default_prowlarr_server` for the `search` commands).
 
 On a headless box with no OS secret store reachable (no D-Bus session, so
 nothing answers the Secret Service), read commands keep working and warn on
@@ -140,8 +159,10 @@ re-run with `--store=file` or `--store=none`. See `SECRETS` in
 
 Useful environment variables: `SNATCHER_SERVER`, `SNATCHER_SECRET_STORE`
 (`keyring` | `file` | `none`, overriding the per-server `secret_store`),
-`SNATCHER_PASSWORD` (a read-only per-invocation override that beats every
-store), `NO_COLOR`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`.
+`SNATCHER_PASSWORD` and `SNATCHER_API_KEY` (read-only per-invocation overrides
+that beat every store — the first applies to Transmission servers only, the
+second to Prowlarr instances only), `NO_COLOR`, `XDG_CONFIG_HOME`,
+`XDG_STATE_HOME`.
 
 ## Examples
 
@@ -175,6 +196,32 @@ snatcher server reset peer-port encryption
 snatcher api session-get --jq '.arguments.version'
 ```
 
+### Search with Prowlarr
+
+```sh
+# Register a Prowlarr instance beside your Transmission server
+# (prompts once, hidden, for the API key)
+snatcher server add --name prowlarr --type prowlarr --url http://localhost:9696
+
+# The indexer and category ids the filters take
+snatcher search indexers
+snatcher search categories
+
+# Search two indexers and one category, three pages deep
+snatcher search 'ubuntu 24.04' --indexer 3 --indexer 7 --category 2000 --pages 3
+
+# Every result's number, guid, and indexer id
+snatcher search 'ubuntu 24.04' --jq '.[] | {index, guid, indexer_id}'
+
+# Hand one release to Prowlarr's own download client, named exactly by guid
+# (grab means "tell Prowlarr to grab it", not "add it to this server")
+snatcher search grab --guid 'abc123' --indexer 3
+
+# Or write result 2's .torrent here and add it to this server yourself
+snatcher search download 'ubuntu 24.04' 2 -o ubuntu.torrent
+snatcher torrent add ubuntu.torrent
+```
+
 ## Development
 
 The inner loop is **edit → `make check` → fix → repeat → push.** `make check`
@@ -198,8 +245,7 @@ vision and Transmission RPC references.
 
 ## Roadmap
 
-- TUI (windowed layout: torrents, settings, search)
-- Prowlarr / Torznab search integration
+- TUI (windowed layout: torrents, Prowlarr search, settings)
 
 See [`docs/vision.md`](docs/vision.md) for the full picture.
 

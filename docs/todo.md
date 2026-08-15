@@ -28,7 +28,7 @@ one. The "unblocks" line on each milestone says which pane is waiting.
    settings window is built, not after~~ **done**
 4. ~~**M5** `server bandwidth`~~, ~~**M6** `torrent label`~~, and ~~**M7** small
    helpers~~ **done** - cheap, each unblocked a keybinding
-5. **M8** Prowlarr - the only genuinely new backend; largest by far
+5. ~~**M8** Prowlarr - the only genuinely new backend; largest by far~~ **done**
 6. **M9** hygiene pass before the TUI starts
 
 ---
@@ -366,7 +366,7 @@ actions is flag wiring rather than a redesign.
 
 ---
 
-## M8. Prowlarr / search
+## M8. Prowlarr / search - **done**
 
 **Unblocks:** the entire TUI Prowlarr window (TUI M8). The only genuinely new
 backend in this list - budget accordingly.
@@ -438,6 +438,47 @@ lands in the wrong place.
 
 **Done when:** a search can be run, paged, inspected as JSON, grabbed, and
 saved locally, with indexers and categories enumerable for the TUI dropdowns.
+
+**Shipped.** All of it: `internal/prowlarr` (transport -> typed client ->
+domain types, with its own `ErrAuth`/`ErrUnreachable`/`ErrServer` and no import
+of `internal/transmission` in either direction), a `type` on `config.Server`
+plus a `default_prowlarr_server`, `server add --type prowlarr
+--api-key-stdin`, the `snatcher search` group (bare search, `grab`, `download`,
+`indexers`, `categories`), and `snatcher api --prowlarr`. No Transmission
+behavior changed, and a config file written before this milestone still loads,
+resolves, and round-trips byte-identically - pinned by a test, not by
+inspection.
+
+Five things differ from the sketch above. **`search` is a group that also runs
+a search of its own**, so `grab`, `download`, `indexers`, and `categories`
+shadow those four words as bare positional queries; `--query` is the escape,
+documented in `search --help` where the confusion happens. **The search type
+flag is `--search-type`, not `--type`** - `--type` was already spoken for by
+`server add` - and its values are `search`, `tvsearch`, `movie`, `music`,
+`book`. **Secrets are scoped by server type**: `SNATCHER_API_KEY` applies only
+to a Prowlarr alias and `SNATCHER_PASSWORD` only to a Transmission one, and
+`dial`/`dialProwlarr` refuse a server of the wrong type *before* any secret
+store is opened. **Each type carries its own default**: `server default
+<alias>` infers which one to move from the alias itself (no new flag), and
+`server remove` repoints only the default belonging to the removed server's
+type. **`server list` grew a `TYPE` column** in position 2 - the one deliberate
+break in the tab-separated contract, called out in the man page's OUTPUT
+section, with an additive `type` key on the JSON side.
+
+Two safety rules came out of the download path and are worth carrying into the
+TUI. The API key rides only to Prowlarr's own origin and is stripped by hand at
+any redirect that leaves it - Go copies custom headers across a cross-host
+redirect, and a test proves the leak returns the moment that line is deleted.
+And `search download` derives its filename from the release **title** only,
+never from `Content-Disposition`, sanitized to one path segment, refusing to
+overwrite, written 0600 through a temp file and a rename.
+
+One limitation is on record rather than hidden: **`--guid` can grab but cannot
+download.** A guid plus an indexer id is a reference, not a description, and
+Prowlarr resolves it only in the act of grabbing, so `search download --guid`
+is accepted, echoed, and then refused with the positional form named. The
+alternative - POSTing the reference to `/api/v1/search` to learn the download
+url - *is* the grab, which is the wrong verb for a local write.
 
 ---
 
