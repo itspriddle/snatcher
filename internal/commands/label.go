@@ -114,6 +114,16 @@ func NewLabelCmd() *cobra.Command {
 			"would change nothing is sent at all. Torrents that do change are " +
 			"grouped by their resulting labels, so a selection landing on one set " +
 			"costs one write however many torrents it names.\n\n" +
+			"That grouping is also why the write is not atomic. Resolving the " +
+			"selector is all-or-nothing: a token that matched no torrent is " +
+			"caught before anything is sent, so a typo never half-applies a " +
+			"batch. The writes themselves are not — a selection that lands on " +
+			"more than one resulting label set is sent as one request per set, " +
+			"and a failure partway through leaves the groups already sent " +
+			"applied while the rest are untouched. Recovering is just re-running " +
+			"the same command: adding a label a torrent already has changes " +
+			"nothing, so the groups that did land are skipped the second time " +
+			"round.\n\n" +
 			"The labels are read, merged locally, and written back — " +
 			"Transmission's RPC has no compare-and-set, so another client " +
 			"changing a torrent's labels between that read and the write loses, " +
@@ -154,6 +164,16 @@ func NewLabelCmd() *cobra.Command {
 			"grouped by their resulting labels, so a selection landing on one set " +
 			"costs one write however many torrents it names. Removing a torrent's " +
 			"last label leaves it with no labels at all.\n\n" +
+			"That grouping is also why the write is not atomic. Resolving the " +
+			"selector is all-or-nothing: a token that matched no torrent is " +
+			"caught before anything is sent, so a typo never half-applies a " +
+			"batch. The writes themselves are not — a selection that lands on " +
+			"more than one resulting label set is sent as one request per set, " +
+			"and a failure partway through leaves the groups already sent " +
+			"applied while the rest are untouched. Recovering is just re-running " +
+			"the same command: removing a label a torrent no longer has changes " +
+			"nothing, so the groups that did land are skipped the second time " +
+			"round.\n\n" +
 			"The labels are read, filtered locally, and written back — " +
 			"Transmission's RPC has no compare-and-set, so another client " +
 			"changing a torrent's labels between that read and the write loses, " +

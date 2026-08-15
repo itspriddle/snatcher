@@ -1407,6 +1407,17 @@ would change nothing is sent at all. Torrents that do change are grouped by
 their resulting labels and written one group at a time, so a selection landing
 on a single resulting set costs one request however many torrents it names.
 .IP
+That grouping is also why the write is
+.BR "not atomic" .
+Resolving the selector is all-or-nothing: a token that matched no torrent is
+caught before anything is sent, so a typo never half-applies a batch. The
+writes themselves are not \(em a selection that lands on more than one
+resulting label set is sent as one request per set, and a failure partway
+through leaves the groups already sent applied while the rest are untouched.
+Recovering is just re-running the same command: adding a label a torrent
+already has changes nothing, so the groups that did land are skipped the second
+time round.
+.IP
 The labels are read, merged locally, and written back. Transmission's RPC has
 no compare-and-set, so another client changing a torrent's labels between that
 read and the write loses, and this command does not guard against it. After the
@@ -1472,6 +1483,17 @@ grouped by their resulting labels and written one group at a time, so a
 selection landing on a single resulting set costs one request however many
 torrents it names. Removing a torrent's last label leaves it with no labels at
 all.
+.IP
+That grouping is also why the write is
+.BR "not atomic" .
+Resolving the selector is all-or-nothing: a token that matched no torrent is
+caught before anything is sent, so a typo never half-applies a batch. The
+writes themselves are not \(em a selection that lands on more than one
+resulting label set is sent as one request per set, and a failure partway
+through leaves the groups already sent applied while the rest are untouched.
+Recovering is just re-running the same command: removing a label a torrent no
+longer has changes nothing, so the groups that did land are skipped the second
+time round.
 .IP
 The labels are read, filtered locally, and written back. Transmission's RPC has
 no compare-and-set, so another client changing a torrent's labels between that
