@@ -101,9 +101,9 @@ Sequenced in `docs/todo.md` (CLI) and `docs/tui-todo.md` (TUI).
     - show torrents with errors?
     - show old torrents with low seeding?
     - top X largest torrents?
-- [ ] `snatcher torrent verify --all-with-errors` - verify all torrents with error status
+- [x] `snatcher torrent verify --all-with-errors` - verify all torrents with error status. Shipped with a counted `[y/N]` gate on **both** bulk forms (`--all` too, skippable with `--yes`/`-y`) - a full-session re-hash earns a prompt for its blast radius, not its reversibility. An explicit id/hash selection is never prompted.
 - [x] `snatcher torrent label list|add|remove|set [id|hash]... [--all] [--label name]...` - manage labels for torrent(s). Shipped with `ls`/`rm` as aliases of `list`/`remove` (matching every other pair in the CLI), and labels on a repeatable `--label` flag rather than positional - positional labels are ambiguous next to a multi-torrent selector.
-- [ ] `snatcher torrent ls --top=N` - list top N torrents by seeding size/etc
+- [x] `snatcher torrent ls --top=N` - list top N torrents by seeding size/etc. Shipped as a flag-only truncation of the *final rendered order* (applied after `--filter`/`--search`/`--sort`/`--reverse`), so "the biggest N" is `--sort size --reverse --top N` rather than a second ranking vocabulary. It truncates `--json`/`--jq` too, and has no `client.*` key - it is a per-question flag, not a stored preference.
 
 ## TUI
 

@@ -26,8 +26,8 @@ one. The "unblocks" line on each milestone says which pane is waiting.
 2. **M2**, **M3** detail-pane surface + rename - unblocks TUI detail pane
 3. ~~**M4** client config - unblocks TUI settings window, needed before the
    settings window is built, not after~~ **done**
-4. ~~**M5** `server bandwidth`~~ and ~~**M6** `torrent label`~~ **done**; **M7**
-   small helpers - cheap, each unblocks a keybinding
+4. ~~**M5** `server bandwidth`~~, ~~**M6** `torrent label`~~, and ~~**M7** small
+   helpers~~ **done** - cheap, each unblocked a keybinding
 5. **M8** Prowlarr - the only genuinely new backend; largest by far
 6. **M9** hygiene pass before the TUI starts
 
@@ -321,7 +321,7 @@ nothing is sent.
 
 ---
 
-## M7. Small list/verify flags
+## M7. Small list/verify flags - **done**
 
 **Unblocks:** TUI filter groups ("error" bulk verify) and `list --top`-style
 views.
@@ -333,6 +333,36 @@ views.
   `--sort`/`--reverse`, so define it as "first N rows of the rendered order"
 
 Both are pure transforms over `internal/transmission`; the cheapest items here.
+
+**Shipped.** No RPC-layer code changed and no wire field was added: the errored
+set is the existing `transmission.FilterError` and `--top` is a new
+`transmission.Top` beside `FilterByStatus`/`SearchByName`/`SortTorrents`.
+
+Three things differ from the sketch above. **The confirmation gate landed on
+`verify --all` as well**, not only on the new flag - gating the narrower
+selection while leaving "re-hash everything" one keystroke away had the blast
+radius backwards. `verify` gained `--yes`/`-y` to skip it, an explicit id/hash
+selection is never prompted, and the gate is skipped at a resolved count of 0.
+That makes a non-interactive `verify --all` a **breaking change**: it now fails
+with `refusing to verify N torrents without confirmation; pass --yes to proceed`
+until `--yes` is added, which the man page states and the release notes should
+repeat. **`verify` now lists before it verifies** on every path, which the
+errored set requires and which also means an unmatched id aborts before a wasted
+RPC call rather than after it; an `--all-with-errors` run that matches nothing
+issues no `VerifyTorrents` at all, exits 0, and prints `No torrents with errors.`
+(`{"action":"verify","count":0,"torrents":[]}` under `--json`). **`--top`
+truncates last**, after filter/search/sort, so it means "the first N rows of the
+rendered order" and composes rather than competing with `--sort`/`--reverse`; it
+applies to `--json`/`--jq` as well as plaintext, and an explicit value below 1 is
+rejected before dialing. Presence is `Changed("top")`, never a `!= 0` compare, so
+0 stays the flag's own "unlimited" default.
+
+Two seams came out of it for later reuse: `confirmGate` in
+`internal/commands/mutate.go` is now the single home of the "prompt on a TTY,
+refuse when piped" check (`remove`, `rename`, `verify`), and `filterSelection`
+turns a status filter into an id-based `Selector`, so extending `--filter`-style
+bulk selection to `start`/`stop`/`remove` for the TUI's filter-pane group
+actions is flag wiring rather than a redesign.
 
 ---
 
