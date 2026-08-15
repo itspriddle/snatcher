@@ -92,6 +92,41 @@ func NewLabelCmd() *cobra.Command {
 		},
 	}
 
+	cmd.AddCommand(newLabelWriteCmd(labelWriteSpec{
+		name:  "add",
+		short: "Add labels to torrents",
+		long: "Add the given labels to the selected torrents, keeping the labels " +
+			"each torrent already has.\n\n" +
+			"Select torrents by numeric id, 40-character SHA1 hash, or --all. " +
+			"At least one selector is required; a bare 'snatcher torrent label " +
+			"add' with no selector is an error, not a no-op. At least one --label " +
+			"is required too — there is no coherent 'add nothing', so use " +
+			"'snatcher torrent label set' to clear a selection.\n\n" +
+			"--label may be repeated, and each occurrence is one label: the " +
+			"value is never split on commas, and a label containing a comma (or " +
+			"one that is empty once surrounding whitespace is trimmed) is " +
+			"rejected before anything is sent. Matching is exact and " +
+			"case-sensitive, so adding 'Foo' to a torrent holding 'foo' leaves it " +
+			"with both. The set that gets written is de-duplicated and sorted, so " +
+			"the order the labels were given in is not preserved.\n\n" +
+			"Adding a label a torrent already has changes nothing for that " +
+			"torrent: it is left out of the write entirely, and when no torrent " +
+			"would change nothing is sent at all. Torrents that do change are " +
+			"grouped by their resulting labels, so a selection landing on one set " +
+			"costs one write however many torrents it names.\n\n" +
+			"The labels are read, merged locally, and written back — " +
+			"Transmission's RPC has no compare-and-set, so another client " +
+			"changing a torrent's labels between that read and the write loses, " +
+			"and this command does not guard against it. After the write the " +
+			"labels are re-read from the server and printed in the same columns " +
+			"as 'snatcher torrent label list'.",
+		action:      "label-add",
+		labelUsage:  "label to add, keeping the torrent's existing labels (repeatable)",
+		noLabelsErr: "nothing to add: provide --label",
+		merge: func(current, requested []string) []string {
+			return slices.Concat(current, requested)
+		},
+	}))
 	cmd.AddCommand(newLabelListCmd())
 	cmd.AddCommand(newLabelWriteCmd(labelWriteSpec{
 		name:  "set",

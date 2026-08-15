@@ -1366,6 +1366,66 @@ Also available, but not shown by default:
 .BR hash .
 .RE
 .TP
+.B snatcher torrent label add \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Add the given labels to the selected torrents,
+.B keeping the labels each torrent already has.
+Select torrents by numeric id, 40-character SHA1 hash, or
+.BR \-\-all ;
+at least one selector is required, so a bare
+.B snatcher torrent label add
+with no selector is an error, not a no-op. At least one
+.B \-\-label
+is required too \(em there is no coherent "add nothing", so clearing a
+selection is
+.BR "snatcher torrent label set" 's
+job. No confirmation is asked for, even under
+.BR \-\-all .
+.IP
+.B \-\-label
+may be repeated, and each occurrence is exactly one label: the value is never
+split on commas. A label is trimmed of surrounding whitespace, and one that is
+empty afterwards, or that contains a comma, is rejected before anything is
+sent. Matching is exact and case-sensitive, so adding
+.B Foo
+to a torrent holding
+.B foo
+leaves it with both. The set that gets written is de-duplicated and sorted
+byte-wise, so the order the labels were given in is not preserved.
+.IP
+Adding a label a torrent already has
+.B changes nothing
+for that torrent: it is left out of the write entirely, and when no torrent
+would change nothing is sent at all. Torrents that do change are grouped by
+their resulting labels and written one group at a time, so a selection landing
+on a single resulting set costs one request however many torrents it names.
+.IP
+The labels are read, merged locally, and written back. Transmission's RPC has
+no compare-and-set, so another client changing a torrent's labels between that
+read and the write loses, and this command does not guard against it. After the
+write the labels are re-read from the server and printed in the same columns as
+.BR "snatcher torrent label list" .
+With
+.B \-\-json
+the output is the mutation contract \(em
+.BR action ", " count ", and " torrents ,
+where each torrent additionally carries its post-write
+.BR labels ,
+always an array. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Add the labels to every torrent.
+.TP
+.BR \-\-label " " \fIname\fR
+Label to add, keeping the torrent's existing labels. May be repeated. Required.
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order. The default set is
+.BR id ", " name ", " labels .
+Also available, but not shown by default:
+.BR hash .
+.RE
+.TP
 .B snatcher torrent label set \fR[\fIoptions\fR] [\fIid | hash\fR]...
 Replace the labels on the selected torrents with the labels given. Select
 torrents by numeric id, 40-character SHA1 hash, or

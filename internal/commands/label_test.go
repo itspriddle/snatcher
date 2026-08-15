@@ -953,3 +953,339 @@ func TestMutationTorrentLabelsOmittedByOtherCommands(t *testing.T) {
 	require.Len(t, got.Torrents, 1)
 	assert.Nil(t, got.Torrents[0].Labels)
 }
+
+// bespokeLabelAddedResponse is the post-write torrent-get payload for a server
+// that has just had "archive" added to torrent 1's existing labels.
+const bespokeLabelAddedResponse = `{
+	"arguments": {"torrents": [
+		{"id": 1, "hashString": "` + infoHash1 + `", "name": "ubuntu-24.04.iso", "labels": ["archive", "hd", "movies"]},
+		{"id": 2, "hashString": "` + infoHash2 + `", "name": "debian.iso"},
+		{"id": 3, "hashString": "` + infoHash3 + `", "name": "fedora.iso", "labels": ["linux"]}
+	]},
+	"result": "success",
+	"tag": 1
+}`
+
+// jsonrpcLabelAddedResponse is the same post-write payload under the JSON-RPC
+// 2.0 scheme.
+const jsonrpcLabelAddedResponse = `{
+	"jsonrpc": "2.0",
+	"result": {"torrents": [
+		{"id": 1, "hash_string": "` + infoHash1 + `", "name": "ubuntu-24.04.iso", "labels": ["archive", "hd", "movies"]},
+		{"id": 2, "hash_string": "` + infoHash2 + `", "name": "debian.iso"},
+		{"id": 3, "hash_string": "` + infoHash3 + `", "name": "fedora.iso", "labels": ["linux"]}
+	]},
+	"id": 1
+}`
+
+// bespokeLabelSharedResponse holds two torrents carrying identical labels, so a
+// single added label lands both on the same resulting set — the one-bucket,
+// one-write case.
+const bespokeLabelSharedResponse = `{
+	"arguments": {"torrents": [
+		{"id": 1, "hashString": "` + infoHash1 + `", "name": "ubuntu-24.04.iso", "labels": ["hd"]},
+		{"id": 2, "hashString": "` + infoHash2 + `", "name": "debian.iso", "labels": ["hd"]}
+	]},
+	"result": "success",
+	"tag": 1
+}`
+
+// TestLabelAddPreservesExistingLabels is the story's headline behavior, on both
+// wire schemes: the added label joins the torrent's existing ones in the written
+// set rather than replacing them, and the rendered rows come from the re-read.
+func TestLabelAddPreservesExistingLabels(t *testing.T) {
+	cases := []struct {
+		name      string
+		rpcVer    string
+		listBody  string
+		afterBody string
+	}{
+		{"bespoke", "", bespokeLabelResponse, bespokeLabelAddedResponse},
+		{"jsonrpc", "6.0.0", jsonrpcLabelResponse, jsonrpcLabelAddedResponse},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := labelStubConfigPath(t, &labelStub{
+				rpcVersion:    tc.rpcVer,
+				listBody:      tc.listBody,
+				postWriteBody: tc.afterBody,
+			})
+			defer closeSrv()
+
+			out, _, err := runLabel(t, "add", "--config", cfgPath, "1", "--label", "archive")
+			require.NoError(t, err)
+
+			bodies := labelSetBodies(stub)
+			require.Len(t, bodies, 1, "one resulting label set is one write")
+
+			args := labelSetBody(t, bodies[0])
+			assert.Equal(t, []int64{1}, args.IDs)
+			assert.Equal(t, []string{"archive", "hd", "movies"}, args.Labels,
+				"the torrent's existing labels survive the write")
+
+			rows := labelRows(t, out)
+			require.Len(t, rows, 1)
+			assert.Equal(t, []string{"1", "ubuntu-24.04.iso", "archive,hd,movies"}, rows[0])
+
+			assert.Len(t, stub.bodies("torrent-get", "torrent_get"), 2,
+				"one read to compute the merge, one to report it")
+		})
+	}
+}
+
+// TestLabelAddToTorrentWithNoLabels covers the nil-labels path: a torrent whose
+// payload omits the key entirely still merges into a plain one-element set.
+func TestLabelAddToTorrentWithNoLabels(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "add", "--config", cfgPath, "2", "--label", "archive")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 1)
+
+	args := labelSetBody(t, bodies[0])
+	assert.Equal(t, []int64{2}, args.IDs)
+	assert.Equal(t, []string{"archive"}, args.Labels)
+}
+
+// TestLabelAddDuplicateIssuesNoWrite proves idempotence by request count: adding
+// a label the torrent already has sends nothing at all, and the rows still
+// render.
+func TestLabelAddDuplicateIssuesNoWrite(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "add", "--config", cfgPath, "1", "--label", "hd")
+	require.NoError(t, err)
+
+	assert.Empty(t, labelSetBodies(stub), "a redundant add is not written")
+
+	rows := labelRows(t, out)
+	require.Len(t, rows, 1, "the rows still render")
+	assert.Equal(t, []string{"1", "ubuntu-24.04.iso", "hd,movies"}, rows[0])
+}
+
+// TestLabelAddMixedSelectionWritesOnlyChanged covers a selection where one
+// torrent already has the label and one does not: only the one that changes is
+// named in the write.
+func TestLabelAddMixedSelectionWritesOnlyChanged(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "add", "--config", cfgPath, "1", "2", "--label", "hd")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 1, "only the changing torrent is written")
+
+	args := labelSetBody(t, bodies[0])
+	assert.Equal(t, []int64{2}, args.IDs)
+	assert.Equal(t, []string{"hd"}, args.Labels)
+}
+
+// TestLabelAddGroupsByResultingSet pins the grouped write: three torrents
+// holding three different label sets land on three distinct resulting sets, so
+// three writes are issued, one per set, in key-sorted (deterministic) order.
+func TestLabelAddGroupsByResultingSet(t *testing.T) {
+	cases := []struct {
+		name     string
+		rpcVer   string
+		listBody string
+	}{
+		{"bespoke", "", bespokeLabelResponse},
+		{"jsonrpc", "6.0.0", jsonrpcLabelResponse},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := labelConfigPath(t, tc.rpcVer, tc.listBody)
+			defer closeSrv()
+
+			_, _, err := runLabel(t, "add", "--config", cfgPath, "--all", "--label", "new")
+			require.NoError(t, err)
+
+			bodies := labelSetBodies(stub)
+			require.Len(t, bodies, 3, "one write per distinct resulting label set")
+
+			// Buckets are written in NUL-joined key order: "hd\x00movies\x00new"
+			// then "linux\x00new" then "new".
+			want := []labelSetArgs{
+				{IDs: []int64{1}, Labels: []string{"hd", "movies", "new"}},
+				{IDs: []int64{3}, Labels: []string{"linux", "new"}},
+				{IDs: []int64{2}, Labels: []string{"new"}},
+			}
+
+			for i, expected := range want {
+				args := labelSetBody(t, bodies[i])
+				assert.Equal(t, expected.IDs, args.IDs, "request %d targets the right torrent", i)
+				assert.Equal(t, expected.Labels, args.Labels, "request %d writes the right set", i)
+			}
+		})
+	}
+}
+
+// TestLabelAddOneResultingSetIsOneWrite covers the common case: torrents that
+// all land on the same resulting set are a single bucket, so however many are
+// selected, one request is sent.
+func TestLabelAddOneResultingSetIsOneWrite(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelSharedResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "add", "--config", cfgPath, "--all", "--label", "movies")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 1, "one resulting label set is one write, however many torrents")
+
+	args := labelSetBody(t, bodies[0])
+	assert.Equal(t, []int64{1, 2}, args.IDs)
+	assert.Equal(t, []string{"hd", "movies"}, args.Labels)
+}
+
+// TestLabelAddIsCaseSensitive pins Decision 3 on the merge: "HD" does not fold
+// into an existing "hd", so the torrent ends up holding both.
+func TestLabelAddIsCaseSensitive(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "add", "--config", cfgPath, "1", "--label", "HD")
+	require.NoError(t, err)
+
+	bodies := labelSetBodies(stub)
+	require.Len(t, bodies, 1)
+	assert.Equal(t, []string{"HD", "hd", "movies"}, labelSetBody(t, bodies[0]).Labels)
+}
+
+// TestLabelAddRequiresLabels covers the one place add and set diverge: there is
+// no coherent "add nothing", so a missing --label is an error rather than a
+// clear, and it is returned before anything is dialed.
+func TestLabelAddRequiresLabels(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	_, _, err := runLabel(t, "add", "--config", cfgPath, "1")
+	require.Error(t, err)
+	assert.Equal(t, "nothing to add: provide --label", err.Error())
+
+	assert.Empty(t, stub.bodies("torrent-get", "torrent_get", "torrent-set", "torrent_set"),
+		"a missing --label is rejected before any round-trip")
+}
+
+// TestLabelAddRejectsInvalidLabels re-runs the shared validation rules on add,
+// each asserting that nothing at all reached the wire.
+func TestLabelAddRejectsInvalidLabels(t *testing.T) {
+	cases := []struct {
+		name  string
+		label string
+		want  string
+	}{
+		{"empty", "", `invalid label "": must not be empty`},
+		{"whitespace", "  ", `invalid label "  ": must not be empty`},
+		{"comma", "hd,movies", `invalid label "hd,movies": must not contain a comma`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+			defer closeSrv()
+
+			_, _, err := runLabel(t, "add", "--config", cfgPath, "1", "--label", tc.label)
+			require.Error(t, err)
+			assert.Equal(t, tc.want, err.Error(), "the error names the offending argument")
+
+			assert.Empty(t, stub.bodies("torrent-get", "torrent_get", "torrent-set", "torrent_set"),
+				"a bad label is rejected before any round-trip")
+		})
+	}
+}
+
+func TestLabelAddJSON(t *testing.T) {
+	cfgPath, _, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelAddedResponse,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "add", "--config", cfgPath, "1", "--label", "archive", "--json")
+	require.NoError(t, err)
+
+	var got mutationResult
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+
+	assert.Equal(t, "label-add", got.Action)
+	assert.Equal(t, 1, got.Count)
+	require.Len(t, got.Torrents, 1)
+	assert.Equal(t, int64(1), got.Torrents[0].ID)
+	require.NotNil(t, got.Torrents[0].Labels)
+	assert.Equal(t, []string{"archive", "hd", "movies"}, *got.Torrents[0].Labels,
+		"the reported labels are the server's post-write view")
+}
+
+// TestLabelAddJQWinsOverJSON pins the fixed output precedence on add too.
+func TestLabelAddJQWinsOverJSON(t *testing.T) {
+	cfgPath, _, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody:      bespokeLabelResponse,
+		postWriteBody: bespokeLabelAddedResponse,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "add", "--config", cfgPath, "1", "--label", "archive",
+		"--json", "--jq", ".action")
+	require.NoError(t, err)
+
+	assert.Equal(t, `"label-add"`, strings.TrimSpace(out))
+}
+
+// TestLabelAddNothingMatchedWritesNothing proves selector resolution happens
+// before any write, so a typo'd id never half-applies a batch.
+func TestLabelAddNothingMatchedWritesNothing(t *testing.T) {
+	cfgPath, stub, closeSrv := labelConfigPath(t, "", bespokeLabelResponse)
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "add", "--config", cfgPath, "99", "--label", "archive")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no torrents matched: 99")
+	assert.Empty(t, out)
+
+	assert.Empty(t, labelSetBodies(stub), "nothing is written when no selector matched")
+}
+
+func TestLabelAddWriteFailureWrapsServerURL(t *testing.T) {
+	cfgPath, stub, closeSrv := labelStubConfigPath(t, &labelStub{
+		listBody: bespokeLabelResponse,
+		failSet:  true,
+	})
+	defer closeSrv()
+
+	out, _, err := runLabel(t, "add", "--config", cfgPath, "1", "--label", "archive")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connecting to ")
+	assert.Empty(t, out, "nothing is rendered on a write failure")
+
+	require.Len(t, labelSetBodies(stub), 1, "the failure is the write itself")
+}
+
+// TestLabelAddRegistersFlags pins add's flag surface, which matches set's:
+// --label is repeatable (a stringArray, not a comma-splitting stringSlice), and
+// the persistent root flags are not re-declared locally.
+func TestLabelAddRegistersFlags(t *testing.T) {
+	cmd := NewLabelCmd()
+
+	add, _, err := cmd.Find([]string{"add"})
+	require.NoError(t, err)
+
+	for _, name := range []string{"server", "json", "jq", "all", "label", "fields"} {
+		assert.NotNil(t, add.Flags().Lookup(name), "--%s is registered", name)
+	}
+
+	for _, name := range []string{"config", "theme", "no-nerd-font"} {
+		assert.Nil(t, add.Flags().Lookup(name), "--%s is inherited from the root, not re-declared", name)
+	}
+
+	flag := add.Flags().Lookup("label")
+	require.NotNil(t, flag)
+	assert.Equal(t, "stringArray", flag.Value.Type())
+}
