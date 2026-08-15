@@ -188,8 +188,10 @@ error that search commands will fail unless
 .B SNATCHER_API_KEY
 is set. When the alias's URL or its secret store changes, the
 secret it used to keep is deleted from the store that held it, so no password
-is left behind in a store the server no longer uses. The first server
-registered when no default is set becomes the default. Re-adding an existing
+is left behind in a store the server no longer uses. The first server of each
+type registered when that type has no default becomes it \(em the Transmission
+default and the Prowlarr default are separate, so registering one never
+repoints the other. Re-adding an existing
 alias with a different type is refused unless
 .B \-\-type
 is passed explicitly, so an omitted flag cannot silently turn a registered
@@ -260,8 +262,21 @@ which is the one place it does; see
 .RE
 .TP
 .B snatcher server list \fR[\fIoptions\fR]
-List every configured server, sorted by alias, showing its name, URL, username,
-whether a secret is stored, and whether it is the default. Secret status is
+List every configured server, sorted by alias, showing its name, type, URL,
+username, whether a secret is stored, and whether it is the default. The columns
+are
+.BR NAME " " TYPE " " URL " " USERNAME " " SECRET " " DEFAULT .
+.B TYPE
+is
+.BR transmission " or " prowlarr ;
+a server registered before the type existed reports
+.BR transmission ,
+never an empty column. Because each type has its own default, the
+.B DEFAULT
+column is true when the alias is the default
+.I for its own type
+\(em a Transmission server and a Prowlarr instance can both be marked default
+at once. Secret status is
 read from the store each server itself names
 .RB ( secret_store ),
 not the one
@@ -279,7 +294,15 @@ Accepts
 .B snatcher server default \fIalias\fR \fR[\fIoptions\fR]
 Set the default server to the existing alias
 .IR alias .
-The default is used by every command that connects to a server when
+Which default it sets is inferred from the alias, with no flag: a Transmission
+server becomes
+.BR default_server ,
+a Prowlarr instance becomes
+.BR default_prowlarr_server ,
+and setting one never repoints the other. The confirmation line names which of
+the two was set
+.RB ( "Default server set to \(dqx\(dq" " or " "Default Prowlarr server set to \(dqx\(dq" ).
+The default is used by every command that connects to a server of that type when
 .B \-\-server
 and
 .B SNATCHER_SERVER
@@ -356,12 +379,22 @@ its canonical order \(em has no effect on
 .RE
 .TP
 .B snatcher server ping \fR[\fIalias\fR] \fR[\fIoptions\fR]
-Dial a server and perform a real round-trip, reporting the connection status,
-server version, negotiated protocol, and RPC semver. Pings the named server
+Dial a server and perform a real round-trip, reporting what it found. Pings the
+named server
 .IR alias ,
 or the configured default when the alias is omitted. Exits non-zero on failure.
 Accepts
 .B \-\-json .
+.IP
+The round-trip depends on the resolved server's type. A Transmission server
+reports its connection status, type, version, negotiated protocol, and RPC
+semver; a Prowlarr instance is asked for its system status and reports its
+connection status, type, version, and application name. An omitted alias falls
+back to the
+.I Transmission
+default, which is what every invocation resolved to before Prowlarr servers
+could be registered; ping a Prowlarr instance by naming it, or through
+.BR SNATCHER_SERVER .
 .TP
 .B snatcher server remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
 Remove a configured server: delete its stored secret, drop its entry from the
@@ -374,9 +407,14 @@ not the one
 .B SNATCHER_SECRET_STORE
 selects for this invocation, so an exported override cannot leave a password
 behind in a store nothing points at any more. When the removed server was
-the default, the default is repointed to the sole remaining server if exactly
-one remains, otherwise it is cleared. An unknown alias is rejected. It takes no
-options of its own.
+the default, only the default belonging to
+.I its own type
+moves: it is repointed to the sole remaining server of that type if exactly one
+remains, otherwise it is cleared. Removing a Prowlarr instance therefore never
+touches
+.BR default_server ,
+and no default is ever repointed at a server of the other type. An unknown alias
+is rejected. It takes no options of its own.
 .TP
 .B snatcher server stats \fR[\fIoptions\fR]
 Show session statistics: torrent counts, current download and upload speeds,
@@ -1887,6 +1925,20 @@ The
 field tags on the underlying types are a stable scripting surface; treat them
 as an API. Human and plaintext output passes server-derived strings through a
 terminal sanitizer; JSON and jq output does not, as it is a machine contract.
+.PP
+Tab-separated plaintext is part of that contract too, and it grew once, on
+purpose:
+.B "snatcher server list"
+gained a
+.B TYPE
+column in position 2
+.RB ( "NAME TYPE URL USERNAME SECRET DEFAULT" )
+when Prowlarr servers became registrable, so a script splitting those rows on
+tabs reads one more field than it used to. Its
+.B \-\-json
+counterpart gained the same value as an additive
+.B type
+key, which is the form to prefer in a script.
 .SH EXIT STATUS
 .TP
 .B 0

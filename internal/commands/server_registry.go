@@ -149,11 +149,9 @@ func newServerAddCmd() *cobra.Command {
 				SecretStore: string(plan.mode),
 			}
 
-			// The first server registered when no default exists becomes the
-			// default.
-			if cfg.DefaultServer == "" {
-				cfg.DefaultServer = alias
-			}
+			// The first server of each type registered when that type has no
+			// default becomes it.
+			setDefaultIfUnset(&cfg, alias, serverType)
 
 			if err := commitServerSecret(plan, cfg, configPath); err != nil {
 				return err
@@ -178,6 +176,28 @@ func newServerAddCmd() *cobra.Command {
 
 // validServerTypes lists the accepted --type values, quoted, for error messages.
 const validServerTypes = `"transmission", "prowlarr"`
+
+// setDefaultIfUnset points the default for serverType at alias when that type
+// has no default yet.
+//
+// The two defaults are independent, so the first Prowlarr instance registered
+// becomes the Prowlarr default without disturbing the Transmission one, and the
+// reverse. A server type snatcher does not recognize is treated as Transmission,
+// matching Server.ResolvedType's own default; the dial-time type check is where
+// an unknown type is reported.
+func setDefaultIfUnset(cfg *config.Config, alias, serverType string) {
+	if serverType == config.TypeProwlarr {
+		if cfg.DefaultProwlarrServer == "" {
+			cfg.DefaultProwlarrServer = alias
+		}
+
+		return
+	}
+
+	if cfg.DefaultServer == "" {
+		cfg.DefaultServer = alias
+	}
+}
 
 // parseServerType resolves an operator-written --type value to one of the
 // config type constants. Matching is case-insensitive and tolerates surrounding
@@ -473,10 +493,16 @@ func writeServerSecret(store secretStore, serverURL, password string) error {
 }
 
 // serverListResult is the JSON shape emitted for one server by "server list". It
-// is a stable scripting contract: additive changes only. The password is never
-// included; only whether a secret is stored.
+// is a stable scripting contract: additive changes only. The secret is never
+// included; only whether one is stored.
+//
+// Type is the server's resolved type, so a server registered before the field
+// existed reports "transmission" rather than an empty string. IsDefault is per
+// type: it reports whether the alias is the default for its own kind of backend,
+// since a Transmission default and a Prowlarr default coexist.
 type serverListResult struct {
 	Name         string `json:"name"`
+	Type         string `json:"type"`
 	ServerURL    string `json:"server_url"`
 	Username     string `json:"username"`
 	SecretStored bool   `json:"secret_stored"`
@@ -484,11 +510,11 @@ type serverListResult struct {
 }
 
 // newServerListCmd builds "server list", which enumerates every configured
-// server with its alias, URL, username, whether a secret is stored, and
-// whether it is the default. Plaintext is an aligned table on a TTY and
-// tab-separated, header-less rows when piped or NO_COLOR is set (the same
-// contract as "torrent list"); --json and --jq emit a stable structured shape.
-// Servers are listed sorted by alias.
+// server with its alias, type, URL, username, whether a secret is stored, and
+// whether it is the default for its own type. Plaintext is an aligned table on
+// a TTY and tab-separated, header-less rows when piped or NO_COLOR is set (the
+// same contract as "torrent list"); --json and --jq emit a stable structured
+// shape. Servers are listed sorted by alias.
 func newServerListCmd() *cobra.Command {
 	var (
 		asJSON bool
@@ -557,12 +583,15 @@ func serverListResults(cmd *cobra.Command, cfg config.Config) ([]serverListResul
 
 		storeUnavailable = storeUnavailable || unavailable
 
+		serverType := srv.ResolvedType()
+
 		results = append(results, serverListResult{
 			Name:         name,
+			Type:         serverType,
 			ServerURL:    srv.URL,
 			Username:     srv.Username,
 			SecretStored: secretStored,
-			IsDefault:    name == cfg.DefaultServer,
+			IsDefault:    isDefaultForType(cfg, name, serverType),
 		})
 	}
 
@@ -573,10 +602,22 @@ func serverListResults(cmd *cobra.Command, cfg config.Config) ([]serverListResul
 	return results, nil
 }
 
+// isDefaultForType reports whether name is the configured default for its own
+// type, so a Transmission server and a Prowlarr instance can both be marked
+// default without either shadowing the other. A type snatcher does not
+// recognize is read as Transmission, matching Server.ResolvedType's own default.
+func isDefaultForType(cfg config.Config, name, serverType string) bool {
+	if serverType == config.TypeProwlarr {
+		return name == cfg.DefaultProwlarrServer
+	}
+
+	return name == cfg.DefaultServer
+}
+
 // writeServerListPlaintext renders the server list in the appropriate plaintext
 // mode: an aligned, headered table on a TTY, or plain tab-separated, header-less
 // rows when piped or when NO_COLOR is set (the same contract as "torrent list").
-// Server-derived strings (alias, URL, username) are sanitized of terminal
+// Server-derived strings (alias, type, URL, username) are sanitized of terminal
 // control sequences here; the JSON/jq paths are never sanitized.
 func writeServerListPlaintext(cmd *cobra.Command, results []serverListResult) {
 	out := cmd.OutOrStdout()
@@ -585,6 +626,7 @@ func writeServerListPlaintext(cmd *cobra.Command, results []serverListResult) {
 	for i, r := range results {
 		rows[i] = []string{
 			output.SanitizeTerminal(r.Name),
+			output.SanitizeTerminal(r.Type),
 			output.SanitizeTerminal(r.ServerURL),
 			output.SanitizeTerminal(r.Username),
 			yesNo(r.SecretStored),
@@ -612,7 +654,7 @@ func writeServerListTable(w io.Writer, rows [][]string) {
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 
-	_, _ = fmt.Fprintln(tw, strings.Join([]string{"NAME", "URL", "USERNAME", "SECRET", "DEFAULT"}, "\t"))
+	_, _ = fmt.Fprintln(tw, strings.Join([]string{"NAME", "TYPE", "URL", "USERNAME", "SECRET", "DEFAULT"}, "\t"))
 	for _, row := range rows {
 		_, _ = fmt.Fprintln(tw, strings.Join(row, "\t"))
 	}
@@ -623,10 +665,16 @@ func writeServerListTable(w io.Writer, rows [][]string) {
 // newServerDefaultCmd builds "server default <alias>", which sets the configured
 // default server to an existing alias and persists it. An unknown alias errors
 // clearly, listing the valid names.
+//
+// Which default it sets is inferred from the alias rather than chosen with a
+// flag: a Prowlarr instance becomes default_prowlarr_server and a Transmission
+// server default_server, so setting one never repoints the other. The
+// confirmation line names which of the two was set, since that is the only
+// visible difference between the two runs.
 func newServerDefaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "default <alias>",
-		Short:         "Set the default server",
+		Short:         "Set the default server for its type",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -639,18 +687,25 @@ func newServerDefaultCmd() *cobra.Command {
 				return err
 			}
 
-			if _, ok := cfg.Servers[alias]; !ok {
+			srv, ok := cfg.Servers[alias]
+			if !ok {
 				names := strings.Join(cfg.Names(), ", ")
 				return fmt.Errorf("unknown server %q: configured servers are %s", alias, names)
 			}
 
-			cfg.DefaultServer = alias
+			label := "Default server"
+			if srv.ResolvedType() == config.TypeProwlarr {
+				cfg.DefaultProwlarrServer = alias
+				label = "Default Prowlarr server"
+			} else {
+				cfg.DefaultServer = alias
+			}
 
 			if err := config.Save(cfg, configPath); err != nil {
 				return err
 			}
 
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Default server set to %q\n", alias)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s set to %q\n", label, alias)
 
 			return nil
 		},
@@ -659,20 +714,43 @@ func newServerDefaultCmd() *cobra.Command {
 	return cmd
 }
 
-// serverPingResult is the JSON shape emitted by "server ping" on success.
+// serverPingResult is the JSON shape emitted by "server ping" for a Transmission
+// server on success.
 type serverPingResult struct {
 	Connected        bool   `json:"connected"`
 	ServerURL        string `json:"server_url"`
+	Type             string `json:"type"`
 	Version          string `json:"version"`
 	Protocol         string `json:"protocol"`
 	RPCVersionSemver string `json:"rpc_version_semver"`
 }
 
+// prowlarrPingResult is the JSON shape emitted by "server ping" for a Prowlarr
+// instance on success.
+//
+// It is a separate shape rather than a widened serverPingResult because the two
+// backends answer different questions: Prowlarr's REST API negotiates no
+// protocol and has no RPC version, and Transmission reports no application name.
+// Emitting the union would put a permanently empty key in each, on a contract
+// that only grows.
+type prowlarrPingResult struct {
+	Connected bool   `json:"connected"`
+	ServerURL string `json:"server_url"`
+	Type      string `json:"type"`
+	Version   string `json:"version"`
+	AppName   string `json:"app_name"`
+}
+
 // newServerPingCmd builds "server ping [alias]", which dials a server and
-// performs a real ServerInfo round-trip, printing the connection status, server
-// version, negotiated protocol, and rpc semver. It pings the named server, or
-// the configured default when the alias is omitted. It exits non-zero on
-// failure.
+// performs a real round-trip, reporting what it found. It pings the named
+// server, or the configured default when the alias is omitted. It exits
+// non-zero on failure.
+//
+// The round-trip it makes depends on the resolved server's type: a session
+// read for a Transmission server, a system-status read for a Prowlarr instance.
+// An omitted alias falls back to the Transmission default, which is what every
+// existing invocation resolved to; a Prowlarr instance is pinged by naming it
+// (or through SNATCHER_SERVER).
 func newServerPingCmd() *cobra.Command {
 	var asJSON bool
 
@@ -683,35 +761,16 @@ func newServerPingCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, serverURL, err := dial(cmd, firstArg(args))
+			target, err := resolveDialTarget(cmd, firstArg(args), config.TypeTransmission)
 			if err != nil {
 				return err
 			}
 
-			info, err := backend.ServerInfo(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverURL, err)
+			if target.server.ResolvedType() == config.TypeProwlarr {
+				return pingProwlarr(cmd, target.server, asJSON)
 			}
 
-			result := serverPingResult{
-				Connected:        true,
-				ServerURL:        serverURL,
-				Version:          info.Version,
-				Protocol:         info.Protocol,
-				RPCVersionSemver: info.RPCVersionSemver,
-			}
-
-			if asJSON {
-				return output.JSON(cmd.OutOrStdout(), result)
-			}
-
-			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Connected to %s\n", serverURL)
-			_, _ = fmt.Fprintf(out, "Version:      %s\n", result.Version)
-			_, _ = fmt.Fprintf(out, "Protocol:     %s\n", result.Protocol)
-			_, _ = fmt.Fprintf(out, "RPC version:  %s\n", result.RPCVersionSemver)
-
-			return nil
+			return pingTransmission(cmd, target.server, asJSON)
 		},
 	}
 
@@ -720,11 +779,84 @@ func newServerPingCmd() *cobra.Command {
 	return cmd
 }
 
+// pingTransmission performs the Transmission half of "server ping": a real
+// ServerInfo round-trip reporting the version, negotiated protocol, and rpc
+// semver.
+func pingTransmission(cmd *cobra.Command, srv config.Server, asJSON bool) error {
+	backend, serverURL, err := connectTransmission(cmd, srv)
+	if err != nil {
+		return err
+	}
+
+	info, err := backend.ServerInfo(cmd.Context())
+	if err != nil {
+		return fmt.Errorf("connecting to %s: %w", serverURL, err)
+	}
+
+	result := serverPingResult{
+		Connected:        true,
+		ServerURL:        serverURL,
+		Type:             srv.ResolvedType(),
+		Version:          info.Version,
+		Protocol:         info.Protocol,
+		RPCVersionSemver: info.RPCVersionSemver,
+	}
+
+	if asJSON {
+		return output.JSON(cmd.OutOrStdout(), result)
+	}
+
+	out := cmd.OutOrStdout()
+	_, _ = fmt.Fprintf(out, "Connected to %s\n", serverURL)
+	_, _ = fmt.Fprintf(out, "Type:         %s\n", output.SanitizeTerminal(result.Type))
+	_, _ = fmt.Fprintf(out, "Version:      %s\n", result.Version)
+	_, _ = fmt.Fprintf(out, "Protocol:     %s\n", result.Protocol)
+	_, _ = fmt.Fprintf(out, "RPC version:  %s\n", result.RPCVersionSemver)
+
+	return nil
+}
+
+// pingProwlarr performs the Prowlarr half of "server ping": a system-status
+// round-trip reporting the instance's application name and version. Those
+// strings come off the wire, so the plaintext path sanitizes them; the --json
+// path does not.
+func pingProwlarr(cmd *cobra.Command, srv config.Server, asJSON bool) error {
+	client, serverURL, err := connectProwlarr(cmd, srv)
+	if err != nil {
+		return err
+	}
+
+	status, err := client.SystemStatus(cmd.Context())
+	if err != nil {
+		return fmt.Errorf("connecting to %s: %w", serverURL, err)
+	}
+
+	result := prowlarrPingResult{
+		Connected: true,
+		ServerURL: serverURL,
+		Type:      srv.ResolvedType(),
+		Version:   status.Version,
+		AppName:   status.AppName,
+	}
+
+	if asJSON {
+		return output.JSON(cmd.OutOrStdout(), result)
+	}
+
+	out := cmd.OutOrStdout()
+	_, _ = fmt.Fprintf(out, "Connected to %s\n", serverURL)
+	_, _ = fmt.Fprintf(out, "Type:         %s\n", output.SanitizeTerminal(result.Type))
+	_, _ = fmt.Fprintf(out, "Version:      %s\n", output.SanitizeTerminal(result.Version))
+	_, _ = fmt.Fprintf(out, "App:          %s\n", output.SanitizeTerminal(result.AppName))
+
+	return nil
+}
+
 // newServerRemoveCmd builds "server remove [alias]", which removes a named server
 // (or the configured default when the alias is omitted): it deletes the server's
 // entry from config, deletes its stored secret, and persists. When the removed
-// server was the default, the default is repointed to the sole remaining server
-// if exactly one remains, otherwise it is cleared.
+// server was a default, only the default for its own type is repointed or
+// cleared (see repointDefaultAfterRemove).
 //
 // The secret is deleted from the store the server itself names, not the one
 // SNATCHER_SECRET_STORE selects for this invocation: removal is cleanup, and the
@@ -775,15 +907,7 @@ func newServerRemoveCmd() *cobra.Command {
 
 			delete(cfg.Servers, name)
 
-			// When the removed server was the default, repoint it to the sole
-			// remaining server if exactly one is left; otherwise clear it (the user
-			// picks a new default with 'server default').
-			if cfg.DefaultServer == name {
-				cfg.DefaultServer = ""
-				if remaining := cfg.Names(); len(remaining) == 1 {
-					cfg.DefaultServer = remaining[0]
-				}
-			}
+			repointDefaultAfterRemove(&cfg, name, srv.ResolvedType())
 
 			if err := config.Save(cfg, configPath); err != nil {
 				return err
@@ -796,6 +920,45 @@ func newServerRemoveCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+// repointDefaultAfterRemove settles the two defaults once name has been deleted
+// from cfg.
+//
+// Only the default belonging to the removed server's own type moves: it is
+// repointed to the sole remaining server of that type when exactly one is left,
+// and otherwise cleared, leaving the operator to pick a new one with
+// 'server default'. Removing a Prowlarr instance therefore never touches the
+// Transmission default, or the reverse — and a default is never repointed at a
+// server of the other type, which no command could dial through it anyway.
+//
+// The other type's default is still cleared when it happens to name the removed
+// alias, which only a hand-edited config can arrange. Leaving it would name a
+// server that no longer exists, and the save that follows would then fail
+// validation on a removal that had otherwise succeeded.
+func repointDefaultAfterRemove(cfg *config.Config, name, serverType string) {
+	if cfg.DefaultServer == name {
+		cfg.DefaultServer = soleRemainingOfType(*cfg, serverType, config.TypeTransmission)
+	}
+
+	if cfg.DefaultProwlarrServer == name {
+		cfg.DefaultProwlarrServer = soleRemainingOfType(*cfg, serverType, config.TypeProwlarr)
+	}
+}
+
+// soleRemainingOfType returns the one alias left of defaultType, or the empty
+// string when the removed server was of some other type or the count is not
+// exactly one.
+func soleRemainingOfType(cfg config.Config, serverType, defaultType string) string {
+	if serverType != defaultType {
+		return ""
+	}
+
+	if remaining := cfg.NamesOfType(defaultType); len(remaining) == 1 {
+		return remaining[0]
+	}
+
+	return ""
 }
 
 // firstArg returns the first positional argument, or the empty string when none
@@ -827,6 +990,14 @@ func dial(cmd *cobra.Command, server string) (*transmission.Client, string, erro
 		return nil, "", err
 	}
 
+	return connectTransmission(cmd, srv)
+}
+
+// connectTransmission reads srv's password and builds the Transmission client
+// for it. It is dial's back half, split out so "server ping" — which resolves
+// the server itself in order to dispatch on its type — constructs the client
+// exactly as every other command does.
+func connectTransmission(cmd *cobra.Command, srv config.Server) (*transmission.Client, string, error) {
 	password, err := serverPassword(cmd, srv)
 	if err != nil {
 		return nil, "", err
@@ -852,6 +1023,13 @@ func dialProwlarr(cmd *cobra.Command, server string) (*prowlarr.Client, string, 
 		return nil, "", err
 	}
 
+	return connectProwlarr(cmd, srv)
+}
+
+// connectProwlarr reads srv's API key and builds the Prowlarr client for it. It
+// is dialProwlarr's back half, split out for the same reason as
+// connectTransmission.
+func connectProwlarr(cmd *cobra.Command, srv config.Server) (*prowlarr.Client, string, error) {
 	apiKey, err := serverAPIKey(cmd, srv)
 	if err != nil {
 		return nil, "", err
@@ -877,13 +1055,46 @@ func dialProwlarr(cmd *cobra.Command, server string) (*prowlarr.Client, string, 
 // actually is, and where the alias came from, since an alias supplied by an
 // exported SNATCHER_SERVER is the case an operator is least likely to guess.
 func dialTarget(cmd *cobra.Command, server, wantType string) (config.Server, error) {
-	cfg, configured, err := loadConfig(configFlag(cmd))
+	target, err := resolveDialTarget(cmd, server, wantType)
 	if err != nil {
 		return config.Server{}, err
 	}
 
+	if got := target.server.ResolvedType(); got != wantType {
+		return config.Server{}, serverTypeMismatchError(target.name, got, wantType, target.fromEnv)
+	}
+
+	return target.server, nil
+}
+
+// resolvedServer is a configured server a command has selected: the alias it was
+// found under, its settings, and whether the alias came from SNATCHER_SERVER
+// rather than a flag or argument — which only an error message needs, and only
+// because an alias supplied by an exported variable is the case an operator is
+// least likely to guess.
+type resolvedServer struct {
+	name    string
+	server  config.Server
+	fromEnv bool
+}
+
+// resolveDialTarget resolves which configured server a command acts on, applying
+// the fixed precedence: the server argument (the --server flag, or a positional
+// alias) > the SNATCHER_SERVER environment variable > the default server for
+// defaultType.
+//
+// It imposes no constraint on the resolved server's type; defaultType only
+// chooses which of the two per-type defaults an omitted alias falls back to.
+// Commands that need one particular backend go through dialTarget, which adds
+// the type check; "server ping" resolves here and dispatches on what it finds.
+func resolveDialTarget(cmd *cobra.Command, server, defaultType string) (resolvedServer, error) {
+	cfg, configured, err := loadConfig(configFlag(cmd))
+	if err != nil {
+		return resolvedServer{}, err
+	}
+
 	if !configured || len(cfg.Servers) == 0 {
-		return config.Server{}, errors.New("not configured: run 'snatcher server add' first")
+		return resolvedServer{}, errors.New("not configured: run 'snatcher server add' first")
 	}
 
 	fromEnv := false
@@ -893,20 +1104,16 @@ func dialTarget(cmd *cobra.Command, server, wantType string) (config.Server, err
 	}
 
 	resolve := config.Resolve
-	if wantType == config.TypeProwlarr {
+	if defaultType == config.TypeProwlarr {
 		resolve = config.ResolveProwlarr
 	}
 
 	name, srv, err := resolve(cfg, server)
 	if err != nil {
-		return config.Server{}, resolveServerError(cfg, server, err)
+		return resolvedServer{}, resolveServerError(cfg, server, err)
 	}
 
-	if got := srv.ResolvedType(); got != wantType {
-		return config.Server{}, serverTypeMismatchError(name, got, wantType, fromEnv)
-	}
-
-	return srv, nil
+	return resolvedServer{name: name, server: srv, fromEnv: fromEnv}, nil
 }
 
 // serverTypeMismatchError reports that the resolved alias names the wrong kind
