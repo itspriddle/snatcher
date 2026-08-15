@@ -612,20 +612,26 @@ func TestBandwidthUpdateAltWritesOnlyTheStoredLimit(t *testing.T) {
 		name       string
 		rpcVersion string
 		direction  string
+		speed      string
 		wantValue  string
 		wantNoKey  string
 	}{
-		{"jsonrpc download", "6.0.0", "download", `"alt_speed_down":50`, "alt_speed_enabled"},
-		{"jsonrpc upload", "6.0.0", "upload", `"alt_speed_up":50`, "alt_speed_enabled"},
-		{"bespoke download", "", "download", `"alt-speed-down":50`, "alt-speed-enabled"},
-		{"bespoke upload", "", "upload", `"alt-speed-up":50`, "alt-speed-enabled"},
+		{"jsonrpc download", "6.0.0", "download", "50", `"alt_speed_down":50`, "alt_speed_enabled"},
+		{"jsonrpc upload", "6.0.0", "upload", "50", `"alt_speed_up":50`, "alt_speed_enabled"},
+		{"bespoke download", "", "download", "50", `"alt-speed-down":50`, "alt-speed-enabled"},
+		{"bespoke upload", "", "upload", "50", `"alt-speed-up":50`, "alt-speed-enabled"},
+		// 0 is a real 0 KB/s alt limit, and the alt profile has no
+		// per-direction "off" to undo it: whenever turtle mode is active that
+		// direction halts. It still takes the same path as any other number.
+		{"jsonrpc download zero", "6.0.0", "download", "0", `"alt_speed_down":0`, "alt_speed_enabled"},
+		{"bespoke download zero", "", "download", "0", `"alt-speed-down":0`, "alt-speed-enabled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var captured []string
 			cfgPath, closeSrv := capturedBandwidthServer(t, &captured, tc.rpcVersion)
 			defer closeSrv()
 
-			_, _, err := runBandwidth(t, "update", tc.direction, "50", "--alt", "--config", cfgPath)
+			_, _, err := runBandwidth(t, "update", tc.direction, tc.speed, "--alt", "--config", cfgPath)
 			require.NoError(t, err)
 
 			// The alt pair is a stored profile, not a live limit: one shared switch
