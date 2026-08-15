@@ -137,7 +137,7 @@ func newServerAddCmd() *cobra.Command {
 				return err
 			}
 
-			plan, err := planServerSecret(storeFlag, cmd.Flags().Changed("store"), prev, serverURL, secret)
+			plan, err := planServerSecret(storeFlag, cmd.Flags().Changed("store"), prev, serverURL, secret, secretNoun(serverType))
 			if err != nil {
 				return err
 			}
@@ -302,6 +302,13 @@ type serverSecretPlan struct {
 	serverURL string
 	password  string
 
+	// secret names what password is, for every operator-facing message about it:
+	// "password" for a Transmission server, "API key" for a Prowlarr one (see
+	// secretNoun). It is settled once, by the caller that already knows the
+	// server type, and carried on the plan so the store probe, the commit, and
+	// the report cannot end up calling the same credential different things.
+	secret string
+
 	// store holds the new entry's password, and mode names it. The same mode
 	// is saved with the server, so config can never name a store the password
 	// did not go to.
@@ -322,13 +329,14 @@ type serverSecretPlan struct {
 	rekeyed bool
 }
 
-// planServerSecret settles where "server add" puts the password and what it
-// owes the secret the alias already had, before anything is written.
+// planServerSecret settles where "server add" puts the secret and what it owes
+// the secret the alias already had, before anything is written. secret is the
+// noun for what password holds, carried onto the plan (see secretNoun).
 //
-// The store is probed here (see storeForPassword): a password with nowhere to
-// go must abort the command with config and every store untouched, rather than
-// registering a server that silently has no password.
-func planServerSecret(storeFlag string, flagChanged bool, prev config.Server, serverURL, password string) (serverSecretPlan, error) {
+// The store is probed here (see storeForPassword): a secret with nowhere to go
+// must abort the command with config and every store untouched, rather than
+// registering a server that silently has none.
+func planServerSecret(storeFlag string, flagChanged bool, prev config.Server, serverURL, password, secret string) (serverSecretPlan, error) {
 	mode, err := addStoreMode(storeFlag, flagChanged, prev)
 	if err != nil {
 		return serverSecretPlan{}, err
@@ -339,7 +347,7 @@ func planServerSecret(storeFlag string, flagChanged bool, prev config.Server, se
 		return serverSecretPlan{}, err
 	}
 
-	store, err := storeForPassword(mode, serverURL, password)
+	store, err := storeForPassword(mode, serverURL, password, secret)
 	if err != nil {
 		return serverSecretPlan{}, err
 	}
@@ -347,6 +355,7 @@ func planServerSecret(storeFlag string, flagChanged bool, prev config.Server, se
 	return serverSecretPlan{
 		serverURL: serverURL,
 		password:  password,
+		secret:    secret,
 		store:     store,
 		mode:      mode,
 		prev:      prev,
@@ -389,7 +398,7 @@ func commitServerSecret(plan serverSecretPlan, cfg config.Config, configPath str
 	// than returning a bare store error for a command that did register the
 	// server — an operator whose old secret survived needs to know where it is.
 	if err := clearPreviousSecret(plan.prev, plan.prevMode, plan.rekeyed); err != nil {
-		return fmt.Errorf("the server was saved, but its previous password could not be removed from the %q store: %w", plan.prevMode, err)
+		return fmt.Errorf("the server was saved, but its previous %s could not be removed from the %q store: %w", plan.secret, plan.prevMode, err)
 	}
 
 	return nil
@@ -398,16 +407,13 @@ func commitServerSecret(plan serverSecretPlan, cfg config.Config, configPath str
 // reportServerAdded prints what "server add" saved and, for the plaintext file
 // store, exactly what is now on disk. The secret is named for what it is —
 // a password or an API key — so the report matches the flag the operator used.
+// The noun comes off the plan, which is the same one every failure on the way
+// here already used.
 func reportServerAdded(cmd *cobra.Command, plan serverSecretPlan, alias, serverType string) {
 	out := cmd.OutOrStdout()
 
-	secret := "password"
-	if serverType == config.TypeProwlarr {
-		secret = "API key"
-	}
-
 	if plan.password == "" {
-		_, _ = fmt.Fprintf(out, "Saved server %q (%s) with no %s stored\n", alias, plan.serverURL, secret)
+		_, _ = fmt.Fprintf(out, "Saved server %q (%s) with no %s stored\n", alias, plan.serverURL, plan.secret)
 
 		// A Transmission server with no password is an ordinary configuration
 		// (auth disabled). A Prowlarr instance always requires its API key, so
@@ -426,7 +432,7 @@ func reportServerAdded(cmd *cobra.Command, plan serverSecretPlan, alias, serverT
 	// The file store is plaintext by design; say where it landed, so an
 	// operator who opted in knows exactly what is on disk.
 	if fileStore, ok := plan.store.(*secrets.FileStore); ok {
-		_, _ = fmt.Fprintf(out, "%s stored in plaintext at %s (mode 0600)\n", capitalizeFirst(secret), fileStore.Path())
+		_, _ = fmt.Fprintf(out, "%s stored in plaintext at %s (mode 0600)\n", capitalizeFirst(plan.secret), fileStore.Path())
 	}
 }
 
@@ -899,7 +905,8 @@ func newServerRemoveCmd() *cobra.Command {
 				err = store.Delete(srv.URL)
 				switch {
 				case errors.Is(err, secrets.ErrUnavailable):
-					warnStoreUnavailable(cmd, fmt.Sprintf("a stored password for %s may remain", output.SanitizeTerminal(srv.URL)))
+					warnStoreUnavailable(cmd, fmt.Sprintf("a stored %s for %s may remain",
+						secretNoun(srv.ResolvedType()), output.SanitizeTerminal(srv.URL)))
 				case err != nil && !errors.Is(err, secrets.ErrNotFound):
 					return err
 				}

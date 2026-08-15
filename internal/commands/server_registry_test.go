@@ -1393,6 +1393,108 @@ func TestServerAddProwlarrEmptyAPIKeyWarns(t *testing.T) {
 	require.ErrorIs(t, getErr, secrets.ErrNotFound)
 }
 
+// TestServerAddProwlarrStoreNoneNamesTheAPIKey pins the noun on the failure
+// path, not just the success one: a run that prompts for an API key must not
+// turn around and report a problem with a "password".
+func TestServerAddProwlarrStoreNoneNamesTheAPIKey(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	keyring.MockInit()
+
+	_, _, err := runServer(t, "abc123\n",
+		"add",
+		"--config", cfgPath,
+		"--type", "prowlarr",
+		"--url", "http://prowlarr:9696",
+		"--api-key-stdin",
+		"--store", "none",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the API key cannot be stored")
+	assert.Contains(t, err.Error(), "re-run with an empty API key")
+	assert.NotContains(t, err.Error(), "password")
+
+	// The refusal is still atomic, exactly as it is for a password.
+	assert.NoFileExists(t, cfgPath)
+}
+
+// TestServerAddProwlarrUnavailableStoreNamesTheAPIKey covers the other fatal
+// store path: nowhere to put the key, so the advice names every way forward —
+// in the operator's own noun.
+func TestServerAddProwlarrUnavailableStoreNamesTheAPIKey(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	mockStoreUnavailable(t)
+
+	_, _, err := runServer(t, "abc123\n",
+		"add",
+		"--config", cfgPath,
+		"--type", "prowlarr",
+		"--url", "http://prowlarr:9696",
+		"--api-key-stdin",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the API key cannot be stored")
+	assert.Contains(t, err.Error(), "keep the API key in a plaintext file")
+	assert.Contains(t, err.Error(), "no stored API key")
+	assert.NotContains(t, err.Error(), "password")
+	assert.NotContains(t, err.Error(), "dbus-launch")
+
+	assert.NoFileExists(t, cfgPath)
+}
+
+// TestServerAddProwlarrFileStoreNamesTheAPIKey covers the noun where it starts a
+// sentence, so capitalizeFirst is applied to whichever secret was stored.
+func TestServerAddProwlarrFileStoreNamesTheAPIKey(t *testing.T) {
+	t.Setenv(envSecretStore, "")
+	stateDir(t)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	mockStoreUnavailable(t)
+
+	out, _, err := runServer(t, "abc123\n",
+		"add",
+		"--config", cfgPath,
+		"--type", "prowlarr",
+		"--url", "http://prowlarr:9696",
+		"--api-key-stdin",
+		"--store", "file",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, out, "API key stored in plaintext at")
+	assert.NotContains(t, out, "Password")
+}
+
+// TestServerRemoveProwlarrWarnsAboutAStoredAPIKey pins the noun on the removal
+// warning, which reports what may survive in a store snatcher cannot reach.
+func TestServerRemoveProwlarrWarnsAboutAStoredAPIKey(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	const url = "http://prowlarr:9696"
+
+	keyring.MockInit()
+	require.NoError(t, config.Save(config.Config{
+		Servers:               map[string]config.Server{"indexers": {URL: url, Type: config.TypeProwlarr}},
+		DefaultProwlarrServer: "indexers",
+	}, cfgPath))
+
+	mockStoreUnavailable(t)
+
+	out, errOut, err := runServer(t, "", "remove", "--config", cfgPath, "indexers")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Removed server")
+
+	// The shared remedy still talks about passwords generically — it is the
+	// Transmission-facing wording this story must not disturb — but the
+	// consequence, which is about this server's own secret, is in its noun.
+	assert.Contains(t, errOut, "a stored API key for "+url+" may remain")
+	assert.NotContains(t, errOut, "a stored password")
+}
+
 func TestServerAddProwlarrRejectsEmbeddedCredentials(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")

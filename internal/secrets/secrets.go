@@ -2,13 +2,16 @@
 // default store is the OS keyring (macOS Keychain / Linux secret-service),
 // driven by the package-level Set, Get, and Delete functions.
 //
-// Secrets are keyed by server URL under a single fixed service name, leaving
-// room for multiple servers later. The non-secret config (server URL, username)
-// lives in internal/config; only the password lives here.
+// Secrets are keyed by server URL under a single fixed service name, so each
+// configured server gets its own entry. A server has exactly one secret, and
+// which credential that is follows the server's type: a Transmission password,
+// or a Prowlarr API key. This package does not distinguish them — it stores an
+// opaque string per URL — but it is the only place either lives. The non-secret
+// config (server URL, type, username) lives in internal/config.
 //
 // FileStore is the second, opt-in store: a JSON file at mode 0600 for machines
 // with no OS keyring, where the keyring path can only ever return
-// ErrUnavailable. It holds passwords in plaintext by design, which is
+// ErrUnavailable. It holds those secrets in plaintext by design, which is
 // meaningfully less safe than the OS keyring — anything running as that user,
 // and any backup of the home directory, can read them. Nothing selects it
 // automatically; it is used only when an operator explicitly asks for it.
