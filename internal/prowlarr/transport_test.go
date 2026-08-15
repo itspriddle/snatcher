@@ -252,6 +252,38 @@ func TestDoScrubsTheAPIKeyEchoedBackInAServerErrorBody(t *testing.T) {
 	assert.Contains(t, err.Error(), redactedValue)
 }
 
+// TestDoScrubsTheAPIKeyStraddlingTheErrorBodyTruncation is the boundary case the
+// whole-key assertion above cannot see: a key that begins inside the last bytes
+// of an oversized body. Bound the text before scrubbing it and the cut splits
+// the key, so the replacement no longer matches and the surviving prefix is
+// printed. Truncation only ever keeps a prefix, so every prefix long enough to
+// be a fragment of the credential is asserted absent.
+func TestDoScrubsTheAPIKeyStraddlingTheErrorBodyTruncation(t *testing.T) {
+	const keptKeyChars = 4
+
+	body := strings.Repeat("x", maxErrorBody-keptKeyChars) + testAPIKey
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	tr := newTestTransport(t, srv.URL, WithAPIKey(testAPIKey))
+
+	_, err := tr.Do(t.Context(), Request{Path: pathSystemStatus})
+	require.ErrorIs(t, err, ErrServer)
+
+	for n := keptKeyChars; n <= len(testAPIKey); n++ {
+		assert.NotContainsf(t, err.Error(), testAPIKey[:n],
+			"a %d-character fragment of the API key survived the truncation", n)
+	}
+
+	assert.Contains(t, err.Error(), redactedValue[:keptKeyChars],
+		"what the cut lands in the middle of is the placeholder, not the credential")
+	assert.Less(t, len(err.Error()), maxErrorBody+200, "the quoted body is still bounded")
+}
+
 func TestDoMapsTransportFailureToUnreachable(t *testing.T) {
 	tr := newTestTransport(t, "http://127.0.0.1:9696", WithAPIKey(testAPIKey), WithHTTPClient(failingDoer{}))
 

@@ -67,6 +67,11 @@ func downloadConfig(t *testing.T, body func(base string) string) (string, *[]str
 // downloadReleaseBody renders a one-release search page whose download url points
 // at the stub itself, so the same-origin rule sends the API key and the bytes
 // come back.
+//
+// That url carries an apikey parameter because Prowlarr's really does — it
+// rewrites every release's downloadUrl into a proxy link holding the key. Any
+// message quoting the url therefore has a credential to strip, which is what
+// gives TestSearchDownloadNeverPrintsTheAPIKey something to fail on.
 func downloadReleaseBody(title string) func(string) string {
 	// The title is encoded rather than quoted with %q: a Go-quoted control byte
 	// is \x1b, which is not JSON.
@@ -79,8 +84,40 @@ func downloadReleaseBody(title string) func(string) string {
 		return fmt.Sprintf(
 			`[{"guid":"https://tracker.example/1","title":%s,"indexer":"Example Tracker",`+
 				`"indexerId":3,"size":1024,"age":1,"downloadUrl":%q}]`,
-			encoded, base+downloadReleasePath)
+			encoded, base+downloadReleasePath+"?apikey="+searchFixtureAPIKey)
 	}
+}
+
+// failingDownloadConfig starts a stub whose search succeeds and whose download
+// url answers non-2xx, and registers it as the default Prowlarr server. It
+// returns the config path and the stub's base url.
+func failingDownloadConfig(t *testing.T, title string) (string, string) {
+	t.Helper()
+
+	keyring.MockInit()
+
+	var base string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == downloadReleasePath {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("indexer is unreachable"))
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(downloadReleaseBody(title)(base)))
+	}))
+	t.Cleanup(srv.Close)
+
+	base = srv.URL
+
+	cfgPath := writeConfigFile(t, fmt.Sprintf(
+		`{"servers": {"indexers": {"url": %q, "type": "prowlarr"}}, "default_prowlarr_server": "indexers"}`,
+		srv.URL))
+
+	return cfgPath, srv.URL
 }
 
 // downloadInDir points the command at a fresh working directory, which is where a
@@ -358,11 +395,19 @@ func TestSearchDownloadSanitizesPlaintextOnly(t *testing.T) {
 	assert.Contains(t, got.Title, esc, "--json is a structured contract and is never sanitized")
 }
 
+// TestSearchDownloadNeverPrintsTheAPIKey covers every render mode plus the one
+// path that quotes the release's key-bearing download url back at the user: a
+// fetch that fails.
+//
+// The fixture is pinned first, because a guard whose fixture holds no key
+// passes just as happily against code with every redaction removed.
 func TestSearchDownloadNeverPrintsTheAPIKey(t *testing.T) {
-	const apiKey = "super-secret-api-key"
+	require.Contains(t, downloadReleaseBody("Ubuntu")("http://prowlarr.example"),
+		"apikey="+searchFixtureAPIKey,
+		"the fixture must carry the key in a URL, or this guard passes vacuously")
 
 	cfgPath, _ := downloadConfig(t, downloadReleaseBody("Ubuntu"))
-	t.Setenv(envAPIKey, apiKey)
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
 
 	for _, args := range [][]string{
 		{"download", "ubuntu", "1"},
@@ -374,8 +419,17 @@ func TestSearchDownloadNeverPrintsTheAPIKey(t *testing.T) {
 
 		out, errOut, err := runSearch(t, append([]string{"--config", cfgPath}, args...)...)
 		require.NoErrorf(t, err, "%v", args)
-		assert.NotContainsf(t, out+errOut, apiKey, "%v", args)
+		assert.NotContainsf(t, out+errOut, searchFixtureAPIKey, "%v", args)
 	}
+
+	failPath, base := failingDownloadConfig(t, "Ubuntu")
+	downloadInDir(t)
+
+	_, _, err := runSearch(t, "--config", failPath, "download", "ubuntu", "1")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), searchFixtureAPIKey,
+		"the url quoted in a failed fetch is the one place the key reaches a message")
+	assert.Contains(t, err.Error(), base+downloadReleasePath+"?apikey=REDACTED")
 }
 
 // TestSearchDownloadSharesTheSelectionValidation proves the release is named
@@ -425,36 +479,14 @@ func TestSearchDownloadRejectsAnOutOfRangeNumber(t *testing.T) {
 // refused, and — the part that matters on disk — nothing is left behind, not
 // even the temp file the atomic write goes through.
 func TestSearchDownloadReportsAFetchFailure(t *testing.T) {
-	keyring.MockInit()
-
-	var base string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == downloadReleasePath {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte("indexer is unreachable"))
-
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(downloadReleaseBody("Ubuntu")(base)))
-	}))
-	t.Cleanup(srv.Close)
-
-	base = srv.URL
-
-	cfgPath := writeConfigFile(t, fmt.Sprintf(
-		`{"servers": {"indexers": {"url": %q, "type": "prowlarr"}}, "default_prowlarr_server": "indexers"}`,
-		srv.URL))
-
+	cfgPath, base := failingDownloadConfig(t, "Ubuntu")
 	dir := downloadInDir(t)
 
 	_, _, err := runSearch(t, "--config", cfgPath, "download", "ubuntu", "1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "downloading Ubuntu [Example Tracker]")
 	assert.Contains(t, err.Error(), "unexpected status 500")
-	assert.Contains(t, err.Error(), srv.URL+downloadReleasePath, "the error names the url that failed")
+	assert.Contains(t, err.Error(), base+downloadReleasePath, "the error names the url that failed")
 	assert.Contains(t, err.Error(), "indexer is unreachable", "the server's own explanation survives the wrap")
 
 	entries, readErr := os.ReadDir(dir)

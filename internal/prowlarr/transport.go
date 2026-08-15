@@ -482,11 +482,16 @@ func (t *Transport) detail(body []byte) string {
 		return ""
 	}
 
+	// Scrub before bounding, never after: truncating first can cut a key that
+	// begins inside the last bytes of the body, leaving a prefix that no longer
+	// matches the configured value and so survives into the message.
+	text = t.scrub(text)
+
 	if len(text) > maxErrorBody {
 		text = strings.ToValidUTF8(text[:maxErrorBody], "") + "..."
 	}
 
-	return ": " + t.scrub(text)
+	return ": " + text
 }
 
 // safeURL renders u for an error message with its userinfo and any apikey query

@@ -20,7 +20,9 @@ import (
 // fields) covering an enabled private torrent tracker and a disabled public
 // usenet indexer, so the yes/no rendering is exercised both ways. The first
 // carries the credential-bearing fields array a real IndexerResource has, which
-// no render mode may echo.
+// no render mode may echo. One of those fields holds searchFixtureAPIKey — a
+// Torznab indexer pointed at another Prowlarr instance stores that instance's
+// API key exactly there — so the never-prints guard has something to fail on.
 const searchIndexersBody = `[
 	{
 		"id": 3,
@@ -32,7 +34,10 @@ const searchIndexersBody = `[
 		"supportsSearch": true,
 		"supportsPagination": true,
 		"language": "en-US",
-		"fields": [{"name": "apiKey", "value": "indexer-passkey"}]
+		"fields": [
+			{"name": "apiKey", "value": "indexer-passkey"},
+			{"name": "baseUrl", "value": "http://prowlarr.example/1/api?apikey=` + searchFixtureAPIKey + `"}
+		]
 	},
 	{
 		"id": 5,
@@ -457,25 +462,32 @@ func TestSearchCatalogSanitizesPlaintextOnly(t *testing.T) {
 	}
 }
 
-// TestSearchCatalogNeverPrintsTheAPIKey covers every render mode of both
-// listings: the key reaches the wire and nothing else.
-func TestSearchCatalogNeverPrintsTheAPIKey(t *testing.T) {
-	const apiKey = "super-secret-api-key"
+// TestSearchIndexersNeverPrintsTheAPIKey covers every render mode of the indexer
+// listing, whose fixture hands the key back inside the fields array a real
+// IndexerResource carries. Nothing keeps it out of the output but the decision
+// not to model that array, so decoding it is what this fails on.
+//
+// search categories is deliberately absent. IndexerCategory is
+// additionalProperties:false over id, name, description, and subCategories —
+// four fields snatcher renders in full — so a category response has nowhere to
+// carry a key that snatcher would not print. Asserting otherwise would be a
+// guard that can only ever pass, which is the failure mode this story exists to
+// remove.
+func TestSearchIndexersNeverPrintsTheAPIKey(t *testing.T) {
+	require.Contains(t, searchIndexersBody, "apikey="+searchFixtureAPIKey,
+		"the fixture must carry the key, or this guard passes vacuously")
 
 	cfgPath, _ := catalogConfig(t, searchIndexersBody, searchCategoriesBody)
-	t.Setenv(envAPIKey, apiKey)
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
 
 	for _, args := range [][]string{
 		{"indexers"},
 		{"indexers", "--json"},
 		{"indexers", "--jq", "."},
-		{"categories"},
-		{"categories", "--json"},
-		{"categories", "--jq", "."},
 	} {
 		out, errOut, err := runSearch(t, append([]string{"--config", cfgPath}, args...)...)
 		require.NoErrorf(t, err, "%v", args)
-		assert.NotContainsf(t, out+errOut, apiKey, "%v", args)
+		assert.NotContainsf(t, out+errOut, searchFixtureAPIKey, "%v", args)
 	}
 }
 
