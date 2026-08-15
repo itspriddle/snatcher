@@ -41,8 +41,16 @@ type Client struct {
 // success. There is no envelope to normalize — Prowlarr's REST API answers with
 // the resource itself — so the body is carried through untouched.
 type APIResponse struct {
-	// Raw is the exact response body the server sent.
+	// Raw is the exact response body the server sent. It is what a caller acts
+	// on, never what it prints: an instance echoes the API key back in its own
+	// answers (a release's proxy downloadUrl, config/host's apiKey field). Print
+	// Redacted instead.
 	Raw []byte
+
+	// Redacted is Raw with the configured API key replaced wherever it appears,
+	// and is what the escape hatch renders in every mode, --raw included. A body
+	// that does not carry the key is byte-identical to Raw.
+	Redacted []byte
 
 	// StatusCode is the HTTP status the server answered with.
 	StatusCode int
@@ -258,6 +266,11 @@ func (c *Client) Download(ctx context.Context, release Release) ([]byte, error) 
 // through APIResponse.OK, so the command can print Prowlarr's own error body
 // before exiting non-zero rather than replacing it with a bounded excerpt inside
 // ErrServer. Only a failure to complete the exchange returns an error.
+//
+// The answer arrives twice: verbatim on Raw, and with the configured API key
+// scrubbed on Redacted. The escape hatch prints an untyped body straight to a
+// terminal, and an instance answers several endpoints with its own key, so the
+// two are kept apart rather than leaving the caller to remember which is which.
 func (c *Client) CallAPI(ctx context.Context, req Request) (APIResponse, error) {
 	status, body, err := c.transport.call(ctx, req)
 	if err != nil {
@@ -266,6 +279,7 @@ func (c *Client) CallAPI(ctx context.Context, req Request) (APIResponse, error) 
 
 	return APIResponse{
 		Raw:        body,
+		Redacted:   c.transport.scrubBytes(body),
 		StatusCode: status,
 		OK:         status >= 200 && status < 300,
 	}, nil

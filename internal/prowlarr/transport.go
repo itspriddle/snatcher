@@ -506,6 +506,20 @@ func (t *Transport) scrub(s string) string {
 	return strings.ReplaceAll(s, t.apiKey, redactedValue)
 }
 
+// scrubBytes is scrub over a response body, for the raw escape hatch: whatever
+// the instance answered with is about to be written to a terminal, and a
+// Prowlarr body echoes the key back in more than one shape — inside a release's
+// proxy downloadUrl, and as config/host's apiKey field. Matching on the key's
+// own value covers both, where hunting for a parameter spelled "apikey" would
+// only cover the first.
+func (t *Transport) scrubBytes(body []byte) []byte {
+	if t.apiKey == "" || len(body) == 0 {
+		return body
+	}
+
+	return bytes.ReplaceAll(body, []byte(t.apiKey), []byte(redactedValue))
+}
+
 // parseBaseURL validates and normalizes a Prowlarr base URL, stripping any
 // query, fragment, and trailing slash so request paths join onto it cleanly.
 func parseBaseURL(raw string) (*url.URL, error) {

@@ -1011,6 +1011,46 @@ func TestCallAPIReturnsTheServersExactAnswer(t *testing.T) {
 	// The body is carried through untouched — no envelope, no re-encoding — so
 	// this is deliberately byte-for-byte: JSONEq would pass on a re-encode too.
 	assert.Equal(t, body, string(resp.Raw)) //nolint:testifylint // encoded-compare: byte-exactness is the assertion
+	// A body carrying no key redacts to the same bytes, so --raw stays exact.
+	assert.Equal(t, body, string(resp.Redacted)) //nolint:testifylint // encoded-compare: byte-exactness is the assertion
+}
+
+// TestCallAPIRedactsTheAPIKeyFromTheBody pins the two halves of the answer: Raw
+// is what the instance said, Redacted is what may be printed. Prowlarr hands the
+// key back in both shapes covered here — inside a release's proxy downloadUrl,
+// and as config/host's own apiKey field — so the scrub matches on the key's
+// value rather than on a parameter name.
+func TestCallAPIRedactsTheAPIKeyFromTheBody(t *testing.T) {
+	body := `{"apiKey":"` + testAPIKey + `",` +
+		`"downloadUrl":"http://prowlarr.example/3/download?apikey=` + testAPIKey + `&link=abc"}`
+
+	var got recordedRequest
+
+	srv := jsonServer(t, body, &got)
+	client := newTestClient(t, srv.URL, WithAPIKey(testAPIKey))
+
+	resp, err := client.CallAPI(t.Context(), Request{Path: APIPath("config/host")})
+	require.NoError(t, err)
+
+	// Raw is untouched: it is what a caller acts on.
+	assert.Equal(t, body, string(resp.Raw)) //nolint:testifylint // encoded-compare: byte-exactness is the assertion
+	assert.NotContains(t, string(resp.Redacted), testAPIKey)
+	assert.Contains(t, string(resp.Redacted), `"apiKey":"REDACTED"`)
+	assert.Contains(t, string(resp.Redacted), "?apikey=REDACTED&link=abc")
+}
+
+func TestCallAPILeavesTheBodyAloneWithNoAPIKeyConfigured(t *testing.T) {
+	const body = `{"apiKey":"whatever-the-instance-reports"}`
+
+	var got recordedRequest
+
+	srv := jsonServer(t, body, &got)
+	client := newTestClient(t, srv.URL)
+
+	resp, err := client.CallAPI(t.Context(), Request{Path: APIPath("config/host")})
+	require.NoError(t, err)
+
+	assert.Equal(t, body, string(resp.Redacted)) //nolint:testifylint // encoded-compare: byte-exactness is the assertion
 }
 
 func TestCallAPIReportsANonSuccessStatusWithoutAnError(t *testing.T) {

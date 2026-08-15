@@ -401,6 +401,20 @@ func prowlarrAPIConfig(t *testing.T, status int, body string) (string, *prowlarr
 // indexerListBody is a canned Prowlarr /api/v1/indexer answer.
 const indexerListBody = `[{"id": 3, "name": "Example Tracker"}, {"id": 5, "name": "Example Usenet"}]`
 
+// prowlarrSearchBody is a canned Prowlarr /api/v1/search answer whose
+// downloadUrl is one of Prowlarr's own proxy links, which carries the API key as
+// a query parameter because a torrent client fetching it has nowhere to put a
+// header. It is what makes the never-prints-the-key guard non-vacuous: a fixture
+// with no key in it would pass whether or not any redaction exists.
+const prowlarrSearchBody = `[{"guid": "https://tracker.example/1", "title": "Ubuntu 24.04 LTS", ` +
+	`"downloadUrl": "http://prowlarr.example/3/download?apikey=` + searchFixtureAPIKey + `&link=abc"}]`
+
+// prowlarrConfigHostBody is a canned Prowlarr /api/v1/config/host answer. The
+// instance reports its own API key there, in a plain field rather than inside a
+// URL, which is why the scrub has to be value-based rather than a hunt for a
+// query parameter spelled "apikey".
+const prowlarrConfigHostBody = `{"bindAddress": "*", "port": 9696, "apiKey": "` + searchFixtureAPIKey + `"}`
+
 func TestAPIProwlarrExpandsABarePathAndDefaultsToGET(t *testing.T) {
 	cfgPath, got := prowlarrAPIConfig(t, http.StatusOK, indexerListBody)
 
@@ -574,21 +588,53 @@ func TestAPIProwlarrRefusesATransmissionServer(t *testing.T) {
 }
 
 // TestAPIProwlarrNeverPrintsTheAPIKey covers every render mode: the key reaches
-// the wire as a header and nothing else.
+// the wire as a header and nothing else, even when the instance hands it back in
+// the response body.
 func TestAPIProwlarrNeverPrintsTheAPIKey(t *testing.T) {
-	const apiKey = "super-secret-api-key"
+	// Guard the guard: without a key in the fixture the assertions below pass
+	// whether or not any redaction exists.
+	require.Contains(t, prowlarrSearchBody, "apikey="+searchFixtureAPIKey,
+		"the fixture must carry the key for this test to mean anything")
 
-	cfgPath, got := prowlarrAPIConfig(t, http.StatusOK, indexerListBody)
-	t.Setenv(envAPIKey, apiKey)
+	cfgPath, got := prowlarrAPIConfig(t, http.StatusOK, prowlarrSearchBody)
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
 
 	for _, args := range [][]string{
-		{"--prowlarr", "indexer"},
-		{"--prowlarr", "indexer", "--raw"},
-		{"--prowlarr", "indexer", "--jq", "."},
+		{"--prowlarr", "search"},
+		{"--prowlarr", "search", "--raw"},
+		{"--prowlarr", "search", "--jq", "."},
 	} {
 		out, errOut, err := runAPI(t, append([]string{"--config", cfgPath}, args...)...)
 		require.NoErrorf(t, err, "%v", args)
-		assert.NotContainsf(t, out+errOut, apiKey, "%v", args)
-		assert.Equalf(t, apiKey, got.apiKey, "%v", args)
+		assert.NotContainsf(t, out+errOut, searchFixtureAPIKey, "%v", args)
+		assert.Containsf(t, out, "apikey=REDACTED", "%v", args)
+		assert.Equalf(t, searchFixtureAPIKey, got.apiKey, "%v", args)
 	}
+}
+
+// TestAPIProwlarrRedactsTheKeyOutsideAURL pins that the scrub is value-based:
+// config/host reports the instance's API key in a plain field, so a redactor
+// that only rewrote an "apikey" query parameter would print it.
+func TestAPIProwlarrRedactsTheKeyOutsideAURL(t *testing.T) {
+	require.Contains(t, prowlarrConfigHostBody, searchFixtureAPIKey,
+		"the fixture must carry the key for this test to mean anything")
+
+	cfgPath, _ := prowlarrAPIConfig(t, http.StatusOK, prowlarrConfigHostBody)
+	t.Setenv(envAPIKey, searchFixtureAPIKey)
+
+	for _, args := range [][]string{
+		{"--prowlarr", "config/host"},
+		{"--prowlarr", "config/host", "--raw"},
+		{"--prowlarr", "config/host", "--jq", ".apiKey"},
+	} {
+		out, errOut, err := runAPI(t, append([]string{"--config", cfgPath}, args...)...)
+		require.NoErrorf(t, err, "%v", args)
+		assert.NotContainsf(t, out+errOut, searchFixtureAPIKey, "%v", args)
+		assert.Containsf(t, out, "REDACTED", "%v", args)
+	}
+
+	// The rest of the document is untouched: only the key's own value goes.
+	out, _, err := runAPI(t, "--config", cfgPath, "--prowlarr", "config/host", "--jq", ".port")
+	require.NoError(t, err)
+	assert.Equal(t, "9696", strings.TrimSpace(out))
 }

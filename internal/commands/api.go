@@ -117,6 +117,11 @@ func NewAPICmd() *cobra.Command {
 			"its response body is printed as indented JSON exactly as the server " +
 			"sent it. --raw prints the exact bytes in both modes, and --jq filters " +
 			"whatever the mode would have printed.\n\n" +
+			"A Prowlarr instance hands its own API key back in ordinary answers (a " +
+			"release's downloadUrl is a proxy link carrying apikey=, and config/host " +
+			"reports the key in a field), so the configured key is replaced with " +
+			"REDACTED wherever it appears in the response body — in every mode, " +
+			"--raw included.\n\n" +
 			"Under --prowlarr the field flags follow the verb: -f/-F/--input become " +
 			"QUERY PARAMETERS for GET and DELETE (a repeated key stays repeated, " +
 			"which is how Prowlarr binds an array), and a JSON REQUEST BODY for every " +
@@ -423,18 +428,24 @@ func queryValue(value json.RawMessage) string {
 // exact bytes, and --jq filters the decoded body. A body that is not JSON at all
 // (an HTML page from a reverse proxy, or the empty body of a successful DELETE)
 // is written verbatim in every mode, there being nothing to indent or filter.
+//
+// Every mode renders APIResponse.Redacted rather than Raw. An instance hands its
+// own API key back in ordinary answers — a release's proxy downloadUrl,
+// config/host's apiKey field — and --raw is not an opt-in to printing a
+// credential, only to skipping the re-indent. A body carrying no key is
+// byte-identical either way.
 func renderProwlarrAPIResponse(cmd *cobra.Command, resp prowlarr.APIResponse, jqExpr string, raw bool) error {
 	out := cmd.OutOrStdout()
 
-	if raw || !json.Valid(resp.Raw) {
-		if _, err := out.Write(resp.Raw); err != nil {
+	if raw || !json.Valid(resp.Redacted) {
+		if _, err := out.Write(resp.Redacted); err != nil {
 			return fmt.Errorf("writing raw response: %w", err)
 		}
 
 		return nil
 	}
 
-	body := json.RawMessage(resp.Raw)
+	body := json.RawMessage(resp.Redacted)
 
 	if jqExpr != "" {
 		return output.JQ(out, body, jqExpr)

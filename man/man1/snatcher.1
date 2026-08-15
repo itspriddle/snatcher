@@ -2307,8 +2307,9 @@ the server sent it, and a
 expression addresses that body directly
 .RI ( .[].name ", not " .arguments.[].name ).
 .B \-\-raw
-prints the exact response bytes in both modes, and a body that is not JSON at
-all (an HTML page from a reverse proxy, or the empty body of a successful
+prints the exact response bytes in both modes \(em save for the API-key
+substitution described below \(em and a body that is not JSON at all (an HTML
+page from a reverse proxy, or the empty body of a successful
 .BR DELETE )
 is written verbatim.
 .PP
@@ -2334,7 +2335,17 @@ supplying that body verbatim. A non-2xx response prints the server's own body,
 then exits non-zero, mirroring how the Transmission mode prints its envelope
 before failing. The Prowlarr API key travels as a header and never reaches the
 output, including under
-.BR \-\-raw .
+.BR \-\-raw :
+an instance hands its own key back in ordinary answers \(em a release's
+.I downloadUrl
+is a proxy link carrying
+.BR apikey= ,
+and
+.B config/host
+reports the key in a field \(em so the configured key is replaced with
+.B REDACTED
+wherever it appears in the response body. A body that does not carry it is
+printed byte for byte.
 .SS "version, completion, help"
 .B snatcher version
 prints version information.
