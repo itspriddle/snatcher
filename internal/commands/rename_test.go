@@ -490,8 +490,8 @@ func TestRenameNonRootNeverPrompts(t *testing.T) {
 // TestRenameRootConfirmation covers the interactive branch of the gate at the
 // prompt seam, the way remove_test covers its own: an affirmative answer
 // proceeds and everything else declines. The command path itself cannot be
-// driven interactively without a real TTY, which confirmRootRename requires by
-// design.
+// driven interactively without a real TTY, which the shared confirmGate requires
+// by design.
 func TestRenameRootConfirmation(t *testing.T) {
 	cases := []struct {
 		name  string

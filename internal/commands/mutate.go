@@ -1,11 +1,15 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/transmission"
@@ -224,4 +228,71 @@ func pluralizeTorrents(n int) string {
 	}
 
 	return fmt.Sprintf("%d torrents", n)
+}
+
+// confirmGate is the single home of the "prompt on an interactive terminal,
+// refuse otherwise" check the gated mutation commands share. On a terminal it
+// writes prompt and returns the user's answer. When stdin is not a terminal
+// (piped input or scripts) it refuses with an error naming subject and returns
+// false, so a gated mutation is never carried out unprompted — callers skip the
+// gate entirely when --yes was given.
+//
+// Callers differ only in subject and prompt: remove, rename, and verify all
+// route through here rather than repeating the *os.File / term.IsTerminal dance.
+func confirmGate(cmd *cobra.Command, subject, prompt string) (bool, error) {
+	in, ok := interactiveInput(cmd.InOrStdin())
+	if !ok {
+		return false, fmt.Errorf("refusing to %s without confirmation; pass --yes to proceed", subject)
+	}
+
+	return promptConfirm(cmd, in, prompt)
+}
+
+// terminalInput is an input that reports for itself whether it is attached to an
+// interactive terminal. Real stdin is an *os.File and is checked with
+// term.IsTerminal instead; nothing in production implements this. It exists so
+// confirmGate's prompting branch can be driven by an in-memory reader in tests,
+// which is otherwise reachable only by allocating a pty.
+type terminalInput interface {
+	io.Reader
+	isTerminal() bool
+}
+
+// interactiveInput reports whether r is an interactive terminal, returning it as
+// the reader to prompt on.
+func interactiveInput(r io.Reader) (io.Reader, bool) {
+	switch in := r.(type) {
+	case terminalInput:
+		return in, in.isTerminal()
+	case *os.File:
+		return in, term.IsTerminal(int(in.Fd()))
+	default:
+		return nil, false
+	}
+}
+
+// promptConfirm writes msg to the command's output, reads a single line from in,
+// and reports whether the answer was affirmative. Taking an io.Reader keeps it
+// unit-testable with a strings.Reader, with no real TTY required.
+func promptConfirm(cmd *cobra.Command, in io.Reader, msg string) (bool, error) {
+	_, _ = fmt.Fprint(cmd.OutOrStdout(), msg)
+
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false, fmt.Errorf("reading confirmation: %w", err)
+	}
+
+	return parseAffirmative(line), nil
+}
+
+// parseAffirmative reports whether a prompt answer is an affirmative "y"/"yes"
+// (case-insensitive, surrounding whitespace ignored). Everything else — including
+// an empty line — declines, matching the [y/N] default.
+func parseAffirmative(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
 }

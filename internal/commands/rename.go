@@ -2,11 +2,9 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/transmission"
@@ -116,7 +114,11 @@ func NewRenameCmd() *cobra.Command {
 			root := path == before.Name
 
 			if root && !yes {
-				confirmed, err := confirmRootRename(cmd, before.Name, newName)
+				confirmed, err := confirmGate(
+					cmd,
+					"rename the torrent root",
+					rootRenamePrompt(before.Name, newName),
+				)
 				if err != nil {
 					return err
 				}
@@ -170,20 +172,6 @@ func NewRenameCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 
 	return cmd
-}
-
-// confirmRootRename decides whether a root rename may proceed when --yes was not
-// given. On an interactive terminal it prompts [y/N] and returns the user's
-// answer. When stdin is not a terminal (piped input or scripts) it refuses with
-// an error, so a script can never rename a whole torrent by accident. It mirrors
-// confirmRemoval, the other destructive-enough-to-gate command.
-func confirmRootRename(cmd *cobra.Command, current, name string) (bool, error) {
-	in, ok := cmd.InOrStdin().(*os.File)
-	if !ok || !term.IsTerminal(int(in.Fd())) {
-		return false, fmt.Errorf("refusing to rename the torrent root without confirmation; pass --yes to proceed")
-	}
-
-	return promptConfirm(cmd, in, rootRenamePrompt(current, name))
 }
 
 // rootRenamePrompt builds the interactive confirmation for a root rename. It
