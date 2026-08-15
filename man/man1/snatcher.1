@@ -1365,6 +1365,63 @@ Comma-separated columns to show, in the given order. The default set is
 Also available, but not shown by default:
 .BR hash .
 .RE
+.TP
+.B snatcher torrent label set \fR[\fIoptions\fR] [\fIid | hash\fR]...
+Replace the labels on the selected torrents with the labels given. Select
+torrents by numeric id, 40-character SHA1 hash, or
+.BR \-\-all ;
+at least one selector is required, so a bare
+.B snatcher torrent label set
+with no selector is an error, not a no-op. No confirmation is asked for, even
+under
+.BR \-\-all .
+.IP
+.B \-\-label
+may be repeated, and each occurrence is exactly one label: the value is never
+split on commas. A label is trimmed of surrounding whitespace, and one that is
+empty afterwards, or that contains a comma, is rejected before anything is sent
+\(em Transmission rejects both, and the plaintext renderer joins labels with a
+comma. The set that gets written is de-duplicated (exact, case-sensitive match)
+and sorted byte-wise, so the order the labels were given in is not preserved.
+.IP
+With no
+.B \-\-label
+at all,
+.B snatcher torrent label set
+.B removes every label
+from the selected torrents. That is how a selection is cleared \(em but it also
+means a mistyped
+.B snatcher torrent label set 5
+empties torrent 5's labels rather than erroring.
+.IP
+A torrent whose labels already match is left out of the write entirely; when no
+torrent would change, nothing is sent at all. After the write the labels are
+re-read from the server and printed in the same columns as
+.BR "snatcher torrent label list" .
+With
+.B \-\-json
+the output is the mutation contract \(em
+.BR action ", " count ", and " torrents ,
+where each torrent additionally carries its post-write
+.BR labels ,
+always an array and
+.B []
+when cleared. Besides the common options:
+.RS
+.TP
+.B \-\-all
+Replace the labels on every torrent.
+.TP
+.BR \-\-label " " \fIname\fR
+Label to write, replacing the torrent's labels. May be repeated. Omit entirely
+to remove every label.
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order. The default set is
+.BR id ", " name ", " labels .
+Also available, but not shown by default:
+.BR hash .
+.RE
 .RE
 .SS "config"
 Read and change snatcher's own settings \(em how snatcher itself behaves, as opposed to

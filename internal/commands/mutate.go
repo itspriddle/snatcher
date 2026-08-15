@@ -70,6 +70,13 @@ type mutationTorrent struct {
 	ID   int64  `json:"id"`
 	Hash string `json:"hash"`
 	Name string `json:"name"`
+
+	// Labels reports the torrent's labels after the write. It is set only by the
+	// label commands; every other mutation command leaves it nil and the key is
+	// absent. The pointer is what makes "no labels" ("labels": []) distinguish-
+	// able from "this command does not report labels" (key absent) — a plain
+	// []string with omitempty would omit both.
+	Labels *[]string `json:"labels,omitempty"`
 }
 
 // resolveMutation fetches the full torrent list and matches it against sel to
