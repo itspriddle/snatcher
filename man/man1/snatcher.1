@@ -755,7 +755,7 @@ in the object and the plaintext block). Accepts
 Manage individual torrents. All torrent operations live under the
 .B torrent
 command group:
-.BR add ", " show ", " files ", " peers ", " trackers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " rename ", " queue ", " remove ", and " update .
+.BR add ", " show ", " files ", " peers ", " trackers ", " list ", " start ", " stop ", " verify ", " reannounce ", " move ", " rename ", " queue ", " remove ", " update ", and " label .
 The mutation subcommands
 .RB ( start ", " stop ", " verify ", " reannounce ", " remove )
 select torrents by numeric id, 40-character SHA1 hash, or
@@ -1308,6 +1308,63 @@ Remove all trackers from the torrent.
 .TP
 .BR \-\-group " " \fIname\fR
 Bandwidth group name for the torrent.
+.RE
+.TP
+.B snatcher torrent label
+Read and change the labels on one or more torrents. Labels are free-form
+strings Transmission stores per torrent; matching is exact and case-sensitive,
+so
+.B Foo
+and
+.B foo
+are two distinct labels. With no subcommand it prints help.
+.IP
+This group is a wrapper over the same
+.B labels
+field
+.B "snatcher torrent update"
+writes; unlike
+.BR \-\-label / \-\-clear\-labels ,
+which replace a torrent's whole label set, it exists so a label can be read
+without a
+.B \-\-fields
+projection.
+.RS
+.TP
+.B snatcher torrent label list \fR[\fIoptions\fR] [\fIid | hash\fR]...
+.RB ( ls )
+List the labels on the selected torrents. Select torrents by numeric id,
+40-character SHA1 hash, or
+.BR \-\-all ;
+at least one selector is required, so a bare
+.B snatcher torrent label list
+is an error, not a no-op. On a terminal the output is an aligned table with a
+header; when piped (or when
+.B NO_COLOR
+is set) it is tab-separated, full-value rows with no header \(em a stable
+scripting contract. A torrent with no labels renders an empty cell, so the
+piped form stays parseable. With
+.B \-\-json
+each torrent is emitted as an object carrying
+.BR id ", " hash ", " name ", and " labels ,
+where
+.B labels
+is always an array \(em
+.B []
+for a torrent with no labels, never
+.BR null .
+Besides the common options:
+.RS
+.TP
+.B \-\-all
+List the labels on every torrent.
+.TP
+.BR \-\-fields " " \fIlist\fR
+Comma-separated columns to show, in the given order. The default set is
+.BR id ", " name ", " labels .
+Also available, but not shown by default:
+.BR hash .
+.RE
 .RE
 .SS "config"
 Read and change snatcher's own settings \(em how snatcher itself behaves, as opposed to

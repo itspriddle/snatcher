@@ -14,6 +14,12 @@ func TestRemoveCmdHasRmAlias(t *testing.T) {
 	}
 }
 
+func TestLabelListCmdHasLsAlias(t *testing.T) {
+	if got := newLabelListCmd().Aliases; len(got) != 1 || got[0] != "ls" {
+		t.Fatalf("expected label list command alias [ls], got %v", got)
+	}
+}
+
 func TestMoveCmdHasMvAlias(t *testing.T) {
 	if got := NewMoveCmd().Aliases; len(got) != 1 || got[0] != "mv" {
 		t.Fatalf("expected move command alias [mv], got %v", got)

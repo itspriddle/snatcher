@@ -24,7 +24,7 @@ func NewTorrentCmd() *cobra.Command {
 			"Group of commands for listing, inspecting, adding, controlling, and " +
 			"removing torrents on the server. Run a subcommand (add, show, files, " +
 			"peers, trackers, list, start, stop, verify, reannounce, move, rename, " +
-			"queue, remove, update) to act on torrents.",
+			"queue, remove, update, label) to act on torrents.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -35,6 +35,7 @@ func NewTorrentCmd() *cobra.Command {
 
 	cmd.AddCommand(NewAddCmd())
 	cmd.AddCommand(NewFilesCmd())
+	cmd.AddCommand(NewLabelCmd())
 	cmd.AddCommand(NewListCmd())
 	cmd.AddCommand(NewMoveCmd())
 	cmd.AddCommand(NewPeersCmd())

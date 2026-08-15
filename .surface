@@ -47,6 +47,8 @@ CMD snatcher torrent
 CMD snatcher torrent add
 CMD snatcher torrent files
 CMD snatcher torrent files update
+CMD snatcher torrent label
+CMD snatcher torrent label list
 CMD snatcher torrent list
 CMD snatcher torrent move
 CMD snatcher torrent peers
@@ -188,6 +190,11 @@ FLAG snatcher torrent files update --priority type=string
 FLAG snatcher torrent files update --server type=string
 FLAG snatcher torrent files update --unwanted type=bool
 FLAG snatcher torrent files update --wanted type=bool
+FLAG snatcher torrent label list --all type=bool
+FLAG snatcher torrent label list --fields type=string
+FLAG snatcher torrent label list --jq type=string
+FLAG snatcher torrent label list --json type=bool
+FLAG snatcher torrent label list --server type=string
 FLAG snatcher torrent list --fields type=string
 FLAG snatcher torrent list --filter type=string
 FLAG snatcher torrent list --jq type=string
