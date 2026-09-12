@@ -1,12 +1,14 @@
 package commands
 
 import (
+	"bytes"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
 
 // TestResolveClientSettingsDefaults checks the settings a first run gets: no
@@ -219,24 +221,85 @@ func TestClientConfigStoreSetWritesToTheConfigPath(t *testing.T) {
 func TestDialerReportsUnconfigured(t *testing.T) {
 	cfgPath := writeConfigFile(t, `{"servers": {}}`)
 
-	_, _, err := Dialer(dialCmd(t, cfgPath))("")
+	_, err := Dialer(dialCmd(t, cfgPath))("")
 	require.Error(t, err)
 
 	assert.Contains(t, err.Error(), "not configured")
 }
 
 // TestDialerResolvesConfiguredServer checks the happy path: the dialer returns a
-// client and the resolved URL, so the TUI can show which server it is on without
-// re-resolving the precedence chain itself.
+// client, the resolved URL, and the alias, so the TUI can show which server it is
+// on without re-resolving the precedence chain itself.
 func TestDialerResolvesConfiguredServer(t *testing.T) {
+	keyring.MockInit()
+
 	cfgPath := writeConfigFile(t, `{
 		"servers": {"home": {"url": "http://localhost:9091/transmission/rpc", "username": "user"}},
 		"default_server": "home"
 	}`)
 
-	client, url, err := Dialer(dialCmd(t, cfgPath))("")
+	res, err := Dialer(dialCmd(t, cfgPath))("")
 	require.NoError(t, err)
 
-	assert.NotNil(t, client)
-	assert.Equal(t, "http://localhost:9091/transmission/rpc", url)
+	assert.NotNil(t, res.Client)
+	assert.Equal(t, "home", res.Name)
+	assert.Equal(t, "http://localhost:9091/transmission/rpc", res.URL)
+	assert.Empty(t, res.Warning)
+}
+
+// TestDialerCapturesTheStoreWarning checks the unavailable-store note a dial
+// raises comes back as DialResult.Warning and never reaches stderr, which the
+// TUI's alt screen owns, and that the command's error writer is restored.
+func TestDialerCapturesTheStoreWarning(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{
+		"servers": {"home": {"url": "http://localhost:9091/transmission/rpc", "username": "user"}},
+		"default_server": "home"
+	}`)
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	cmd := dialCmd(t, cfgPath)
+
+	var stderr bytes.Buffer
+
+	cmd.SetErr(&stderr)
+
+	res, err := Dialer(cmd)("home")
+	require.NoError(t, err)
+
+	assert.Contains(t, res.Warning, "secret store could not be reached")
+	assert.Empty(t, stderr.String())
+	assert.Same(t, &stderr, cmd.ErrOrStderr())
+}
+
+// TestServersListsTransmissionAliases checks the picker's list: sorted,
+// the default flagged, and Prowlarr servers left out.
+func TestServersListsTransmissionAliases(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{
+		"servers": {
+			"seedbox": {"url": "http://sb.example:9091/transmission/rpc"},
+			"home": {"url": "http://nas:9091/transmission/rpc"},
+			"indexer": {"url": "http://prowlarr:9696", "type": "prowlarr"}
+		},
+		"default_server": "seedbox",
+		"default_prowlarr_server": "indexer"
+	}`)
+
+	entries, err := Servers(dialCmd(t, cfgPath))()
+	require.NoError(t, err)
+
+	assert.Equal(t, []ServerEntry{
+		{Name: "home", URL: "http://nas:9091/transmission/rpc"},
+		{Name: "seedbox", URL: "http://sb.example:9091/transmission/rpc", Default: true},
+	}, entries)
+}
+
+// TestServersUnconfiguredIsEmpty checks a missing config lists nothing rather
+// than failing.
+func TestServersUnconfiguredIsEmpty(t *testing.T) {
+	entries, err := Servers(dialCmd(t, t.TempDir()+"/missing.json"))()
+	require.NoError(t, err)
+
+	assert.Empty(t, entries)
 }

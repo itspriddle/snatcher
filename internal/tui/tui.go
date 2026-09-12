@@ -29,9 +29,12 @@ import (
 type Deps struct {
 	// Dial constructs a client for a named server, or for the configured
 	// default when the name is empty. The TUI keeps the dialer rather than a
-	// dialed client so T4's server picker can switch servers without a new
-	// seam.
-	Dial func(server string) (*transmission.Client, string, error)
+	// dialed client so the server picker can switch servers without a new seam.
+	Dial func(server string) (DialResult, error)
+
+	// Servers lists the configured Transmission servers for the picker. It is
+	// nil in tests, in which case the picker says there is no list to show.
+	Servers func() ([]ServerEntry, error)
 
 	// Theme is the resolved color theme name.
 	Theme string
@@ -47,20 +50,40 @@ type Deps struct {
 	// TUI keeps reading no environment of its own.
 	NoColor bool
 
-	// PollInterval is how often T4's refresh spine will poll.
+	// PollInterval is how often the refresh spine polls. It is read each time a
+	// tick is scheduled, so a saved interval applies from the next one.
 	PollInterval time.Duration
 
 	// Version is the string the status bar shows.
 	Version string
 
-	// Torrents seeds the torrent list. A nil value means the mock set, which
-	// is what T1 runs on; T4 replaces it with a live poll.
+	// Torrents is a static set of rows for tests. A non-nil value disables
+	// polling; nil means the rows come from the server, or that there are none
+	// when no client was dialed.
 	Torrents []transmission.Torrent
 
 	// Config reads and writes snatcher's own client settings for the settings
 	// window. It is nil in tests and whenever the launcher did not wire one, in
 	// which case the General and Polling tabs are shown read-only.
 	Config ClientConfig
+}
+
+// DialResult is one dial: the client, the alias and URL it resolved to, and a
+// warning the dial raised that belongs in the status bar rather than on stderr.
+// It mirrors commands.DialResult; neither package imports the other.
+type DialResult struct {
+	Client  *transmission.Client
+	Name    string
+	URL     string
+	Warning string
+}
+
+// ServerEntry is one configured Transmission server in the picker. It mirrors
+// commands.ServerEntry.
+type ServerEntry struct {
+	Name    string
+	URL     string
+	Default bool
 }
 
 // ClientEntry is one client setting as the settings window sees it.
@@ -107,14 +130,16 @@ type ClientConfig interface {
 // user cannot copy out of. Everything that can fail from configuration fails
 // here, above the alt screen.
 func Run(ctx context.Context, deps Deps) error {
-	client, serverURL, err := deps.Dial("")
+	res, err := deps.Dial("")
 	if err != nil {
 		return err
 	}
 
 	m := New(deps)
-	m.client = client
-	m.serverURL = serverURL
+	m.client = res.Client
+	m.serverURL = res.URL
+	m.serverName = res.Name
+	m.toast = res.Warning
 	m.ctx = ctx
 
 	// ctrl+c and SIGINT are how a TUI is meant to be left, so the sentinel

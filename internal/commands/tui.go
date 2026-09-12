@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strings"
@@ -8,8 +9,40 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
+
+// DialResult is one dial as the TUI sees it: the client, the alias and URL the
+// precedence chain resolved to, and the unavailable-store warning the dial
+// emitted, if any.
+type DialResult struct {
+	// Client is the constructed Transmission client.
+	Client *transmission.Client
+
+	// Name is the alias the precedence chain resolved to.
+	Name string
+
+	// URL is that server's RPC URL.
+	URL string
+
+	// Warning is the note dial would have written to stderr — today only the
+	// unavailable-store warning — trimmed, or empty.
+	Warning string
+}
+
+// ServerEntry is one configured Transmission server, as the TUI's server picker
+// lists it.
+type ServerEntry struct {
+	// Name is the alias.
+	Name string
+
+	// URL is the server's RPC URL.
+	URL string
+
+	// Default reports whether this is default_server.
+	Default bool
+}
 
 // Dialer returns a function that constructs a *transmission.Client for a named
 // server, exactly as every command does. It is the seam internal/cli uses to
@@ -22,11 +55,59 @@ import (
 // a dialer needs none.
 //
 // The returned function takes the same server argument dial does — the empty
-// string meaning "whatever the precedence chain resolves to" — and returns the
-// client alongside the resolved server URL.
-func Dialer(cmd *cobra.Command) func(server string) (*transmission.Client, string, error) {
-	return func(server string) (*transmission.Client, string, error) {
-		return dial(cmd, server)
+// string meaning "whatever the precedence chain resolves to". A warning the dial
+// would write to stderr is captured into DialResult.Warning instead: mid-session
+// the TUI owns the alt screen, and a line written under it would corrupt the
+// frame. The capture swaps cmd's error writer for the duration of the dial, so it
+// is only safe while one dial is in flight at a time; the TUI's picker refuses a
+// second switch while one is running, which is what makes it so.
+func Dialer(cmd *cobra.Command) func(server string) (DialResult, error) {
+	return func(server string) (DialResult, error) {
+		prev := cmd.ErrOrStderr()
+
+		var captured bytes.Buffer
+
+		cmd.SetErr(&captured)
+		defer cmd.SetErr(prev)
+
+		d, err := dialNamed(cmd, server)
+		if err != nil {
+			return DialResult{}, err
+		}
+
+		return DialResult{
+			Client:  d.client,
+			Name:    d.name,
+			URL:     d.url,
+			Warning: strings.TrimSpace(captured.String()),
+		}, nil
+	}
+}
+
+// Servers returns a function that lists the configured Transmission servers,
+// sorted by alias, for the TUI's server picker. Prowlarr servers are left out:
+// the picker switches the torrents and settings windows, which only a
+// Transmission server can back. An unconfigured snatcher lists nothing rather
+// than failing, and no secret store is touched.
+func Servers(cmd *cobra.Command) func() ([]ServerEntry, error) {
+	return func() ([]ServerEntry, error) {
+		cfg, configured, err := loadConfig(configFlag(cmd))
+		if err != nil {
+			return nil, err
+		}
+
+		if !configured {
+			return []ServerEntry{}, nil
+		}
+
+		names := cfg.NamesOfType(config.TypeTransmission)
+		out := make([]ServerEntry, 0, len(names))
+
+		for _, name := range names {
+			out = append(out, ServerEntry{Name: name, URL: cfg.Servers[name].URL, Default: name == cfg.DefaultServer})
+		}
+
+		return out, nil
 	}
 }
 

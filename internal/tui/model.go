@@ -44,9 +44,10 @@ type Model struct {
 	// constructed without dialing. T4 is the first milestone that uses it.
 	client *transmission.Client
 
-	// serverURL is the server the client is pointed at, shown in the status
-	// bar.
-	serverURL string
+	// serverURL is the server the client is pointed at, and serverName the
+	// alias it was dialed as. Both are shown in the status bar.
+	serverURL  string
+	serverName string
 
 	// ctx is the program's context, which every backend command derives its
 	// timeout from, so quitting cancels a round trip still in flight. New

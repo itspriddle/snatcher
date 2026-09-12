@@ -41,14 +41,41 @@ func launchTUI(cmd *cobra.Command) error {
 	}
 
 	return tui.Run(cmd.Context(), tui.Deps{
-		Dial:         commands.Dialer(cmd),
+		Dial:         dialer(commands.Dialer(cmd)),
+		Servers:      servers(commands.Servers(cmd)),
 		Config:       clientConfig{store: commands.ClientConfigStore(cmd)},
 		Theme:        settings.Theme,
 		NerdFont:     settings.NerdFont,
 		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,
-		Version:      version.FullVersion(),
+		Version:      "v" + version.Version,
 	})
+}
+
+// dialer adapts commands.Dialer to the TUI's own DialResult.
+func dialer(dial func(string) (commands.DialResult, error)) func(string) (tui.DialResult, error) {
+	return func(server string) (tui.DialResult, error) {
+		res, err := dial(server)
+
+		return tui.DialResult{Client: res.Client, Name: res.Name, URL: res.URL, Warning: res.Warning}, err
+	}
+}
+
+// servers adapts commands.Servers to the TUI's own ServerEntry.
+func servers(list func() ([]commands.ServerEntry, error)) func() ([]tui.ServerEntry, error) {
+	return func() ([]tui.ServerEntry, error) {
+		entries, err := list()
+		if err != nil {
+			return nil, err
+		}
+
+		out := make([]tui.ServerEntry, len(entries))
+		for i, e := range entries {
+			out[i] = tui.ServerEntry{Name: e.Name, URL: e.URL, Default: e.Default}
+		}
+
+		return out, nil
+	}
 }
 
 // clientConfig adapts commands.ConfigStore to tui.ClientConfig. The two packages

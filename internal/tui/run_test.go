@@ -18,10 +18,10 @@ func TestNewNeverDials(t *testing.T) {
 	dialed := false
 
 	deps := testDeps()
-	deps.Dial = func(string) (*transmission.Client, string, error) {
+	deps.Dial = func(string) (DialResult, error) {
 		dialed = true
 
-		return nil, "", nil
+		return DialResult{}, nil
 	}
 
 	m := New(deps)
@@ -41,7 +41,7 @@ func TestRunReturnsTheDialErrorWithoutStartingAProgram(t *testing.T) {
 	want := errors.New("not configured: run 'snatcher server add' first")
 
 	deps := testDeps()
-	deps.Dial = func(string) (*transmission.Client, string, error) { return nil, "", want }
+	deps.Dial = func(string) (DialResult, error) { return DialResult{}, want }
 
 	err := Run(t.Context(), deps)
 
@@ -123,9 +123,10 @@ func TestViewIsAnAltScreen(t *testing.T) {
 func TestStatusBarShowsTheHost(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.serverURL = "http://seedbox.example:9091/transmission/rpc"
+	m.serverName = "home"
 
 	bar := m.statusBarView(120)
 
-	assert.Contains(t, bar, "seedbox.example:9091")
+	assert.Contains(t, bar, "home@seedbox.example:9091")
 	assert.NotContains(t, bar, "/transmission/rpc")
 }

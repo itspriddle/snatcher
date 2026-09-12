@@ -49,20 +49,24 @@ func (m Model) statusBarView(width int) string {
 	return m.styles.StatusBar.Render(padLine(left, width))
 }
 
-// hostLabel is the server the TUI is pointed at, as a host rather than a full
-// RPC URL: the path is the same on every Transmission server and spends status
-// bar width saying nothing.
+// hostLabel is the server the TUI is pointed at, as alias@host rather than a
+// full RPC URL: the path is the same on every Transmission server and spends
+// status bar width saying nothing, and the alias is what the picker lists.
 func (m Model) hostLabel() string {
 	if m.serverURL == "" {
 		return mockHost
 	}
 
-	u, err := url.Parse(m.serverURL)
-	if err != nil || u.Host == "" {
-		return output.SanitizeTerminal(m.serverURL)
+	host := m.serverURL
+	if u, err := url.Parse(m.serverURL); err == nil && u.Host != "" {
+		host = u.Host
 	}
 
-	return output.SanitizeTerminal(u.Host)
+	if m.serverName != "" {
+		host = m.serverName + "@" + host
+	}
+
+	return output.SanitizeTerminal(host)
 }
 
 // helpLineView renders the one-line short help above the status bar, listing the
