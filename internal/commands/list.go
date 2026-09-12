@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -404,11 +403,20 @@ func writeListPiped[T any](w io.Writer, rows []T, columns []column[T]) {
 	}
 }
 
+// gutter is the number of spaces between two adjacent table columns. The
+// renderer and nameColumnLimit share it so the width the truncation math
+// budgets for is the width the rows actually occupy.
+const gutter = 2
+
 // writeListTable writes a whitespace-aligned table with a header row, numeric
 // columns right-aligned and text columns left-aligned, truncating truncatable
 // columns (Name) with an ellipsis so rows fit width. An empty list writes the
 // caller's friendly empty line ("No torrents.", "No files.", …), which each
 // command names for its own row type. A width of 0 disables truncation.
+//
+// Padding is computed here rather than delegated to text/tabwriter: alignment is
+// per column (numbers right, text left) and tabwriter's AlignRight is a
+// writer-wide flag, so a mixed grid is not something it can express.
 func writeListTable[T any](w io.Writer, rows []T, columns []column[T], width int, empty string) {
 	if len(rows) == 0 {
 		_, _ = fmt.Fprintln(w, empty)
@@ -417,13 +425,15 @@ func writeListTable[T any](w io.Writer, rows []T, columns []column[T], width int
 
 	nameLimit := nameColumnLimit(rows, columns, width)
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	// The header row is laid out with the data rows so a column is exactly as
+	// wide as the widest of its header and its cells.
+	lines := make([][]string, 0, len(rows)+1)
 
 	headers := make([]string, len(columns))
 	for i, col := range columns {
 		headers[i] = col.header
 	}
-	_, _ = fmt.Fprintln(tw, strings.Join(headers, "\t"))
+	lines = append(lines, headers)
 
 	for _, row := range rows {
 		cells := make([]string, len(columns))
@@ -432,19 +442,50 @@ func writeListTable[T any](w io.Writer, rows []T, columns []column[T], width int
 			if col.truncate && nameLimit > 0 {
 				cell = truncate(cell, nameLimit)
 			}
-			if col.rightAlign {
-				cell = "\t" + cell
-			}
 			cells[i] = cell
 		}
-
-		// Right-aligned cells are prefixed with a tab above; join the rest with
-		// tabs and strip the doubled tab that the prefix introduces.
-		line := strings.ReplaceAll(strings.Join(cells, "\t"), "\t\t", "\t")
-		_, _ = fmt.Fprintln(tw, line)
+		lines = append(lines, cells)
 	}
 
-	_ = tw.Flush()
+	widths := make([]int, len(columns))
+	for _, cells := range lines {
+		for i, cell := range cells {
+			if n := cellDisplayWidth(cell); n > widths[i] {
+				widths[i] = n
+			}
+		}
+	}
+
+	var b strings.Builder
+	for _, cells := range lines {
+		b.Reset()
+		for i, cell := range cells {
+			if i > 0 {
+				b.WriteString(strings.Repeat(" ", gutter))
+			}
+
+			pad := strings.Repeat(" ", widths[i]-cellDisplayWidth(cell))
+			if columns[i].rightAlign {
+				b.WriteString(pad)
+				b.WriteString(cell)
+				continue
+			}
+
+			b.WriteString(cell)
+			b.WriteString(pad)
+		}
+
+		// Padding the final column would leave every line with a ragged tail of
+		// invisible spaces.
+		_, _ = fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
+	}
+}
+
+// cellDisplayWidth reports the width a rendered cell occupies in the table.
+// Rune-count based, with the same caveat truncate documents: wide (CJK) display
+// width is not accounted for.
+func cellDisplayWidth(s string) int {
+	return len([]rune(s))
 }
 
 // nameColumnLimit computes how many runes the truncatable (Name) column may
@@ -457,9 +498,7 @@ func nameColumnLimit[T any](rows []T, columns []column[T], width int) int {
 	}
 
 	// Sum the widest rendered width of every non-truncatable column, plus the
-	// 2-space gutter tabwriter inserts between columns.
-	const gutter = 2
-
+	// gutter the renderer inserts between columns.
 	fixed := 0
 	nameIndex := -1
 	for i, col := range columns {
@@ -468,9 +507,9 @@ func nameColumnLimit[T any](rows []T, columns []column[T], width int) int {
 			continue
 		}
 
-		colWidth := len(col.header)
+		colWidth := cellDisplayWidth(col.header)
 		for _, row := range rows {
-			if cellWidth := len([]rune(cellValue(col, row))); cellWidth > colWidth {
+			if cellWidth := cellDisplayWidth(cellValue(col, row)); cellWidth > colWidth {
 				colWidth = cellWidth
 			}
 		}
@@ -492,9 +531,9 @@ func nameColumnLimit[T any](rows []T, columns []column[T], width int) int {
 	}
 
 	// Don't truncate when the longest name already fits.
-	longest := len(columns[nameIndex].header)
+	longest := cellDisplayWidth(columns[nameIndex].header)
 	for _, row := range rows {
-		if w := len([]rune(cellValue(columns[nameIndex], row))); w > longest {
+		if w := cellDisplayWidth(cellValue(columns[nameIndex], row)); w > longest {
 			longest = w
 		}
 	}

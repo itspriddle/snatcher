@@ -219,23 +219,60 @@ func TestWriteListTableAligned(t *testing.T) {
 	// width 0 disables truncation so the full names show.
 	writeListTable(&buf, torrents, cols, 0, "No torrents.")
 
-	out := buf.String()
-	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	require.Len(t, lines, 3, "header row plus one row per torrent")
+	// Pinned byte-for-byte: the header row and the data rows must land in one
+	// grid (a regression guard for the stray leading tab that used to shift every
+	// data row one column right of the header), numeric columns right-aligned
+	// under their own right-aligned headers, text columns left-aligned, and no
+	// line carrying a tail of trailing spaces.
+	want := "" +
+		" ID  Name    Status       Done     Size       Down       Up  Ratio  ETA\n" +
+		"  1  ubuntu  Downloading   50%  2.0 KiB  1.0 KiB/s  512 B/s   0.50   1m\n" +
+		"200  debian  Seeding      100%  4.0 KiB      0 B/s  256 B/s   2.00    -\n"
 
-	// Header row is present and ordered.
-	assert.True(t, strings.HasPrefix(lines[0], "ID"))
-	assert.Contains(t, lines[0], "Name")
-	assert.Contains(t, lines[0], "ETA")
+	assert.Equal(t, want, buf.String())
+}
 
-	// The ID column is right-aligned: the single-digit "1" is padded so it lines
-	// up under the trailing "0" of "200".
-	idCol := strings.Index(lines[0], "ID")
-	assert.Equal(t, byte(' '), lines[1][idCol], "narrow ID is right-aligned (space before digit)")
+// TestWriteListTableAlignsInteriorRightColumn covers a right-aligned column that
+// is neither first nor last. That is the class of column whose alignment the
+// previous tabwriter-tab trick silently dropped, so the leading-column golden
+// above would not have caught it alone.
+func TestWriteListTableAlignsInteriorRightColumn(t *testing.T) {
+	torrents := []transmission.Torrent{
+		{Name: "ubuntu", Status: transmission.StatusDownloading, PercentDone: 0.5},
+		{Name: "debian", Status: transmission.StatusSeeding, PercentDone: 1.0},
+	}
 
-	assert.Contains(t, out, "ubuntu")
-	assert.Contains(t, out, "Downloading")
-	assert.Contains(t, out, "Seeding")
+	cols, err := parseFields(listFields, defaultFieldKeys, "name,done,status")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListTable(&buf, torrents, cols, 0, "No torrents.")
+
+	want := "" +
+		"Name    Done  Status\n" +
+		"ubuntu   50%  Downloading\n" +
+		"debian  100%  Seeding\n"
+
+	assert.Equal(t, want, buf.String())
+}
+
+// TestWriteListTableNoTrailingWhitespace guards the render loop's TrimRight: a
+// short final cell must not leave the line padded out to the column width.
+func TestWriteListTableNoTrailingWhitespace(t *testing.T) {
+	torrents := []transmission.Torrent{
+		{ID: 1, Name: "ubuntu", DownloadDir: "/downloads/complete"},
+		{ID: 2, Name: "debian", DownloadDir: "/d"},
+	}
+
+	cols, err := parseFields(listFields, defaultFieldKeys, "id,name,download_dir")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListTable(&buf, torrents, cols, 0, "No torrents.")
+
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		assert.Equal(t, strings.TrimRight(line, " "), line, "no line carries trailing spaces")
+	}
 }
 
 func TestWriteListTableEmpty(t *testing.T) {
@@ -415,6 +452,52 @@ func TestWriteListTableTruncatesName(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "…", "long name is truncated with an ellipsis")
 	assert.NotContains(t, out, "this-is-a-very-long-torrent-name-that-will-not-fit")
+}
+
+// TestWriteListTableFitsWidth checks what truncation is for: when the terminal
+// has room for the fixed columns, every rendered line stays inside the width.
+// (A terminal too narrow for the fixed columns alone deliberately overflows
+// instead of hiding the name entirely — see nameColumnLimit's minName floor.)
+func TestWriteListTableFitsWidth(t *testing.T) {
+	torrents := []transmission.Torrent{
+		{ID: 1, Name: "this-is-a-very-long-torrent-name-that-will-not-fit", Status: transmission.StatusSeeding},
+		{ID: 2, Name: "short", Status: transmission.StatusDownloading},
+	}
+
+	cols, err := parseFields(listFields, defaultFieldKeys, "")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListTable(&buf, torrents, cols, 80, "No torrents.")
+
+	out := buf.String()
+	assert.Contains(t, out, "…", "the long name is truncated")
+
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		assert.LessOrEqual(t, cellDisplayWidth(line), 80, "rendered line fits the terminal width: %q", line)
+	}
+}
+
+// TestNameColumnLimitBudgetsFixedColumns pins the width math the renderer shares
+// with the table: the Name budget is what is left of the terminal after every
+// other column's widest cell and the inter-column gutters.
+func TestNameColumnLimitBudgetsFixedColumns(t *testing.T) {
+	torrents := []transmission.Torrent{
+		{ID: 1, Name: "this-is-a-very-long-torrent-name", Status: transmission.StatusSeeding},
+	}
+
+	cols, err := parseFields(listFields, defaultFieldKeys, "id,name,status")
+	require.NoError(t, err)
+
+	// "ID" (2) + "Seeding" (7) + two 2-space gutters = 13 fixed columns.
+	assert.Equal(t, 40-13, nameColumnLimit(torrents, cols, 40))
+
+	// A name that already fits is left alone, as is an unknown width.
+	assert.Zero(t, nameColumnLimit(torrents, cols, 200))
+	assert.Zero(t, nameColumnLimit(torrents, cols, 0))
+
+	// A hopelessly narrow terminal still shows a sliver of the name.
+	assert.Equal(t, 8, nameColumnLimit(torrents, cols, 10))
 }
 
 // US-007: command-level coverage for --search, --reverse, and the
