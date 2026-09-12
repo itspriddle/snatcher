@@ -187,6 +187,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.polled(msg)
 	case sessionMsg:
 		return m.sessionPolled(msg)
+	case dialedMsg:
+		return m.dialed(msg)
 	}
 
 	return m.forwardToInput(msg)

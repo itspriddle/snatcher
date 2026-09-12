@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"net/url"
 	"slices"
 	"strings"
 
@@ -294,16 +293,13 @@ func (m Model) hostLabel() string {
 		return noServerLabel
 	}
 
-	host := m.serverURL
-	if u, err := url.Parse(m.serverURL); err == nil && u.Host != "" {
-		host = u.Host
-	}
+	host := hostOf(m.serverURL)
 
 	if m.serverName != "" {
-		host = m.serverName + "@" + host
+		host = output.SanitizeTerminal(m.serverName) + "@" + host
 	}
 
-	return output.SanitizeTerminal(host)
+	return host
 }
 
 // helpLineView renders the one-line short help above the status bar, listing the

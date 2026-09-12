@@ -45,6 +45,14 @@ type sessionMsg struct {
 	err     error
 }
 
+// dialedMsg is the answer to dialServer.
+type dialedMsg struct {
+	gen    int
+	name   string
+	result DialResult
+	err    error
+}
+
 // liveData is everything the refresh spine owns. A server switch replaces it
 // wholesale, so nothing from one server can leak into another's status bar.
 type liveData struct {
@@ -279,4 +287,75 @@ func (m Model) refreshNow() (Model, tea.Cmd) {
 	m.live.slowDue = true
 
 	return m.pollNow()
+}
+
+// dialServer dials a server off the update loop: resolving its secret can open
+// the OS keyring, and a Keychain prompt would otherwise freeze the frame.
+func dialServer(dial func(string) (DialResult, error), name string, gen int) tea.Cmd {
+	return func() tea.Msg {
+		res, err := dial(name)
+
+		return dialedMsg{gen: gen, name: name, result: res, err: err}
+	}
+}
+
+// switchServer starts a switch to a named server. The generation bump retires
+// every reply and tick the old server still has in flight, and a second switch
+// is refused until this one lands, which is what keeps the dialer's single
+// error-writer swap safe.
+func (m Model) switchServer(name string) (Model, tea.Cmd) {
+	if m.deps.Dial == nil {
+		m.toast = "no dialer"
+
+		return m, nil
+	}
+
+	m.live.gen++
+	m.live.switching = true
+	m.live.inFlight = false
+	m.toast = "connecting to " + name + "…"
+
+	return m, dialServer(m.deps.Dial, name, m.live.gen)
+}
+
+// dialed settles a switch. A failed dial keeps the old server and resumes its
+// polling, whose ticks the generation bump retired. A successful one tears the
+// old client down and starts the new server from nothing: empty rows, a fresh
+// settings window, and an immediate poll that carries the slow refresh.
+func (m Model) dialed(msg dialedMsg) (Model, tea.Cmd) {
+	if msg.gen != m.live.gen {
+		return m, nil
+	}
+
+	m.live.switching = false
+
+	if msg.err != nil {
+		m.toast = "switch failed: " + errorLine(msg.err)
+
+		return m.pollNow()
+	}
+
+	if m.client != nil {
+		_ = m.client.Close()
+	}
+
+	m.client, m.serverURL, m.serverName = msg.result.Client, msg.result.URL, msg.result.Name
+	m.live = liveData{gen: msg.gen}
+	m.torrents = m.torrents.reset(m.icons)
+	m.settings = newSettingsWindow(m.styles, m.deps)
+	m = m.syncSettings()
+
+	var settingsCmd tea.Cmd
+	if m.window == windowSettings {
+		m, settingsCmd = m.openSettings()
+	}
+
+	m.toast = "switched to " + msg.result.Name
+	if msg.result.Warning != "" {
+		m.toast = msg.result.Warning
+	}
+
+	m, poll := m.pollNow()
+
+	return m, tea.Batch(settingsCmd, poll)
 }

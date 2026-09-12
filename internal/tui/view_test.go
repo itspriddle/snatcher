@@ -61,6 +61,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 	return []frameState{
 		{"live", live},
 		{"live toast", liveToast},
+		{"picker", press(withServers(live, pickerServers()), "S")},
 		{"loading", liveModel(t, srv, w, h)},
 		{"error", pollOnce(t, liveModel(t, failingSrv, w, h))},
 		{"default", base},
@@ -94,6 +95,16 @@ func TestTorrentsLiveGolden(t *testing.T) {
 
 	assertGolden(t, "torrents_live_120x40", pollOnce(t, pollOnce(t, liveModel(t, srv, 120, 40))).render())
 	assertGolden(t, "torrents_live_80x24", pollOnce(t, pollOnce(t, liveModel(t, srv, 80, 24))).render())
+}
+
+// TestPickerGolden pins the server picker over a live frame: the cursor marker,
+// the current and default notes, and the picker's own help line.
+func TestPickerGolden(t *testing.T) {
+	_, srv := newRPCStub(t)
+
+	m := withServers(pollOnce(t, liveModel(t, srv, 120, 40)), pickerServers())
+
+	assertGolden(t, "picker", press(m, "S").render())
 }
 
 // TestTorrentsFilterFocusedGolden pins the sidebar's focused rendering, whose

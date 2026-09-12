@@ -91,6 +91,20 @@ func (w torrentsWindow) setRows(rows []transmission.Torrent, icons Icons) torren
 	return w
 }
 
+// reset empties the window for a different server: no rows, no marks, the
+// cursor at the top. The pane toggles and focus are the user's layout, not the
+// server's, so they stay.
+func (w torrentsWindow) reset(icons Icons) torrentsWindow {
+	w.rows = nil
+	w.sel = newSelection()
+	w.filter = newFilterPane(nil)
+	w.search = ""
+	w = w.sync(icons)
+	w.list.table.SetCursor(0)
+
+	return w
+}
+
 // resize lays the panes out for a frame.
 func (w torrentsWindow) resize(l layout) torrentsWindow {
 	w.list = w.list.resize(l.list)

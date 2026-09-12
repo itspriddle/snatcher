@@ -58,6 +58,10 @@ const (
 	// answers, and nothing global.
 	ctxConfirm
 
+	// ctxPicker is the whole stack while the server picker is open: its keys,
+	// and nothing global.
+	ctxPicker
+
 	// ctxChordYank is the second key of the y chord.
 	ctxChordYank
 
@@ -88,6 +92,8 @@ func (c Context) String() string {
 		return "help"
 	case ctxConfirm:
 		return "confirm"
+	case ctxPicker:
+		return "server picker"
 	case ctxChordYank:
 		return "yank"
 	case ctxChordWindow:
@@ -183,6 +189,10 @@ const (
 
 	actionConfirmYes Action = "confirm.yes"
 	actionConfirmNo  Action = "confirm.no"
+
+	actionPickerUp     Action = "picker.up"
+	actionPickerDown   Action = "picker.down"
+	actionPickerSelect Action = "picker.select"
 
 	actionHelpScrollUp   Action = "help.scroll-up"
 	actionHelpScrollDown Action = "help.scroll-down"
@@ -323,6 +333,14 @@ var registry = []Binding{
 	bind(ctxConfirm, actionConfirmYes, "y/enter", "yes", "y", "enter"),
 	bind(ctxConfirm, actionConfirmNo, "n", "no", "n"),
 	bind(ctxConfirm, actionEscape, "esc", "cancel", "esc"),
+
+	// Server picker — modal, like the confirm overlay. S closes it as it opened
+	// it, and esc goes to the ladder's "close overlay" rung.
+	bind(ctxPicker, actionPickerUp, "↑/k", "up", "up", "k"),
+	bind(ctxPicker, actionPickerDown, "↓/j", "down", "down", "j"),
+	bind(ctxPicker, actionPickerSelect, "enter", "switch", "enter"),
+	bind(ctxPicker, actionServerPicker, "S", "close", "S"),
+	bind(ctxPicker, actionEscape, "esc", "cancel", "esc"),
 
 	// Help overlay.
 	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
@@ -476,6 +494,7 @@ func paneContexts(p Pane) []Context {
 var modalStacks = [][]Context{
 	{ctxHelp, ctxGlobal},
 	{ctxConfirm},
+	{ctxPicker},
 	{ctxChordYank},
 	{ctxChordWindow},
 	{ctxTextInput},

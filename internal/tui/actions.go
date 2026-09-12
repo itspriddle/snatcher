@@ -58,6 +58,7 @@ func init() {
 	register(helpHandlers())
 	register(confirmHandlers())
 	register(chordHandlers())
+	register(spineHandlers())
 	register(notYetHandlers())
 }
 
@@ -197,6 +198,11 @@ func chordHandlers() map[Action]handler {
 	}
 
 	return out
+}
+
+// spineHandlers are the actions that ride the refresh spine: the server picker.
+func spineHandlers() map[Action]handler {
+	return pickerHandlers()
 }
 
 // notYetHandlers covers every registered action no milestone has implemented.

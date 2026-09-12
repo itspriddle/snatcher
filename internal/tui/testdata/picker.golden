@@ -1,0 +1,40 @@
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃    Name                           Status      Done Size      Down        Up          ETA     ┃
+│  All                3│┃  ^ debian.iso                     Seeding     100% 1.0 GiB   0 B/s       128.0 KiB/s -       ┃
+│  Downloading        1│┃  ! alpine.iso                     Error       50%  200.0 MiB 0 B/s       0 B/s       -       ┃
+│  Seeding            1│┃  v ubuntu-24.04.iso               Downloading 50%  2.0 GiB   1.5 MiB/s   512.0 KiB/s 1h      ┃
+│  Active             2│┃                                                                                              ┃
+│  Stopped            0│┃                                                                                              ┃
+│  Verifying          0│┃                                                                                              ┃
+│  Queued to download 0│┃                                                                                              ┃
+│  Queued to seed     0│┃                                                                                              ┃
+│  Queued to verify   0│┃                                                                                              ┃
+│  Error              1│┃                                                                                              ┃
+│Labels                │┃                                                                                              ┃
+│  linux              1│┃                                                                                              ┃
+│  No label           2│┃                                                                                              ┃
+│Trackers              │┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
+│  (none yet)          │┃   │ Switch server                                                │                           ┃
+│                      │┃   │                                                              │                           ┃
+│                      │┃   │ > home     nas:9091         (current)                        │                           ┃
+│                      │┃   │   office   10.0.0.5:9091                                     │                           ┃
+│                      │┃   │   seedbox  sb.example:9091  (default)                        │                           ┃
+│                      │┃   │                                                              │                           ┃
+│                      │┃   │ ↑/k up • ↓/j down • enter switch • S close • esc cancel      │                           ┃
+│                      │┃   ╰──────────────────────────────────────────────────────────────╯                           ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+↑/k up • ↓/j down • enter switch • S close • esc cancel                                                                 
+snatcher v1.2.3 │ home@nas:9091 │ Transmission 4.0.6 │ ↓ 2.0 MiB/s │ ↑ 1.0 MiB/s │ free 120.0 GiB │ used 2.1 GiB        

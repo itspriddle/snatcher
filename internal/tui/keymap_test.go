@@ -186,6 +186,28 @@ func TestConfirmStackIsModal(t *testing.T) {
 	assert.NotContains(t, confirmOverlay{}.contexts(), ctxGlobal)
 }
 
+// TestPickerStackIsModal pins the picker's swallow-everything rule, the same as
+// the confirm overlay's: its keys resolve, and nothing global does.
+func TestPickerStackIsModal(t *testing.T) {
+	stack := []Context{ctxPicker}
+
+	for k, want := range map[string]Action{
+		"up": actionPickerUp, "k": actionPickerUp, "down": actionPickerDown, "j": actionPickerDown,
+		"enter": actionPickerSelect, "S": actionServerPicker,
+	} {
+		action, ok := lookup(stack, stringKey(k))
+		require.Truef(t, ok, "%q must resolve in the picker", k)
+		assert.Equal(t, want, action)
+	}
+
+	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "ctrl+p", "R", "t", "y", "n"} {
+		_, ok := lookup(stack, stringKey(k))
+		assert.Falsef(t, ok, "%q must do nothing while the picker is open", k)
+	}
+
+	assert.NotContains(t, pickerOverlay{}.contexts(), ctxGlobal)
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.
