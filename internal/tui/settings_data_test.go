@@ -1,13 +1,8 @@
 package tui
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -72,106 +67,6 @@ const bespokeSessionResponse = `{
 	"tag": 1
 }`
 
-// sessionIDHeader is Transmission's CSRF header.
-const sessionIDHeader = "X-Transmission-Session-Id"
-
-// sessionStub is a stateless Transmission server on the bespoke path. It
-// records every request body, and can be switched into failing modes while a
-// test runs.
-type sessionStub struct {
-	mu     sync.Mutex
-	bodies []string
-
-	// status, when non-zero, is returned for every request instead of an
-	// answer.
-	status atomic.Int32
-
-	// failSet makes session-set answer with an RPC error.
-	failSet atomic.Bool
-}
-
-// newSessionStub starts a stub server for the test.
-func newSessionStub(t *testing.T) (*sessionStub, *httptest.Server) {
-	t.Helper()
-
-	stub := &sessionStub{}
-	srv := httptest.NewServer(http.HandlerFunc(stub.serve))
-	t.Cleanup(srv.Close)
-
-	return stub, srv
-}
-
-// serve answers one request: the 409 handshake, then session-get with the
-// fixture and everything else with success.
-func (s *sessionStub) serve(w http.ResponseWriter, r *http.Request) {
-	if code := s.status.Load(); code != 0 {
-		w.WriteHeader(int(code))
-
-		return
-	}
-
-	if r.Header.Get(sessionIDHeader) == "" {
-		w.Header().Set(sessionIDHeader, "session-token")
-		w.WriteHeader(http.StatusConflict)
-
-		return
-	}
-
-	body, _ := io.ReadAll(r.Body)
-
-	s.mu.Lock()
-	s.bodies = append(s.bodies, string(body))
-	s.mu.Unlock()
-
-	var envelope struct {
-		Method string `json:"method"`
-	}
-
-	_ = json.Unmarshal(body, &envelope)
-
-	switch {
-	case envelope.Method == "session-get":
-		_, _ = w.Write([]byte(bespokeSessionResponse))
-	case envelope.Method == "session-set" && s.failSet.Load():
-		_, _ = w.Write([]byte(`{"result": "permission denied", "arguments": {}, "tag": 1}`))
-	default:
-		_, _ = w.Write([]byte(`{"result": "success", "arguments": {}, "tag": 1}`))
-	}
-}
-
-// settingSetArgs returns the arguments of every session-set the stub received,
-// merged — or nil when none was sent.
-func (s *sessionStub) settingSetArgs(t *testing.T) map[string]any {
-	t.Helper()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var merged map[string]any
-
-	for _, body := range s.bodies {
-		if !strings.Contains(body, "session-set") {
-			continue
-		}
-
-		var envelope struct {
-			Arguments map[string]any `json:"arguments"`
-		}
-
-		require.NoError(t, json.Unmarshal([]byte(body), &envelope))
-
-		if merged == nil {
-			merged = map[string]any{}
-		}
-
-		for k, v := range envelope.Arguments {
-			merged[k] = v
-		}
-	}
-
-	return merged
-}
-
 // liveSettingsModel is a model pointed at a stub server, in the settings window
 // with its session loaded through the real command.
 func liveSettingsModel(t *testing.T, srv *httptest.Server, w, h int) (Model, *fakeConfig) {
@@ -226,7 +121,7 @@ func pressSave(t *testing.T, m Model) (Model, tea.Cmd) {
 // TestSettingsLoadOverRPC checks opening the window fetches the session and
 // draws it, normalized and sanitized.
 func TestSettingsLoadOverRPC(t *testing.T) {
-	_, srv := newSessionStub(t)
+	_, srv := newRPCStub(t)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
 
@@ -248,7 +143,7 @@ func TestSettingsLoadOverRPC(t *testing.T) {
 // TestSettingsReentryDoesNotReload checks a loaded window is not re-fetched when
 // it is opened again.
 func TestSettingsReentryDoesNotReload(t *testing.T) {
-	_, srv := newSessionStub(t)
+	_, srv := newRPCStub(t)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
 
@@ -260,7 +155,7 @@ func TestSettingsReentryDoesNotReload(t *testing.T) {
 // TestSettingsLoadingKeepsClientTabsUsable checks a slow load does not lock the
 // client tabs, and that the server tabs say they are loading.
 func TestSettingsLoadingKeepsClientTabsUsable(t *testing.T) {
-	_, srv := newSessionStub(t)
+	_, srv := newRPCStub(t)
 
 	deps := testDeps()
 	deps.Config = newFakeConfig()
@@ -287,7 +182,7 @@ func TestSettingsLoadingKeepsClientTabsUsable(t *testing.T) {
 // changed — one sparse session-set and one client write — then settles clean,
 // and that a theme change is applied to the running UI.
 func TestSettingsSaveSendsExactlyTheChangedSettings(t *testing.T) {
-	stub, srv := newSessionStub(t)
+	stub, srv := newRPCStub(t)
 
 	m, cfg := liveSettingsModel(t, srv, 120, 40)
 
@@ -316,7 +211,7 @@ func TestSettingsSaveSendsExactlyTheChangedSettings(t *testing.T) {
 
 // TestSettingsNothingToSave checks Save with no changes sends nothing.
 func TestSettingsNothingToSave(t *testing.T) {
-	stub, srv := newSessionStub(t)
+	stub, srv := newRPCStub(t)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
 
@@ -330,7 +225,7 @@ func TestSettingsNothingToSave(t *testing.T) {
 // TestSettingsSaveThenLeave checks esc → y saves, then leaves once the save has
 // succeeded.
 func TestSettingsSaveThenLeave(t *testing.T) {
-	_, srv := newSessionStub(t)
+	_, srv := newRPCStub(t)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
 	m = press(networkTab(m), "tab", "enter", "esc")
@@ -346,7 +241,7 @@ func TestSettingsSaveThenLeave(t *testing.T) {
 
 // TestSettingsSaveThenQuit checks q → y saves, then quits.
 func TestSettingsSaveThenQuit(t *testing.T) {
-	_, srv := newSessionStub(t)
+	_, srv := newRPCStub(t)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
 	m = press(m, "down", "q")
@@ -363,7 +258,7 @@ func TestSettingsSaveThenQuit(t *testing.T) {
 // TestSettingsClientSaveFailureKeepsTheRowDirty checks a failed client write
 // marks its row, keeps it unsaved, and cancels the prompt's follow-up.
 func TestSettingsClientSaveFailureKeepsTheRowDirty(t *testing.T) {
-	_, srv := newSessionStub(t)
+	_, srv := newRPCStub(t)
 
 	m, cfg := liveSettingsModel(t, srv, 120, 40)
 	cfg.failKey = clientKeyTheme
@@ -383,10 +278,10 @@ func TestSettingsClientSaveFailureKeepsTheRowDirty(t *testing.T) {
 // TestSettingsSessionSaveFailureStays checks an RPC error on session-set keeps
 // the change and reports it.
 func TestSettingsSessionSaveFailureStays(t *testing.T) {
-	stub, srv := newSessionStub(t)
+	stub, srv := newRPCStub(t)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
-	stub.failSet.Store(true)
+	stub.failMethod("session-set")
 
 	m = press(networkTab(m), "tab", "enter")
 
@@ -413,7 +308,7 @@ func TestSettingsLoadErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			stub, srv := newSessionStub(t)
+			stub, srv := newRPCStub(t)
 			stub.status.Store(int32(tc.status))
 
 			m, _ := liveSettingsModel(t, srv, 120, 40)
@@ -437,7 +332,7 @@ func TestSettingsLoadErrors(t *testing.T) {
 
 // TestSettingsErrorGolden pins the failed-load state of a server tab.
 func TestSettingsErrorGolden(t *testing.T) {
-	stub, srv := newSessionStub(t)
+	stub, srv := newRPCStub(t)
 	stub.status.Store(http.StatusInternalServerError)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
@@ -448,7 +343,7 @@ func TestSettingsErrorGolden(t *testing.T) {
 // TestSettingsRefresh checks R reloads at once when clean, and asks first when
 // a reload would discard changes.
 func TestSettingsRefresh(t *testing.T) {
-	_, srv := newSessionStub(t)
+	_, srv := newRPCStub(t)
 
 	m, _ := liveSettingsModel(t, srv, 120, 40)
 
@@ -471,14 +366,6 @@ func TestSettingsRefresh(t *testing.T) {
 	assert.Equal(t, stateLoading, reloaded.settings.state)
 
 	assert.Equal(t, stateLoaded, run(t, reloaded, cmd).settings.state)
-}
-
-// TestRefreshOutsideSettingsIsNotYetBuilt checks R in the torrents window still
-// reports itself until T4's poll exists.
-func TestRefreshOutsideSettingsIsNotYetBuilt(t *testing.T) {
-	m := press(newTestModel(120, 40), "R")
-
-	assert.Contains(t, m.toast, "not implemented yet")
 }
 
 // TestSettingsClientOnlySaveWithoutAServer checks a window with no server saves

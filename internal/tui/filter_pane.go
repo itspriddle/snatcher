@@ -93,6 +93,13 @@ const noLabel = "No label"
 // with live counts, a label section derived from the rows themselves, and a
 // tracker section that stays a placeholder until tracker data lands in T5.
 func newFilterPane(rows []transmission.Torrent) filterPane {
+	p := filterPane{items: filterItems(rows), applied: -1}
+
+	return p.top()
+}
+
+// filterItems builds the sidebar's rows for a set of torrents.
+func filterItems(rows []transmission.Torrent) []filterItem {
 	items := []filterItem{{label: "Status", kind: itemHeading}}
 
 	for _, f := range statusFilters {
@@ -109,9 +116,46 @@ func newFilterPane(rows []transmission.Torrent) filterPane {
 	items = append(items, filterItem{label: "Trackers", kind: itemHeading})
 	items = append(items, filterItem{label: "(none yet)", kind: itemNote})
 
-	p := filterPane{items: items, applied: -1}
+	return items
+}
 
-	return p.top()
+// rebuild recomputes the sidebar for a new set of torrents. The cursor and the
+// applied filter are carried by what they name rather than by index, because
+// the label section grows and shrinks with the torrents; one whose row is gone
+// falls back to the top and to no filter.
+func (p filterPane) rebuild(rows []transmission.Torrent) filterPane {
+	cursor := p.current()
+
+	var applied filterItem
+
+	hasApplied := p.applied >= 0 && p.applied < len(p.items)
+	if hasApplied {
+		applied = p.items[p.applied]
+	}
+
+	next := filterPane{items: filterItems(rows), applied: -1}.top()
+
+	for i, item := range next.items {
+		if !item.selectable() {
+			continue
+		}
+
+		if item.sameAs(cursor) {
+			next.cursor = i
+		}
+
+		if hasApplied && item.sameAs(applied) {
+			next.applied = i
+		}
+	}
+
+	return next
+}
+
+// sameAs reports whether two rows name the same filter. The label alone is not
+// enough: a torrent label could be spelled like a status row.
+func (i filterItem) sameAs(other filterItem) bool {
+	return i.kind == other.kind && i.label == other.label && i.filter == other.filter
 }
 
 // filterLabel is how a domain filter is spelled in the sidebar: its own name,

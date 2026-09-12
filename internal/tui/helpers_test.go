@@ -6,10 +6,10 @@ import (
 )
 
 // testDeps is the dependency set every test builds a model from: no dialer, the
-// mock torrents, and a fixed version string so a golden does not change with the
-// build.
+// mock torrents as static rows (which also keeps the refresh spine quiet), and a
+// fixed version string so a golden does not change with the build.
 func testDeps() Deps {
-	return Deps{Theme: "default", NerdFont: false, Version: "v1.2.3"}
+	return Deps{Theme: "default", NerdFont: false, Version: "v1.2.3", Torrents: mockTorrents()}
 }
 
 // newTestModel builds a model sized to a terminal, with the dark palette pinned

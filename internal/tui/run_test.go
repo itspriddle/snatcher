@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -49,13 +50,18 @@ func TestRunReturnsTheDialErrorWithoutStartingAProgram(t *testing.T) {
 	assert.ErrorIs(t, err, want)
 }
 
-// TestNewSeedsTheMockTorrents checks the T1 shell has something to render
-// without a server, and that an explicitly supplied set is used as given — which
-// is the seam T4's live poll arrives through.
-func TestNewSeedsTheMockTorrents(t *testing.T) {
-	assert.Len(t, New(testDeps()).torrents.rows, len(mockTorrents()))
-
+// TestNewWithoutTorrentsIsEmpty checks there are no mock rows in production: a
+// model with no static set starts empty and says why, and a supplied set is used
+// as given.
+func TestNewWithoutTorrentsIsEmpty(t *testing.T) {
 	deps := testDeps()
+	deps.Torrents = nil
+
+	m := New(deps).applyTheme(true).resize(120, 40)
+
+	assert.Empty(t, m.torrents.rows)
+	assert.Contains(t, ansi.Strip(m.render()), noServerLabel)
+
 	deps.Torrents = []transmission.Torrent{{ID: 7, Name: "only one"}}
 
 	assert.Len(t, New(deps).torrents.rows, 1)

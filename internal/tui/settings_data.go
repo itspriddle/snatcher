@@ -299,16 +299,26 @@ func (m Model) settingsSaved(msg settingsSavedMsg) (Model, tea.Cmd) {
 	m.settings = w.fixCursors()
 	m = m.applyClientWrites(msg.clientWrote).syncSettings()
 
+	// A session write changes what the status bar draws — limits, alt-speed, the
+	// download directory whose free space it shows — so it is re-read now rather
+	// than at the next slow refresh.
+	var refresh tea.Cmd
+	if len(msg.sessionWrote) > 0 && m.polling() && after != afterQuit {
+		refresh = pollSession(m.ctx, m.client, m.live.gen)
+	}
+
 	if err := errors.Join(msg.clientErr, msg.sessionErr); err != nil {
 		m.toast = "save failed: " + firstErrorLine(msg.clientErr, msg.sessionErr)
 
-		return m, nil
+		return m, refresh
 	}
 
 	n := len(msg.clientWrote) + len(msg.sessionWrote)
 	m.toast = fmt.Sprintf("saved %d %s", n, plural(n, "setting"))
 
-	return m.runAfter(after)
+	m, cmd := m.runAfter(after)
+
+	return m, tea.Batch(cmd, refresh)
 }
 
 // firstErrorLine is the first non-nil error as an errorLine.
@@ -403,11 +413,11 @@ func (m Model) reloadSettings() (Model, tea.Cmd) {
 	return m.startLoad()
 }
 
-// refreshHandler is R. The settings window's refresh is built; the torrents
-// window's poll arrives with T4's refresh spine.
-func refreshHandler(m Model, msg tea.KeyPressMsg) (Model, tea.Cmd) {
+// refreshHandler is R: re-read the settings in the settings window, and poll now
+// everywhere else.
+func refreshHandler(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.window != windowSettings {
-		return notYet(actionRefresh)(m, msg)
+		return m.refreshNow()
 	}
 
 	m, cmd := m.refreshSettings()

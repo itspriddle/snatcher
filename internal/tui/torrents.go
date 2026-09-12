@@ -10,7 +10,7 @@ import (
 // detail pane, with one selection shared between them.
 type torrentsWindow struct {
 	// rows are the torrents currently rendered, after any filter, search, and
-	// sort. T1 renders the mock set unmodified.
+	// sort. T4 renders the polled set in queue order.
 	rows []transmission.Torrent
 
 	// filter, list, and detail are the window's panes.
@@ -72,6 +72,21 @@ func (w torrentsWindow) sync(icons Icons) torrentsWindow {
 // duplicated expression.
 func (w torrentsWindow) applyDetail(t *transmission.Torrent) torrentsWindow {
 	w.detail = w.detail.setTorrent(t)
+
+	return w
+}
+
+// setRows installs a new set of rows, keeping the user's place in them: the
+// cursor follows its torrent by ID, marks on torrents that are gone are dropped,
+// and the sidebar's counts are rebuilt.
+func (w torrentsWindow) setRows(rows []transmission.Torrent, icons Icons) torrentsWindow {
+	prev, had := w.sel.row(w.rows)
+
+	w.rows = rows
+	w.sel = w.sel.track(prev.ID, had, rows)
+	w.filter = w.filter.rebuild(rows)
+	w = w.sync(icons)
+	w.list.table.SetCursor(w.sel.cursor)
 
 	return w
 }
@@ -152,9 +167,9 @@ func (w torrentsWindow) neighborFromList(dir Action) Pane {
 }
 
 // view renders the window: the sidebar and table side by side, with the detail
-// pane, when open, beneath both.
-func (w torrentsWindow) view(st Styles, l layout) string {
-	top := w.list.view(st, l.list, w.focus == paneList)
+// pane, when open, beneath both. placeholder stands in for an empty table.
+func (w torrentsWindow) view(st Styles, l layout, ph placeholder) string {
+	top := w.list.view(st, l.list, w.focus == paneList, ph)
 
 	if w.filterOpen {
 		top = lipgloss.JoinHorizontal(

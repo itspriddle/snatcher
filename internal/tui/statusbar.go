@@ -11,9 +11,9 @@ import (
 	"github.com/itspriddle/snatcher/internal/output"
 )
 
-// mockHost is what the status bar shows when the TUI was constructed without
-// dialing. T4 replaces the whole segment set with live server data.
-const mockHost = "mock"
+// noServerLabel is what the status bar and the list pane show when the TUI was
+// constructed without dialing.
+const noServerLabel = "no server"
 
 // statusBarView renders the bottom line: what snatcher this is, what it is
 // pointed at, and the two transient facts a user needs to understand what the
@@ -54,7 +54,7 @@ func (m Model) statusBarView(width int) string {
 // status bar width saying nothing, and the alias is what the picker lists.
 func (m Model) hostLabel() string {
 	if m.serverURL == "" {
-		return mockHost
+		return noServerLabel
 	}
 
 	host := m.serverURL
@@ -102,4 +102,20 @@ func (m Model) shortBindings() []key.Binding {
 	}
 
 	return out
+}
+
+// listPlaceholder is what the torrent table says while it has no rows.
+func (m Model) listPlaceholder() placeholder {
+	switch {
+	case len(m.torrents.rows) > 0 || m.deps.Torrents != nil:
+		return placeholder{}
+	case m.client == nil:
+		return placeholder{lines: []string{noServerLabel}}
+	case !m.live.loaded && m.live.err == nil:
+		return placeholder{lines: []string{"loading…"}}
+	case !m.live.loaded:
+		return placeholder{lines: []string{errorLine(m.live.err), errorHint(m.live.err)}, isErr: true}
+	}
+
+	return placeholder{lines: []string{"no torrents"}}
 }

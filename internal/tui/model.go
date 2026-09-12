@@ -41,8 +41,12 @@ type Model struct {
 	deps Deps
 
 	// client is the dialed Transmission client, nil when the TUI was
-	// constructed without dialing. T4 is the first milestone that uses it.
+	// constructed without dialing.
 	client *transmission.Client
+
+	// live is the refresh spine's state: what the last polls returned, and the
+	// guards that keep polls from overlapping or outliving a server switch.
+	live liveData
 
 	// serverURL is the server the client is pointed at, and serverName the
 	// alias it was dialed as. Both are shown in the status bar.
@@ -102,10 +106,6 @@ type Model struct {
 // touching the terminal. Run dials first and hands the result in; tests
 // construct a Model directly.
 func New(deps Deps) Model {
-	if deps.Torrents == nil {
-		deps.Torrents = mockTorrents()
-	}
-
 	m := Model{
 		deps:    deps,
 		ctx:     context.Background(),
@@ -144,11 +144,14 @@ func (m Model) applyTheme(isDark bool) Model {
 	return m
 }
 
-// Init asks the terminal for its background color. It must not block on stdin:
-// the reply arrives as a tea.BackgroundColorMsg, and until it does the model
-// renders with the dark palette.
+// Init asks the terminal for its background color and starts the refresh spine.
+// Neither blocks: the color reply arrives as a tea.BackgroundColorMsg, and until
+// it does the model renders with the dark palette. The first tick is immediate,
+// and is dropped by tick when there is nothing to poll.
 func (m Model) Init() tea.Cmd {
-	return tea.RequestBackgroundColor
+	first := tickMsg{gen: m.live.gen, seq: m.live.tickSeq}
+
+	return tea.Batch(tea.RequestBackgroundColor, func() tea.Msg { return first })
 }
 
 // Update is the tea.Model entry point. It is a thin wrapper over update, which
@@ -178,6 +181,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.settingsLoaded(msg)
 	case settingsSavedMsg:
 		return m.settingsSaved(msg)
+	case tickMsg:
+		return m.tick(msg)
+	case pollMsg:
+		return m.polled(msg)
+	case sessionMsg:
+		return m.sessionPolled(msg)
 	}
 
 	return m.forwardToInput(msg)
@@ -231,7 +240,7 @@ func (m Model) render() string {
 	case windowSettings:
 		body = m.settings.view(m.styles, l)
 	case windowTorrents:
-		body = m.torrents.view(m.styles, l)
+		body = m.torrents.view(m.styles, l, m.listPlaceholder())
 	}
 
 	frame := m.composite(padFrame(body, l.body))

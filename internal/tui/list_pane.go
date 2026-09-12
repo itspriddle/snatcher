@@ -235,10 +235,48 @@ func (p listPane) cursor() int {
 	return p.table.Cursor()
 }
 
-// view renders the table into r.
-func (p listPane) view(st Styles, r rect, focused bool) string {
+// placeholder is what an empty table says instead of nothing: why it is empty.
+type placeholder struct {
+	// lines are drawn centered under the header; empty means no placeholder.
+	lines []string
+
+	// isErr styles the first line as an error.
+	isErr bool
+}
+
+// view renders the table into r, with the placeholder under its header when the
+// table has no rows.
+func (p listPane) view(st Styles, r rect, focused bool, ph placeholder) string {
+	lines := strings.Split(p.table.View(), "\n")
+
+	if len(ph.lines) > 0 && len(p.table.Rows()) == 0 {
+		lines = placeholderLines(st, lines[0], ph, r.inner())
+	}
+
 	return paneBox(st, paneList, focused).
 		Width(r.w).
 		Height(r.h).
-		Render(paneContent(strings.Split(p.table.View(), "\n"), r))
+		Render(paneContent(lines, r))
+}
+
+// placeholderLines lays the placeholder out centered in the rows under the
+// table's header. Every line is truncated before it is styled, so paneContent
+// never cuts through an escape sequence.
+func placeholderLines(st Styles, header string, ph placeholder, inner rect) []string {
+	lines := []string{header}
+
+	for range max(0, (inner.h-1-len(ph.lines))/2) {
+		lines = append(lines, "")
+	}
+
+	for i, text := range ph.lines {
+		style := st.Muted
+		if i == 0 && ph.isErr {
+			style = st.FieldError
+		}
+
+		lines = append(lines, style.Render(centered(truncate(text, inner.w), inner.w)))
+	}
+
+	return lines
 }

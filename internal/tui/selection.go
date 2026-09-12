@@ -136,3 +136,32 @@ func (s selection) deselect() selection {
 
 	return s
 }
+
+// track carries the selection across a refresh of the rows. The cursor follows
+// the torrent it was on, by ID, and stays at its index, clamped, when that
+// torrent is gone. Marks on torrents that are gone are dropped: a mark nothing
+// on screen carries would be acted on invisibly.
+func (s selection) track(prevID int64, had bool, rows []transmission.Torrent) selection {
+	present := make(map[int64]struct{}, len(rows))
+
+	for i, t := range rows {
+		present[t.ID] = struct{}{}
+
+		if had && t.ID == prevID {
+			s.cursor = i
+		}
+	}
+
+	s.cursor = clamp(s.cursor, 0, max(0, len(rows)-1))
+
+	marks := make(map[int64]struct{}, len(s.marks))
+	for id := range s.marks {
+		if _, ok := present[id]; ok {
+			marks[id] = struct{}{}
+		}
+	}
+
+	s.marks = marks
+
+	return s
+}
