@@ -50,36 +50,70 @@ green throughout; new flags mean `make surface` and a man page edit.
 
 ---
 
-## T1. Shell, focus router, keymap spine
+## T1. Shell, focus router, keymap spine — **done**
 
 **The hard 80%.** Layout is a consequence of getting focus and routing right;
 the panes fall out of it.
 
-- Window/pane layout and resize reflow (`JoinHorizontal`/`JoinVertical` +
-  `Compositor` per TUI-PLAN)
-- Focus router: which pane owns input → which keymap is active → which keymap
+- ~~Window/pane layout and resize reflow (`JoinHorizontal`/`JoinVertical` +
+  `Compositor` per TUI-PLAN)~~
+- ~~Focus router: which pane owns input → which keymap is active → which keymap
   feeds help. `tab`/`shift-tab` cycles **panes only**; `ctrl-w` + `hjkl`
-  targets directly
-- The **esc ladder** as an explicit ordered stack (vision.md, Principles), not
+  targets directly~~
+- ~~The **esc ladder** as an explicit ordered stack (vision.md, Principles), not
   scattered local handlers. Implement it once, here, with the overlay stack it
-  depends on
-- The **selection model** and the mark rendering, even before real data
-- Keymap registry + collision test + `?` help
-- Theme/styles/icon plumbing threaded from the first component (v2 has no
-  global renderer - styles are passed explicitly)
-- Launch wiring: bare `snatcher` on a TTY starts the TUI, `--help`, an explicit
+  depends on~~
+- ~~The **selection model** and the mark rendering, even before real data~~
+- ~~Keymap registry + collision test + `?` help~~
+- ~~Theme/styles/icon plumbing threaded from the first component (v2 has no
+  global renderer - styles are passed explicitly)~~
+- ~~Launch wiring: bare `snatcher` on a TTY starts the TUI, `--help`, an explicit
   subcommand, or non-TTY stdout keeps CLI behavior; client injected through a
-  seam over `commands.dial()`, which is still unexported - exporting it (or
-  adding a TUI constructor that takes a client) is this milestone's job, moved
-  here from CLI M9
-- Every `bubbles`/`huh` component constructed with a zeroed keymap; the
-  collision test checks the components' active keymaps, not just the registry
-  (`docs/TUI-PLAN.md`, last gotcha)
-- Windows scaffolded with mock data: torrents + settings
+  seam over `commands.dial()`~~ — shipped as `commands.Dialer` +
+  `commands.ResolveClientSettings`; the TUI keeps the *dialer*, not a dialed
+  client, so T4's server picker re-dials without a new seam
+- ~~Every `bubbles`/`huh` component constructed with a zeroed keymap; the
+  collision test checks the components' active keymaps, not just the registry~~
+- ~~Windows scaffolded with mock data: torrents + settings~~
 
 **Done when:** an empty shell navigates correctly - panes focus, `esc`
 unwinds in the specified order, help lists the active context's keys, resize
-reflows, and no key is bound twice.
+reflows, and no key is bound twice. **Met.**
+
+### Decisions
+
+These were settled while building T1 and are not open in later milestones.
+
+- **One package, `internal/tui`,** split by file. A window gets a sub-package
+  when it outgrows that, not before (T5+).
+- **The filter sidebar is hand-rolled,** not `bubbles/v2/list`. The list
+  component binds `q`, `esc`, `h`, `l`, `u`, `d`, `f`, and `b` — seven keys
+  vision.md spends elsewhere — and adds a status line and paginator to style
+  away, in exchange for a fuzzy filter a fixed-length sectioned index does not
+  want. TUI-PLAN's component table is corrected to match.
+- **Every binding vision.md specifies is registered from T1,** with a `notYet`
+  handler that toasts "not implemented yet" for the verbs a later milestone
+  owns. Later milestones replace handlers, never bindings, so the collision
+  test sees the whole keyboard from the start instead of discovering a clash in
+  T5.
+- **Goldens store `ansi.Strip(render())`.** A golden full of escape sequences
+  is unreadable in review and pins the palette, which is exactly what T2
+  changes. Style correctness gets two narrow assertions instead, plus an
+  invariant that every frame is exactly `h` lines of exactly `w` cells.
+- **`ctrl+c` escapes even a focused text input,** the one exception to "a
+  focused input owns the keyboard". A user must never be trapped by a widget
+  that has swallowed the keyboard.
+- **The filter sidebar's status vocabulary is `transmission.Filter`'s own** —
+  the values `--filter` takes — rather than vision.md's sketch of
+  "Completed"/"Waiting", which the CLI cannot express. The parity rule says the
+  TUI and the CLI name a selection the same way.
+- **List-pane `h`/`l` horizontal scroll is deferred to T5.** `bubbles/v2/table`
+  has no horizontal scroll, and a binding that did nothing would lie. The
+  columns drop from the right as the pane narrows instead.
+- **The help overlay stacks its contexts vertically and scrolls,** rather than
+  using `help.FullHelpView`'s side-by-side columns: at 80 columns those
+  silently drop two of the four contexts, leaving a help view that does not
+  mention `q`.
 
 ## T2. Theme + Nerd Font content
 

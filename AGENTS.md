@@ -39,6 +39,7 @@ internal/prowlarr/        # typed Prowlarr REST client (Transport→Client→dom
 internal/config/          # non-secret config (named servers + types, JSON, XDG path)
 internal/secrets/         # passwords and Prowlarr API keys (OS keyring, or file store)
 internal/output/          # JSON / jq / human formatters + terminal sanitizer
+internal/tui/             # terminal UI: layout, focus router, keymap registry
 internal/surface/         # CLI surface snapshot generator
 internal/version/         # ldflags-injected build info
 .surface                  # committed CLI surface snapshot (regression guard)
@@ -67,6 +68,18 @@ Layers, outermost to innermost:
   `client.CallAPI(...)` directly on either backend — `--prowlarr` switches its
   positional from an RPC method to a REST path, and its output from the
   Transmission envelope to the raw response body.
+- **`internal/tui`** — the terminal UI, launched by `internal/cli` when
+  `snatcher` is run bare on a terminal. It depends on `transmission` and
+  `output` and **never imports `commands`**: everything it needs arrives through
+  `tui.Deps`, built from the `commands.Dialer` / `commands.ResolveClientSettings`
+  seam. It is handed the *dialer*, not a dialed client, so switching servers
+  mid-session needs no new seam, and `tui.Run` dials before entering the alt
+  screen so a configuration error reaches the terminal. The keymap registry in
+  `keymap.go` is this package's `.surface`: every key the UI responds to is one
+  row of it, components are constructed from those rows rather than from their
+  own defaults, and the collision test asserts no key resolves twice in any
+  focus context a user can be in. Adding a binding means adding a registry row,
+  not a `switch` case.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list

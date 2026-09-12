@@ -21,10 +21,14 @@ Runtime dependencies — the entire set for v1 of the TUI:
 
 | Module | Version | Used for |
 |--------|---------|----------|
-| `charm.land/bubbletea/v2` | v2.0.6 | framework (Elm architecture, `View() tea.View`) |
-| `charm.land/lipgloss/v2` | v2.0.3 | styling + `Compositor` (overlays/modals/toasts) |
-| `charm.land/bubbles/v2` | v2.1.0 | table, list, viewport, help, key, spinner, progress, textinput |
-| `charm.land/huh/v2` | v2.0.3 | forms (settings, upload, labels) |
+| `charm.land/bubbletea/v2` | v2.0.9 | framework (Elm architecture, `View() tea.View`) |
+| `charm.land/lipgloss/v2` | v2.0.6 | styling + `Compositor` (overlays/modals/toasts) |
+| `charm.land/bubbles/v2` | v2.2.1 | table, viewport, help, key, spinner, progress, textinput |
+| `charm.land/huh/v2` | v2.0.3 | forms (settings, upload, labels) — **added in T3**, not needed by the shell |
+
+The first three landed in T1; `github.com/charmbracelet/x/ansi` is a direct
+dependency too, for the golden helper's `ansi.Strip`. No `replace` directives
+anywhere in the graph.
 
 Deferred (v2-ready, add when mouse lands):
 `github.com/lrstanley/bubblezone/v2@v2.0.0`.
@@ -34,7 +38,8 @@ Deferred (v2-ready, add when mouse lands):
 | Surface | Built with |
 |---------|------------|
 | Torrent list (main pane) | `bubbles/v2/table` + existing `internal/transmission` sort/filter/search transforms |
-| Filter sidebar / in-list search | `bubbles/v2/list` (built-in `sahilm/fuzzy` filter) |
+| Filter sidebar | **hand-rolled** sectioned cursor list — see the T1 decision in `tui-todo.md` |
+| In-list search (`/`) | `bubbles/v2/textinput` over the existing `transmission.SearchByName` |
 | Detail pane (scrollable) | `bubbles/v2/viewport` |
 | Modals / confirmations / toasts | lipgloss `Compositor` layers |
 | Settings / upload / labels forms | `huh/v2` (wrapped — not a drop-in `tea.Model`) |
@@ -67,18 +72,25 @@ Deferred (v2-ready, add when mouse lands):
 
 ## Architecture decisions
 
-**Package placement preserves the layering rule.** TUI code lives in a new
-`internal/tui/` package (with sub-packages per window/component as it grows).
-It depends on `*transmission.Client` plus `config`/`secrets`, the same set the
-commands use. `internal/cli` launches it and injects the client.
+**Package placement preserves the layering rule.** TUI code lives in
+`internal/tui/`, one package split by file through T1; a window gets a
+sub-package when it outgrows that (T5+). It depends on `internal/transmission`
+and `internal/output` and nothing else of snatcher's — not `commands`, not
+`config`, not `secrets`. `internal/cli` launches it and injects everything
+through `tui.Deps`.
 
-**Launch model.** Bare `snatcher` on a TTY launches the TUI (replacing today's
-`cmd.Help()` fallback in `internal/cli/root.go`). `--help`, an explicit
-subcommand, or non-TTY stdout keeps CLI behavior. Add `--theme` and
-`--no-nerd-font` as persistent root flags (shown in `vision.md`, not yet
-wired). `dial()` is currently unexported in `internal/commands`; expose a seam
-(`commands.Dial(...)` or a TUI constructor that takes a `*transmission.Client`)
-so `cli` can dial and inject the client into `internal/tui`.
+**Launch model** (built in T1). Bare `snatcher` on a terminal launches the TUI;
+`--help`, an explicit subcommand, or a redirected stdin or stdout keeps CLI
+behavior. `--config`, `--theme`, and `--no-nerd-font` are persistent root flags
+already in `.surface` and the man page.
+
+The seam is `commands.Dialer(cmd)` plus `commands.ResolveClientSettings(cmd)`:
+`internal/cli` builds a `tui.Deps` from them and calls `tui.Run`, and
+`internal/tui` imports neither `internal/commands` nor `internal/config`. It is
+handed the *dialer* rather than a dialed client, so T4's server picker re-dials
+without a second seam. `tui.Run` dials before `tea.NewProgram`, so an
+unconfigured machine sees the CLI's own error on the terminal instead of inside
+an alt screen.
 
 **Focus / routing is the core architecture.** The keybindings in `vision.md`
 are deeply context-dependent — the same key means different things in the
