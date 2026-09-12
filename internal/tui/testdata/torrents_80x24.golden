@@ -1,24 +1,24 @@
-╭──────────────────╮╭──────────────────────────────────────────────────────────╮
-│Status            ││    Name                       Status      Done Size      │
-│  All           12││  v ubuntu-24.04.1-desktop-am… Downloading 42%  5.8 GiB   │
-│  Downloading    4││  ^ debian-12.7.0-amd64-netin… Seeding     100% 631.0 MiB │
-│  Seeding        3││  x archlinux-2026.09.01-x86_… Stopped     87%  1.1 GiB   │
-│  Active         7││  % fedora-workstation-41.iso  Verifying   99%  2.1 GiB   │
-│  Stopped        2││  ~ nixos-minimal-25.05-x86_6… Queued to … 100% 1.0 GiB   │
-│  Verifying      1││  ~ openbsd-7.6-amd64-install… Queued to … 0%   769.0 MiB │
-│  Queued to dow… 1││  ~ freebsd-14.1-release-amd6… Queued to … 100% 4.2 GiB   │
-│  Queued to seed 1││  ! alpine-standard-3.21.0-x8… Error       31%  200.0 MiB │
-│  Queued to ver… 1││  v void-live-x86_64-20260901… Downloading 5%   695.0 MiB │
-│  Error          1││  ^ gentoo-admincd-amd64-2026… Seeding     100% 560.0 MiB │
-│Labels            ││  x slackware64-15.0-install-… Stopped     50%  3.6 GiB   │
-│  linux          3││  v hostile[31mname[0m-with-e… Downloading 17%  1000.0 M… │
-│  seed           3││                                                          │
-│  No label       7││                                                          │
-│Trackers          ││                                                          │
-│  (none yet)      ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-╰──────────────────╯╰──────────────────────────────────────────────────────────╯
+╭──────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status            │┃    Name                       Status      Done Size      ┃
+│  All           12│┃  v ubuntu-24.04.1-desktop-am… Downloading 42%  5.8 GiB   ┃
+│  Downloading    4│┃  ^ debian-12.7.0-amd64-netin… Seeding     100% 631.0 MiB ┃
+│  Seeding        3│┃  x archlinux-2026.09.01-x86_… Stopped     87%  1.1 GiB   ┃
+│  Active         7│┃  % fedora-workstation-41.iso  Verifying   99%  2.1 GiB   ┃
+│  Stopped        2│┃  ~ nixos-minimal-25.05-x86_6… Queued to … 100% 1.0 GiB   ┃
+│  Verifying      1│┃  ~ openbsd-7.6-amd64-install… Queued to … 0%   769.0 MiB ┃
+│  Queued to dow… 1│┃  ~ freebsd-14.1-release-amd6… Queued to … 100% 4.2 GiB   ┃
+│  Queued to seed 1│┃  ! alpine-standard-3.21.0-x8… Error       31%  200.0 MiB ┃
+│  Queued to ver… 1│┃  v void-live-x86_64-20260901… Downloading 5%   695.0 MiB ┃
+│  Error          1│┃  ^ gentoo-admincd-amd64-2026… Seeding     100% 560.0 MiB ┃
+│Labels            │┃  x slackware64-15.0-install-… Stopped     50%  3.6 GiB   ┃
+│  linux          3│┃  v hostile[31mname[0m-with-e… Downloading 17%  1000.0 M… ┃
+│  seed           3│┃                                                          ┃
+│  No label       7│┃                                                          ┃
+│Trackers          │┃                                                          ┃
+│  (none yet)      │┃                                                          ┃
+│                  │┃                                                          ┃
+│                  │┃                                                          ┃
+│                  │┃                                                          ┃
+╰──────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 space mark • enter open detail • y yank… • s start • p pause • v verify …       
 snatcher v1.2.3 │ mock                                                          

@@ -1,16 +1,107 @@
 package tui
 
 import (
+	"image/color"
 	"testing"
 	"unicode"
 	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
+
+// themeNames is every name --theme and client.theme accept, plus one that is
+// neither, since themeFor must draw something for a name it does not know.
+var themeNames = []string{"default", themeDracula, themeNord}
+
+// TestEveryThemeNameIsADistinctPalette checks the three names actually differ.
+//
+// This is the assertion T1 could not make: all three names resolved to one
+// placeholder palette, so "--theme nord" was accepted, stored, and resolved and
+// then changed nothing a user could see.
+func TestEveryThemeNameIsADistinctPalette(t *testing.T) {
+	for _, isDark := range []bool{false, true} {
+		seen := make(map[Theme]string, len(themeNames))
+
+		for _, name := range themeNames {
+			got := themeFor(name, isDark)
+
+			other, dup := seen[got]
+			require.Falsef(t, dup, "isDark=%v: %q and %q are the same palette", isDark, other, name)
+
+			seen[got] = name
+		}
+	}
+}
+
+// TestNamedThemesDifferBetweenLightAndDark checks the two fixed palettes ship
+// both arrangements, which is what stops a light terminal from rendering
+// Dracula's near-white text on its own near-white background.
+func TestNamedThemesDifferBetweenLightAndDark(t *testing.T) {
+	for _, name := range []string{themeDracula, themeNord} {
+		assert.NotEqualf(t, themeFor(name, true), themeFor(name, false), "%q has one arrangement for both backgrounds", name)
+	}
+}
+
+// TestDefaultThemeIsTheTerminalPalette pins decision 1: the default theme is
+// the sixteen colors the terminal already resolves for every other program,
+// which is why it needs no light/dark arrangement of its own.
+func TestDefaultThemeIsTheTerminalPalette(t *testing.T) {
+	dark := themeFor("default", true)
+
+	assert.Equal(t, dark, themeFor("default", false), "the terminal's own palette must not be re-picked per background")
+	assert.Equal(t, lipgloss.NoColor{}, dark.Text, "text must be the terminal's configured foreground")
+
+	for name, c := range map[string]color.Color{
+		"Muted": dark.Muted, "Accent": dark.Accent, "Loud": dark.Loud,
+		"Cursor": dark.Cursor, "CursorText": dark.CursorText, "Border": dark.Border,
+		"StatusBar": dark.StatusBar, "StatusText": dark.StatusText, "Warn": dark.Warn,
+	} {
+		_, ok := c.(ansi.BasicColor)
+
+		assert.Truef(t, ok, "%s is %T, not one of the terminal's sixteen colors", name, c)
+	}
+}
+
+// TestUnknownThemeNameFallsBackToTheDefault checks a name the validator did not
+// catch draws rather than panicking or rendering an empty palette. The TUI must
+// not fail to draw over a config value.
+func TestUnknownThemeNameFallsBackToTheDefault(t *testing.T) {
+	for _, name := range []string{"", "DRACULA", "solarized"} {
+		assert.Equal(t, themeFor("default", true), themeFor(name, true))
+	}
+}
+
+// TestHelpStylesFollowTheTheme checks the help bubble is styled from the
+// palette. T1 hardcoded help.DefaultStyles(true), which answered to neither the
+// theme name nor the light/dark reply.
+func TestHelpStylesFollowTheTheme(t *testing.T) {
+	dracula := helpStyles(themeFor(themeDracula, true))
+
+	assert.Equal(t, themeFor(themeDracula, true).Muted, dracula.ShortDesc.GetForeground())
+	assert.NotEqual(t, helpStyles(themeFor(themeNord, true)).ShortDesc.GetForeground(), dracula.ShortDesc.GetForeground())
+	assert.NotEqual(t, helpStyles(themeFor(themeDracula, false)).ShortKey.GetForeground(), dracula.ShortKey.GetForeground())
+}
+
+// TestFocusIsEncodedInTheBorderShape pins decision 3: focus is legible without
+// color, so each of the three pane states gets its own border shape.
+func TestFocusIsEncodedInTheBorderShape(t *testing.T) {
+	styles := newStyles(themeFor("default", true))
+
+	shapes := map[string]lipgloss.Border{
+		"unfocused": styles.Pane.GetBorderStyle(),
+		"focused":   styles.PaneFocused.GetBorderStyle(),
+		"loud":      styles.PaneLoud.GetBorderStyle(),
+	}
+
+	assert.Equal(t, lipgloss.RoundedBorder(), shapes["unfocused"])
+	assert.Equal(t, lipgloss.ThickBorder(), shapes["focused"])
+	assert.Equal(t, lipgloss.DoubleBorder(), shapes["loud"])
+}
 
 // allStatuses is every transmission.Status the enum covers, so a status added
 // upstream without a glyph fails here rather than rendering "?" in a user's

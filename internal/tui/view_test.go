@@ -103,7 +103,7 @@ func TestTooSmallGolden(t *testing.T) {
 
 // TestNerdFontGolden is the one golden rendered with the Nerd Font glyph set. It
 // exists to pin the glyph column's width: a private-use glyph measures one cell,
-// so T2's fallback work must not be able to move a column.
+// so switching spellings must not be able to move a column.
 func TestNerdFontGolden(t *testing.T) {
 	deps := testDeps()
 	deps.NerdFont = true
@@ -132,8 +132,9 @@ func TestHostileNamesAreSanitized(t *testing.T) {
 // ANSI-stripped goldens deliberately cannot make: the focused pane's border is
 // drawn in a different color from its neighbour's.
 //
-// It asserts that two colors appear rather than which two. Naming the colors
-// would pin the palette, and filling the palette in is T2's job.
+// It asserts that two colors appear rather than which two. Naming them would
+// pin one of the three palettes into a test about focus; which color each slot
+// holds is theme_test.go's business.
 func TestFocusedPaneIsStyledDifferently(t *testing.T) {
 	m := newTestModel(120, 40)
 
@@ -145,6 +146,24 @@ func TestFocusedPaneIsStyledDifferently(t *testing.T) {
 	assert.NotEqual(t, colors[0], colors[1], "the focused pane's border is not distinguishable")
 
 	assert.Len(t, borderColors(press(m, "{")), 1, "one pane means one border color")
+}
+
+// TestFocusedPaneGetsTheThickBorder pins the other half of decision 3: focus is
+// a border shape, not only a border color, so it survives NO_COLOR, a
+// sixteen-color terminal, a colorblind user — and the ANSI-stripped goldens,
+// which record which pane has focus for the first time because of it.
+func TestFocusedPaneGetsTheThickBorder(t *testing.T) {
+	thick := lipgloss.ThickBorder().Top
+
+	for _, pane := range []Pane{paneList, paneDetail} {
+		m := press(newTestModel(120, 40), "}").setFocus(pane)
+
+		assert.Containsf(t, m.render(), thick, "%s has focus and no thick border", pane)
+	}
+
+	unfocused := press(newTestModel(120, 40), "}").setFocus(paneFilter).render()
+
+	assert.NotContains(t, unfocused, thick, "a thick border appeared with no ordinary pane focused")
 }
 
 // TestOnlyTheFilterPaneGetsTheLoudBorder pins vision.md's blast-radius styling:
@@ -162,8 +181,15 @@ func TestOnlyTheFilterPaneGetsTheLoudBorder(t *testing.T) {
 	}
 }
 
-// colorPattern matches a truecolor foreground escape sequence.
-var colorPattern = regexp.MustCompile(`\x1b\[38;2;\d+;\d+;\d+m`)
+// colorPattern matches an SGR sequence carrying a color parameter in any of the
+// four spellings a terminal accepts: basic, bright, 256-color, and truecolor,
+// in either the foreground or the background role.
+//
+// A truecolor-only pattern was enough while every theme was a placeholder hex
+// palette. The default theme is now the terminal's own sixteen colors, which
+// lipgloss writes as \x1b[34m — and merges with any attribute set alongside it,
+// so the parameter can arrive with neighbours on either side.
+var colorPattern = regexp.MustCompile(`\x1b\[(?:\d+;)*(?:[34][0-7]|9[0-7]|10[0-7]|[34]8;5;\d+|[34]8;2;\d+;\d+;\d+)(?:;\d+)*m`)
 
 // borderColors returns the color escape sequences on the frame's top line, which
 // is where each open pane's top border is drawn.

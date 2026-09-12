@@ -15,8 +15,7 @@ import (
 // one theme name and one light/dark answer — and the resulting Styles are passed
 // explicitly into every view function.
 //
-// T1 ships the slots and the plumbing; T2 fills in the default, dracula, and
-// nord palettes behind themeFor.
+// Three palettes fill these slots, behind themeFor: default, dracula, and nord.
 type Theme struct {
 	// Text is the default foreground.
 	Text color.Color
@@ -38,9 +37,6 @@ type Theme struct {
 	// CursorText is the foreground on the cursor row.
 	CursorText color.Color
 
-	// Mark is the color of a marked row's glyph.
-	Mark color.Color
-
 	// Border is an unfocused pane's border.
 	Border color.Color
 
@@ -56,29 +52,92 @@ type Theme struct {
 
 // themeFor resolves a theme name and a light/dark answer into a palette.
 //
-// All three names currently resolve to the same placeholder palette. That is
-// deliberate: T1's job is the substrate — every style is built from these slots
-// and nothing hardcodes a color — and T2 fills in the three palettes without
-// touching a single call site. An unknown name resolves to the default rather
-// than failing, because the name was already validated where it was read
-// (commands.ResolveClientSettings) and the TUI must not fail to draw over it.
+// Every name ships both a light and a dark arrangement and goes through the
+// same lipgloss.LightDark pick, so no theme can render invisible text on a
+// terminal whose background it did not expect. An unknown name resolves to the
+// default rather than failing, because the name was already validated where it
+// was read (commands.ResolveClientSettings) and the TUI must not fail to draw
+// over it.
 func themeFor(name string, isDark bool) Theme {
-	_ = name
+	switch name {
+	case themeDracula:
+		return draculaTheme(isDark)
+	case themeNord:
+		return nordTheme(isDark)
+	default:
+		// "default", and any name the validator somehow let through.
+		return defaultTheme()
+	}
+}
 
+// The two named palettes, matching config's clientThemes. They are spelled here
+// rather than imported because internal/tui imports neither internal/config nor
+// internal/commands; the name arrives through Deps already validated. "default"
+// needs no constant — it is themeFor's fallthrough.
+const (
+	themeDracula = "dracula"
+	themeNord    = "nord"
+)
+
+// defaultTheme is the terminal's own ANSI-16 palette, identical for light and
+// dark.
+//
+// Text is NoColor — the terminal's configured foreground — and every other slot
+// is one of the sixteen colors the terminal already resolves to whatever the
+// user's color scheme says. That is why it needs no light/dark pick: the
+// terminal has already made both decisions, consistently with every other
+// program the user runs. dracula and nord are the opt-in fixed looks, for a
+// user who wants snatcher to look like snatcher.
+func defaultTheme() Theme {
+	return Theme{
+		Text:       lipgloss.NoColor{},
+		Muted:      lipgloss.BrightBlack,
+		Accent:     lipgloss.Blue,
+		Loud:       lipgloss.Red,
+		Cursor:     lipgloss.Blue,
+		CursorText: lipgloss.BrightWhite,
+		Border:     lipgloss.BrightBlack,
+		StatusBar:  lipgloss.BrightBlack,
+		StatusText: lipgloss.BrightWhite,
+		Warn:       lipgloss.Yellow,
+	}
+}
+
+// draculaTheme is the Dracula palette, with Alucard — Dracula's own official
+// light arrangement — as its light variant.
+func draculaTheme(isDark bool) Theme {
 	pick := lipgloss.LightDark(isDark)
 
 	return Theme{
-		Text:       pick(lipgloss.Color("#1c1c1c"), lipgloss.Color("#e4e4e4")),
-		Muted:      pick(lipgloss.Color("#6c6c6c"), lipgloss.Color("#8a8a8a")),
-		Accent:     pick(lipgloss.Color("#005faf"), lipgloss.Color("#5fafff")),
-		Loud:       pick(lipgloss.Color("#af0000"), lipgloss.Color("#ff5f5f")),
-		Cursor:     pick(lipgloss.Color("#d7d7ff"), lipgloss.Color("#303060")),
-		CursorText: pick(lipgloss.Color("#1c1c1c"), lipgloss.Color("#ffffff")),
-		Mark:       pick(lipgloss.Color("#875f00"), lipgloss.Color("#ffd75f")),
-		Border:     pick(lipgloss.Color("#b2b2b2"), lipgloss.Color("#4e4e4e")),
-		StatusBar:  pick(lipgloss.Color("#d0d0d0"), lipgloss.Color("#303030")),
-		StatusText: pick(lipgloss.Color("#1c1c1c"), lipgloss.Color("#e4e4e4")),
-		Warn:       pick(lipgloss.Color("#af5f00"), lipgloss.Color("#ffaf5f")),
+		Text:       pick(lipgloss.Color("#1f1f1f"), lipgloss.Color("#f8f8f2")),
+		Muted:      pick(lipgloss.Color("#6c664b"), lipgloss.Color("#6272a4")),
+		Accent:     pick(lipgloss.Color("#644ac9"), lipgloss.Color("#bd93f9")),
+		Loud:       pick(lipgloss.Color("#cb3a2a"), lipgloss.Color("#ff5555")),
+		Cursor:     pick(lipgloss.Color("#cfcfde"), lipgloss.Color("#44475a")),
+		CursorText: pick(lipgloss.Color("#1f1f1f"), lipgloss.Color("#f8f8f2")),
+		Border:     pick(lipgloss.Color("#6c664b"), lipgloss.Color("#6272a4")),
+		StatusBar:  pick(lipgloss.Color("#cfcfde"), lipgloss.Color("#44475a")),
+		StatusText: pick(lipgloss.Color("#1f1f1f"), lipgloss.Color("#f8f8f2")),
+		Warn:       pick(lipgloss.Color("#a34d14"), lipgloss.Color("#ffb86c")),
+	}
+}
+
+// nordTheme is the Nord palette. Its light variant follows Nord's own guidance
+// for bright interfaces: Polar Night for text, Snow Storm for surfaces.
+func nordTheme(isDark bool) Theme {
+	pick := lipgloss.LightDark(isDark)
+
+	return Theme{
+		Text:       pick(lipgloss.Color("#2e3440"), lipgloss.Color("#d8dee9")),
+		Muted:      lipgloss.Color("#4c566a"),
+		Accent:     pick(lipgloss.Color("#5e81ac"), lipgloss.Color("#88c0d0")),
+		Loud:       lipgloss.Color("#bf616a"),
+		Cursor:     pick(lipgloss.Color("#d8dee9"), lipgloss.Color("#434c5e")),
+		CursorText: pick(lipgloss.Color("#2e3440"), lipgloss.Color("#eceff4")),
+		Border:     lipgloss.Color("#4c566a"),
+		StatusBar:  pick(lipgloss.Color("#e5e9f0"), lipgloss.Color("#3b4252")),
+		StatusText: pick(lipgloss.Color("#2e3440"), lipgloss.Color("#d8dee9")),
+		Warn:       pick(lipgloss.Color("#d08770"), lipgloss.Color("#ebcb8b")),
 	}
 }
 
@@ -109,9 +168,6 @@ type Styles struct {
 	// Cursor is the filter pane's selected row. The table draws its own.
 	Cursor lipgloss.Style
 
-	// Mark is a marked row's glyph.
-	Mark lipgloss.Style
-
 	// Muted is secondary text: counts, placeholders, field labels.
 	Muted lipgloss.Style
 
@@ -134,28 +190,57 @@ type Styles struct {
 // newStyles builds every style from a theme. It is the only place a style is
 // constructed, so "which color is this" is answerable by reading one function.
 func newStyles(t Theme) Styles {
-	pane := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border)
+	pane := borderStyle(lipgloss.NewStyle(), lipgloss.RoundedBorder(), t.Border)
+	cursor := lipgloss.NewStyle().Foreground(t.CursorText).Background(t.Cursor)
 
 	tbl := table.DefaultStyles()
 	tbl.Header = lipgloss.NewStyle().Bold(true).Foreground(t.Muted).PaddingRight(cellPadding)
 	tbl.Cell = lipgloss.NewStyle().Foreground(t.Text).PaddingRight(cellPadding)
-	tbl.Selected = lipgloss.NewStyle().Foreground(t.CursorText).Background(t.Cursor)
+	tbl.Selected = cursor
 
 	return Styles{
 		Pane:        pane,
-		PaneFocused: pane.BorderForeground(t.Accent),
-		PaneLoud:    pane.BorderForeground(t.Loud).Border(lipgloss.DoubleBorder()),
+		PaneFocused: borderStyle(lipgloss.NewStyle(), lipgloss.ThickBorder(), t.Accent),
+		PaneLoud:    borderStyle(lipgloss.NewStyle(), lipgloss.DoubleBorder(), t.Loud),
 		Title:       lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
 		Tab:         lipgloss.NewStyle().Foreground(t.Muted).Padding(0, 1),
 		TabActive:   lipgloss.NewStyle().Bold(true).Foreground(t.Accent).Padding(0, 1),
-		Cursor:      lipgloss.NewStyle().Foreground(t.CursorText).Background(t.Cursor),
-		Mark:        lipgloss.NewStyle().Bold(true).Foreground(t.Mark),
+		Cursor:      cursor,
 		Muted:       lipgloss.NewStyle().Foreground(t.Muted),
 		StatusBar:   lipgloss.NewStyle().Foreground(t.StatusText).Background(t.StatusBar),
 		Toast:       lipgloss.NewStyle().Bold(true).Foreground(t.Warn),
-		Overlay:     lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Accent).Padding(0, 1),
-		Help:        help.DefaultStyles(true),
+		Overlay:     borderStyle(lipgloss.NewStyle().Padding(0, 1), lipgloss.RoundedBorder(), t.Accent),
+		Help:        helpStyles(t),
 		Table:       tbl,
+	}
+}
+
+// borderStyle gives s a border shape and a border color.
+//
+// The shape is the point. vision.md requires the filter pane's focus be louder
+// than every other pane's, and T2 extends that to focus generally: an unfocused
+// pane is rounded, a focused pane is thick, a focused filter pane is double.
+// That reads on a sixteen-color terminal and to a colorblind user — and it is
+// the only part of focus the ANSI-stripped goldens can pin.
+func borderStyle(s lipgloss.Style, b lipgloss.Border, c color.Color) lipgloss.Style {
+	return s.Border(b).BorderForeground(c)
+}
+
+// helpStyles builds the help bubble's styles from the theme, replacing
+// help.DefaultStyles, whose hardcoded greys answer to neither the palette nor
+// the light/dark reply.
+func helpStyles(t Theme) help.Styles {
+	key := lipgloss.NewStyle().Foreground(t.Text)
+	desc := lipgloss.NewStyle().Foreground(t.Muted)
+
+	return help.Styles{
+		ShortKey:       key,
+		ShortDesc:      desc,
+		ShortSeparator: desc,
+		Ellipsis:       desc,
+		FullKey:        key,
+		FullDesc:       desc,
+		FullSeparator:  desc,
 	}
 }
 

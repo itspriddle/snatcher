@@ -1,40 +1,40 @@
-╭──────────────────────╮╭──────────────────────────────────────────────────────────────────────────────────────────────╮
-│Status                ││    Name                           Status      Done Size      Down        Up          ETA     │
-│  All               12││   ubuntu-24.04.1-desktop-amd64.… Downloading 42%  5.8 GiB   4.0 MiB/s   128.0 KiB/s 14m 18s │
-│  Downloading        4││   debian-12.7.0-amd64-netinst.i… Seeding     100% 631.0 MiB 0 B/s       512.0 KiB/s -       │
-│  Seeding            3││   archlinux-2026.09.01-x86_64.i… Stopped     87%  1.1 GiB   0 B/s       0 B/s       -       │
-│  Active             7││   fedora-workstation-41.iso      Verifying   99%  2.1 GiB   0 B/s       0 B/s       -       │
-│  Stopped            2││   nixos-minimal-25.05-x86_64.iso Queued to … 100% 1.0 GiB   0 B/s       0 B/s       -       │
-│  Verifying          1││   openbsd-7.6-amd64-install.iso  Queued to … 0%   769.0 MiB 0 B/s       0 B/s       -       │
-│  Queued to download 1││   freebsd-14.1-release-amd64-dv… Queued to … 100% 4.2 GiB   0 B/s       0 B/s       -       │
-│  Queued to seed     1││   alpine-standard-3.21.0-x86_64… Error       31%  200.0 MiB 0 B/s       0 B/s       -       │
-│  Queued to verify   1││   void-live-x86_64-20260901.iso  Downloading 5%   695.0 MiB 768.0 KiB/s 0 B/s       14m 40s │
-│  Error              1││   gentoo-admincd-amd64-20260815… Seeding     100% 560.0 MiB 0 B/s       64.0 KiB/s  -       │
-│Labels                ││   slackware64-15.0-install-dvd.… Stopped     50%  3.6 GiB   0 B/s       0 B/s       -       │
-│  linux              3││   hostile[31mname[0m-with-escap… Downloading 17%  1000.0 M… 256.0 KiB/s 0 B/s       55m 19s │
-│  seed               3││                                                                                              │
-│  No label           7││                                                                                              │
-│Trackers              ││                                                                                              │
-│  (none yet)          ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-│                      ││                                                                                              │
-╰──────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃    Name                           Status      Done Size      Down        Up          ETA     ┃
+│  All               12│┃   ubuntu-24.04.1-desktop-amd64.… Downloading 42%  5.8 GiB   4.0 MiB/s   128.0 KiB/s 14m 18s ┃
+│  Downloading        4│┃   debian-12.7.0-amd64-netinst.i… Seeding     100% 631.0 MiB 0 B/s       512.0 KiB/s -       ┃
+│  Seeding            3│┃   archlinux-2026.09.01-x86_64.i… Stopped     87%  1.1 GiB   0 B/s       0 B/s       -       ┃
+│  Active             7│┃   fedora-workstation-41.iso      Verifying   99%  2.1 GiB   0 B/s       0 B/s       -       ┃
+│  Stopped            2│┃   nixos-minimal-25.05-x86_64.iso Queued to … 100% 1.0 GiB   0 B/s       0 B/s       -       ┃
+│  Verifying          1│┃   openbsd-7.6-amd64-install.iso  Queued to … 0%   769.0 MiB 0 B/s       0 B/s       -       ┃
+│  Queued to download 1│┃   freebsd-14.1-release-amd64-dv… Queued to … 100% 4.2 GiB   0 B/s       0 B/s       -       ┃
+│  Queued to seed     1│┃   alpine-standard-3.21.0-x86_64… Error       31%  200.0 MiB 0 B/s       0 B/s       -       ┃
+│  Queued to verify   1│┃   void-live-x86_64-20260901.iso  Downloading 5%   695.0 MiB 768.0 KiB/s 0 B/s       14m 40s ┃
+│  Error              1│┃   gentoo-admincd-amd64-20260815… Seeding     100% 560.0 MiB 0 B/s       64.0 KiB/s  -       ┃
+│Labels                │┃   slackware64-15.0-install-dvd.… Stopped     50%  3.6 GiB   0 B/s       0 B/s       -       ┃
+│  linux              3│┃   hostile[31mname[0m-with-escap… Downloading 17%  1000.0 M… 256.0 KiB/s 0 B/s       55m 19s ┃
+│  seed               3│┃                                                                                              ┃
+│  No label           7│┃                                                                                              ┃
+│Trackers              │┃                                                                                              ┃
+│  (none yet)          │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 space mark • enter open detail • y yank… • s start • p pause • v verify • r reannounce • d delete • J queue down …      
 snatcher v1.2.3 │ mock                                                                                                  
