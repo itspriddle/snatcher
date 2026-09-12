@@ -459,3 +459,21 @@ func TestTrackerCountUnknown(t *testing.T) {
 	assert.Equal(t, "-", trackerCount(-1), "-1 is Transmission's not-yet-scraped sentinel")
 	assert.Equal(t, "-", trackerCount(-2), "any negative count is treated as unknown")
 }
+
+// TestTrackersTableTruncatesAnnounce is the guard for the announce column's
+// truncate flag: a narrow width forces the ellipsis, so deleting the flag fails
+// here rather than passing silently at width 0 (which disables truncation).
+func TestTrackersTableTruncatesAnnounce(t *testing.T) {
+	long := "https://tracker.example.com/a-very-long-passkey-segment-0123456789abcdef/announce"
+	trackers := []transmission.Tracker{{Announce: long, AnnounceState: 3}}
+
+	cols, err := parseFields(trackerFields, trackerFieldKeys, "")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListTable(&buf, trackers, cols, 40, "No trackers.")
+
+	out := buf.String()
+	assert.Contains(t, out, "…", "long announce URL is truncated with an ellipsis")
+	assert.NotContains(t, out, long)
+}

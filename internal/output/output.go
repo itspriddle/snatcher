@@ -199,7 +199,11 @@ func Date(unix int64) string {
 // neutral characters beside it (digits, "%", "MiB/s") when a terminal lays out
 // an aligned row, and stripping RTL script is not an option. Sanitizing removes
 // every way an *invisible* character can reorder a row; it does not make every
-// row visually unambiguous.
+// row visually unambiguous. Nor does it keep every row aligned: a kept
+// zero-width character (U+2060) or combining mark still displaces the cells to
+// its right, because the table renderer measures runes while the terminal
+// counts display columns. Width-aware measurement is the fix for that, and it
+// is a renderer change, not a filter change.
 //
 // The original string is returned unchanged when it contains no control
 // characters, so the common case avoids any allocation. SanitizeTerminal must

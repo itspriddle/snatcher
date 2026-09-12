@@ -418,3 +418,21 @@ func TestPeersRegisteredOnTorrentGroup(t *testing.T) {
 	require.Len(t, lines, 2)
 	assert.Equal(t, "203.0.113.7", strings.Split(lines[0], "\t")[0])
 }
+
+// TestPeersTableTruncatesClient is the guard for the client column's truncate
+// flag: a narrow width forces the ellipsis, so deleting the flag fails here
+// rather than passing silently at width 0 (which disables truncation).
+func TestPeersTableTruncatesClient(t *testing.T) {
+	long := "SomeVeryLongClientNameThatNoRealPeerWouldEverAdvertise 99.99.99"
+	peers := []transmission.Peer{{Address: "203.0.113.7", Port: 51413, Client: long, FlagStr: "UD"}}
+
+	cols, err := parseFields(peerFields, peerFieldKeys, "")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListTable(&buf, peers, cols, 40, "No peers.")
+
+	out := buf.String()
+	assert.Contains(t, out, "…", "long client string is truncated with an ellipsis")
+	assert.NotContains(t, out, long)
+}

@@ -645,6 +645,7 @@ func TestFileIndexSpecRejects(t *testing.T) {
 		{"negative index", []string{"0,-1"}, `invalid file index "-1" in "0,-1": must be a non-negative integer`},
 		{"non-integer token", []string{"two"}, `invalid file index "two": must be a non-negative integer`},
 		{"non-integer range bound", []string{"1-x"}, `invalid file index "1-x": must be a non-negative integer`},
+		{"non-integer range start", []string{"x-1"}, `invalid file index "x-1": must be a non-negative integer`},
 		{"empty token", []string{"0,,2"}, `invalid file index "" in "0,,2": must not be empty`},
 		{"empty argument", []string{""}, `invalid file index "": must not be empty`},
 		{"all combined with an index", []string{"all", "3"}, `"all" must be the only file index given`},
@@ -1002,4 +1003,53 @@ func TestSelectFileRowsSkipsMissingIndices(t *testing.T) {
 	assert.Equal(t, "a.iso", rows[0].Name)
 
 	assert.Empty(t, rowFiles(selectFileRows(nil, []int{0})))
+}
+
+// TestFilesTableTruncatesName is the guard for the name column's truncate flag:
+// a narrow width forces the ellipsis, so deleting the flag fails here rather
+// than passing silently the way it does at width 0 (which disables truncation).
+func TestFilesTableTruncatesName(t *testing.T) {
+	long := "this-is-a-very-long-file-name-that-will-not-fit-in-the-table.iso"
+	files := []transmission.File{{Name: long, Length: 2048, BytesCompleted: 1024, Wanted: true}}
+
+	cols, err := parseFields(fileFields, fileFieldKeys, "")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	writeListTable(&buf, fileRows(files), cols, 40, "No files.")
+
+	out := buf.String()
+	assert.Contains(t, out, "…", "long name is truncated with an ellipsis")
+	assert.NotContains(t, out, long)
+}
+
+// TestFilesUpdateRejectsMalformedIndexBeforeDialing pins that an index-syntax
+// error surfaces from the command itself, before the server is contacted: no
+// torrent-get, no torrent-set, empty stdout.
+func TestFilesUpdateRejectsMalformedIndexBeforeDialing(t *testing.T) {
+	cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, "1", "x-2", "--unwanted")
+	require.Error(t, err)
+	assert.Equal(t, `invalid file index "x-2": must be a non-negative integer`, err.Error())
+	assert.Empty(t, out)
+
+	assert.Zero(t, stub.count("torrent-get"), "a malformed index never dials")
+	assert.Zero(t, stub.count("torrent-set"), "a malformed index writes nothing")
+}
+
+// TestFilesUpdateNotFoundWritesNothing is the "no torrent matched" guard every
+// sibling read command carries, on the one command in the set that writes.
+func TestFilesUpdateNotFoundWritesNothing(t *testing.T) {
+	cfgPath, stub, closeSrv := filesUpdateConfigPath(t, bespokeFilesResponse)
+	defer closeSrv()
+
+	absent := "cccccccccccccccccccccccccccccccccccccccc"
+	out, _, err := runFilesUpdate(t, "--config", cfgPath, absent, "0", "--unwanted")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no torrent matched: "+absent)
+	assert.Empty(t, out)
+
+	assert.Zero(t, stub.count("torrent-set"), "an unmatched selector writes nothing")
 }
