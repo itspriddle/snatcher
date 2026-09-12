@@ -244,6 +244,22 @@ type placeholder struct {
 	isErr bool
 }
 
+// listPlaceholder is what the torrent table says while it has no rows.
+func (m Model) listPlaceholder() placeholder {
+	switch {
+	case len(m.torrents.rows) > 0 || m.deps.Torrents != nil:
+		return placeholder{}
+	case m.client == nil:
+		return placeholder{lines: []string{noServerLabel}}
+	case !m.live.loaded && m.live.err == nil:
+		return placeholder{lines: []string{"loading…"}}
+	case !m.live.loaded:
+		return placeholder{lines: []string{errorLine(m.live.err), errorHint(m.live.err)}, isErr: true}
+	}
+
+	return placeholder{lines: []string{"no torrents"}}
+}
+
 // view renders the table into r, with the placeholder under its header when the
 // table has no rows.
 func (p listPane) view(st Styles, r rect, focused bool, ph placeholder) string {

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"net/http"
 	"regexp"
 	"strings"
 	"testing"
@@ -49,7 +50,19 @@ func frameStates(t *testing.T, w, h int) []frameState {
 
 	base := newTestModel(w, h)
 
+	_, srv := newRPCStub(t)
+	failing, failingSrv := newRPCStub(t)
+	failing.status.Store(http.StatusInternalServerError)
+
+	live := pollOnce(t, pollOnce(t, liveModel(t, srv, w, h)))
+	liveToast := live
+	liveToast.toast = "saved 3 settings"
+
 	return []frameState{
+		{"live", live},
+		{"live toast", liveToast},
+		{"loading", liveModel(t, srv, w, h)},
+		{"error", pollOnce(t, liveModel(t, failingSrv, w, h))},
 		{"default", base},
 		{"no filter", press(base, "{")},
 		{"detail open", press(base, "}")},
@@ -71,6 +84,16 @@ func frameStates(t *testing.T, w, h int) []frameState {
 func TestTorrentsGolden(t *testing.T) {
 	assertGolden(t, "torrents_120x40", newTestModel(120, 40).render())
 	assertGolden(t, "torrents_80x24", newTestModel(80, 24).render())
+}
+
+// TestTorrentsLiveGolden pins a polled frame at both reference sizes: the rows in
+// queue order, and a status bar with two samples in each sparkline, degraded to
+// fit at 80 columns.
+func TestTorrentsLiveGolden(t *testing.T) {
+	_, srv := newRPCStub(t)
+
+	assertGolden(t, "torrents_live_120x40", pollOnce(t, pollOnce(t, liveModel(t, srv, 120, 40))).render())
+	assertGolden(t, "torrents_live_80x24", pollOnce(t, pollOnce(t, liveModel(t, srv, 80, 24))).render())
 }
 
 // TestTorrentsFilterFocusedGolden pins the sidebar's focused rendering, whose

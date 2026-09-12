@@ -1,0 +1,24 @@
+╭──────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status            │┃    Name                       Status      Done Size      ┃
+│  All            3│┃  ^ debian.iso                 Seeding     100% 1.0 GiB   ┃
+│  Downloading    1│┃  ! alpine.iso                 Error       50%  200.0 MiB ┃
+│  Seeding        1│┃  v ubuntu-24.04.iso           Downloading 50%  2.0 GiB   ┃
+│  Active         2│┃                                                          ┃
+│  Stopped        0│┃                                                          ┃
+│  Verifying      0│┃                                                          ┃
+│  Queued to dow… 0│┃                                                          ┃
+│  Queued to seed 0│┃                                                          ┃
+│  Queued to ver… 0│┃                                                          ┃
+│  Error          1│┃                                                          ┃
+│Labels            │┃                                                          ┃
+│  linux          1│┃                                                          ┃
+│  No label       2│┃                                                          ┃
+│Trackers          │┃                                                          ┃
+│  (none yet)      │┃                                                          ┃
+│                  │┃                                                          ┃
+│                  │┃                                                          ┃
+│                  │┃                                                          ┃
+│                  │┃                                                          ┃
+╰──────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+space mark • enter open detail • y yank… • s start • p pause • v verify …       
+snatcher v1.2.3 │ home@nas:9091 │ ↓ 2.0 MiB/s       ██ │ ↑ 1.0 MiB/s       ██   
