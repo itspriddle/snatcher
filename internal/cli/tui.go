@@ -17,7 +17,8 @@ import (
 // internal/commands: there, NO_COLOR folds into "not a terminal" because the
 // question being asked is whether to draw a colored, aligned table. Here the
 // question is whether to launch a full-screen application at all, and
-// "monochrome" is not an answer to it. NO_COLOR belongs in T2's palette work.
+// "monochrome" is not an answer to it. NO_COLOR reaches the TUI as
+// Deps.NoColor, which draws it without color rather than not at all.
 func isTerminal(v any) bool {
 	f, ok := v.(*os.File)
 	if !ok {
@@ -43,6 +44,7 @@ func launchTUI(cmd *cobra.Command) error {
 		Dial:         commands.Dialer(cmd),
 		Theme:        settings.Theme,
 		NerdFont:     settings.NerdFont,
+		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,
 		Version:      version.FullVersion(),
 	})

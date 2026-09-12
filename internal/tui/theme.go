@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
@@ -187,51 +188,102 @@ type Styles struct {
 	Table table.Styles
 }
 
+// monochrome reports whether a color profile can carry color at all.
+//
+// This is the one place the question is asked, and it is asked of the profile
+// rather than of the environment: NO_COLOR, TERM=dumb, a pipe, and an explicit
+// tea.WithColorProfile all arrive here as one value. ultraviolet already strips
+// color from every style under these two profiles — Ascii keeps bold, reverse,
+// and underline, NoTTY keeps nothing — so what is left for the TUI to decide is
+// only what to say with the attributes that survive.
+func monochrome(p colorprofile.Profile) bool {
+	return p == colorprofile.Ascii || p == colorprofile.NoTTY
+}
+
 // newStyles builds every style from a theme. It is the only place a style is
 // constructed, so "which color is this" is answerable by reading one function.
-func newStyles(t Theme) Styles {
-	pane := borderStyle(lipgloss.NewStyle(), lipgloss.RoundedBorder(), t.Border)
-	cursor := lipgloss.NewStyle().Foreground(t.CursorText).Background(t.Cursor)
+//
+// mono is the monochrome switch the model derives from the terminal's color
+// profile. Under it no style sets a color at all, and the three places color
+// alone carried meaning — the cursor row, the table's selected row, and the
+// status bar — switch to reverse video. Pane focus needs no fallback: it is a
+// border shape either way.
+func newStyles(t Theme, mono bool) Styles {
+	// paint is where the monochrome branch lives, so every style below is
+	// written once rather than twice. A nil color is skipped, which is how a
+	// foreground-only style is spelled.
+	paint := func(s lipgloss.Style, fg, bg color.Color) lipgloss.Style {
+		if mono {
+			return s
+		}
+
+		if fg != nil {
+			s = s.Foreground(fg)
+		}
+
+		if bg != nil {
+			s = s.Background(bg)
+		}
+
+		return s
+	}
+
+	pane := borderStyle(lipgloss.NewStyle(), lipgloss.RoundedBorder(), t.Border, mono)
+	cursor := paint(lipgloss.NewStyle(), t.CursorText, t.Cursor).Reverse(mono)
 
 	tbl := table.DefaultStyles()
-	tbl.Header = lipgloss.NewStyle().Bold(true).Foreground(t.Muted).PaddingRight(cellPadding)
-	tbl.Cell = lipgloss.NewStyle().Foreground(t.Text).PaddingRight(cellPadding)
+	tbl.Header = paint(lipgloss.NewStyle().Bold(true), t.Muted, nil).PaddingRight(cellPadding)
+	tbl.Cell = paint(lipgloss.NewStyle(), t.Text, nil).PaddingRight(cellPadding)
 	tbl.Selected = cursor
 
 	return Styles{
 		Pane:        pane,
-		PaneFocused: borderStyle(lipgloss.NewStyle(), lipgloss.ThickBorder(), t.Accent),
-		PaneLoud:    borderStyle(lipgloss.NewStyle(), lipgloss.DoubleBorder(), t.Loud),
-		Title:       lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
-		Tab:         lipgloss.NewStyle().Foreground(t.Muted).Padding(0, 1),
-		TabActive:   lipgloss.NewStyle().Bold(true).Foreground(t.Accent).Padding(0, 1),
+		PaneFocused: borderStyle(lipgloss.NewStyle(), lipgloss.ThickBorder(), t.Accent, mono),
+		PaneLoud:    borderStyle(lipgloss.NewStyle(), lipgloss.DoubleBorder(), t.Loud, mono),
+		Title:       paint(lipgloss.NewStyle().Bold(true), t.Accent, nil),
+		Tab:         paint(lipgloss.NewStyle().Padding(0, 1), t.Muted, nil),
+		TabActive:   paint(lipgloss.NewStyle().Bold(true).Padding(0, 1), t.Accent, nil).Underline(mono),
 		Cursor:      cursor,
-		Muted:       lipgloss.NewStyle().Foreground(t.Muted),
-		StatusBar:   lipgloss.NewStyle().Foreground(t.StatusText).Background(t.StatusBar),
-		Toast:       lipgloss.NewStyle().Bold(true).Foreground(t.Warn),
-		Overlay:     borderStyle(lipgloss.NewStyle().Padding(0, 1), lipgloss.RoundedBorder(), t.Accent),
-		Help:        helpStyles(t),
+		Muted:       paint(lipgloss.NewStyle(), t.Muted, nil),
+		StatusBar:   paint(lipgloss.NewStyle(), t.StatusText, t.StatusBar).Reverse(mono),
+		Toast:       paint(lipgloss.NewStyle().Bold(true), t.Warn, nil),
+		Overlay:     borderStyle(lipgloss.NewStyle().Padding(0, 1), lipgloss.RoundedBorder(), t.Accent, mono),
+		Help:        helpStyles(t, mono),
 		Table:       tbl,
 	}
 }
 
-// borderStyle gives s a border shape and a border color.
+// borderStyle gives s a border shape and, unless monochrome, a border color.
 //
 // The shape is the point. vision.md requires the filter pane's focus be louder
 // than every other pane's, and T2 extends that to focus generally: an unfocused
 // pane is rounded, a focused pane is thick, a focused filter pane is double.
-// That reads on a sixteen-color terminal and to a colorblind user — and it is
-// the only part of focus the ANSI-stripped goldens can pin.
-func borderStyle(s lipgloss.Style, b lipgloss.Border, c color.Color) lipgloss.Style {
-	return s.Border(b).BorderForeground(c)
+// That reads without color, on a sixteen-color terminal and to a colorblind
+// user — and it is the only part of focus the ANSI-stripped goldens can pin.
+func borderStyle(s lipgloss.Style, b lipgloss.Border, c color.Color, mono bool) lipgloss.Style {
+	s = s.Border(b)
+	if mono {
+		return s
+	}
+
+	return s.BorderForeground(c)
 }
 
 // helpStyles builds the help bubble's styles from the theme, replacing
 // help.DefaultStyles, whose hardcoded greys answer to neither the palette nor
 // the light/dark reply.
-func helpStyles(t Theme) help.Styles {
-	key := lipgloss.NewStyle().Foreground(t.Text)
-	desc := lipgloss.NewStyle().Foreground(t.Muted)
+func helpStyles(t Theme, mono bool) help.Styles {
+	key := lipgloss.NewStyle()
+	desc := lipgloss.NewStyle()
+
+	if mono {
+		// Without color the key is what a reader's eye lands on, so it carries
+		// the only emphasis left.
+		key = key.Bold(true)
+	} else {
+		key = key.Foreground(t.Text)
+		desc = desc.Foreground(t.Muted)
+	}
 
 	return help.Styles{
 		ShortKey:       key,

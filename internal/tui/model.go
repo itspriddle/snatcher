@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
@@ -55,6 +56,12 @@ type Model struct {
 	// startup, which is the trade v2 asks for.
 	isDark bool
 
+	// profile is the terminal's color profile, defaulted to TrueColor until
+	// bubbletea reports the detected one as a tea.ColorProfileMsg. It is the
+	// same trade isDark makes: one frame may render in colors the terminal
+	// cannot show rather than blocking on stdin at startup.
+	profile colorprofile.Profile
+
 	// styles and icons are the rendering substrate, rebuilt on a theme change.
 	styles Styles
 	icons  Icons
@@ -94,10 +101,11 @@ func New(deps Deps) Model {
 	}
 
 	m := Model{
-		deps:   deps,
-		isDark: true,
-		chord:  chordNone,
-		help:   help.New(),
+		deps:    deps,
+		isDark:  true,
+		profile: colorprofile.TrueColor,
+		chord:   chordNone,
+		help:    help.New(),
 	}
 
 	m = m.applyTheme(true)
@@ -113,9 +121,14 @@ func New(deps Deps) Model {
 // Panes hold no styles: they are handed them at view time. The table is the one
 // exception, because it renders its rows into its own internal viewport, so it
 // is re-styled here rather than at view time.
+//
+// It reads the color profile off the model rather than taking it as a second
+// parameter, because the background-color reply and the color-profile message
+// arrive independently and in either order: whichever lands funnels through
+// here, and the other's answer is already on the model.
 func (m Model) applyTheme(isDark bool) Model {
 	m.isDark = isDark
-	m.styles = newStyles(themeFor(m.deps.Theme, isDark))
+	m.styles = newStyles(themeFor(m.deps.Theme, isDark), monochrome(m.profile))
 	m.icons = newIcons(m.deps.NerdFont)
 	m.help.Styles = m.styles.Help
 	m.torrents.list = m.torrents.list.setStyles(m.styles)
@@ -146,6 +159,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.resize(msg.Width, msg.Height), nil
 	case tea.BackgroundColorMsg:
 		return m.applyTheme(msg.IsDark()), nil
+	case tea.ColorProfileMsg:
+		m.profile = msg.Profile
+
+		return m.applyTheme(m.isDark), nil
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}

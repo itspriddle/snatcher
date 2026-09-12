@@ -41,6 +41,13 @@ type ClientSettings struct {
 
 	// PollInterval is how often the TUI refreshes server data.
 	PollInterval time.Duration
+
+	// NoColor reports whether NO_COLOR is set in the environment, resolved
+	// with the same predicate the plaintext output paths use. It is answered
+	// here rather than in internal/tui because the TUI reads no environment of
+	// its own, and because a TUI that disagreed with `snatcher list` about what
+	// NO_COLOR means would be a bug nobody could see from either side.
+	NoColor bool
 }
 
 // ResolveClientSettings reads the client settings the TUI renders itself with,
@@ -82,5 +89,5 @@ func ResolveClientSettings(cmd *cobra.Command) (ClientSettings, error) {
 		return ClientSettings{}, fmt.Errorf("config key %s: %w", keyPollInterval, err)
 	}
 
-	return ClientSettings{Theme: theme, NerdFont: nerdFont, PollInterval: poll}, nil
+	return ClientSettings{Theme: theme, NerdFont: nerdFont, PollInterval: poll, NoColor: noColor()}, nil
 }

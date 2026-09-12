@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -78,6 +79,33 @@ func TestInitRequestsTheBackgroundColor(t *testing.T) {
 
 	require.NotNil(t, m.Init())
 	assert.True(t, m.isDark)
+}
+
+// TestNewDefaultsToATrueColorProfile checks the model renders in color before
+// bubbletea has reported the detected profile — the same trade isDark makes,
+// and the reason a color-capable terminal never flashes a monochrome frame.
+func TestNewDefaultsToATrueColorProfile(t *testing.T) {
+	m := New(testDeps())
+
+	assert.Equal(t, colorprofile.TrueColor, m.profile)
+	assert.False(t, monochrome(m.profile))
+}
+
+// TestProgramOptionsForcesAsciiUnderNoColor checks the NO_COLOR branch of the
+// program options without starting a program, which this suite has no terminal
+// to do.
+//
+// The options are opaque closures over a *tea.Program, so their count is the
+// only observable; what the extra one does is asserted where it lands, on the
+// model, in TestColorProfileMsgRethemes.
+func TestProgramOptionsForcesAsciiUnderNoColor(t *testing.T) {
+	deps := testDeps()
+
+	plain := programOptions(t.Context(), deps)
+
+	deps.NoColor = true
+
+	assert.Len(t, programOptions(t.Context(), deps), len(plain)+1)
 }
 
 // TestViewIsAnAltScreen pins the two view fields that are program options in

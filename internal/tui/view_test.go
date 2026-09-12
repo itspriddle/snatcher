@@ -188,7 +188,11 @@ func TestOnlyTheFilterPaneGetsTheLoudBorder(t *testing.T) {
 // A truecolor-only pattern was enough while every theme was a placeholder hex
 // palette. The default theme is now the terminal's own sixteen colors, which
 // lipgloss writes as \x1b[34m — and merges with any attribute set alongside it,
-// so the parameter can arrive with neighbours on either side.
+// so the parameter can arrive with neighbors on either side.
+//
+// theme_test.go asserts the monochrome styles against the same pattern, which
+// is the point of having one: "emits a color" must mean the same thing in the
+// test that requires one and the test that forbids one.
 var colorPattern = regexp.MustCompile(`\x1b\[(?:\d+;)*(?:[34][0-7]|9[0-7]|10[0-7]|[34]8;5;\d+|[34]8;2;\d+;\d+;\d+)(?:;\d+)*m`)
 
 // borderColors returns the color escape sequences on the frame's top line, which

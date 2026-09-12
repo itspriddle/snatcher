@@ -2642,7 +2642,16 @@ A command that reads neither ignores them entirely, invalid value and all.
 .B NO_COLOR
 When set to a non-empty value, forces
 .B list
-into the piped, tab-separated, header-less contract even on a terminal.
+into the piped, tab-separated, header-less contract even on a terminal, and
+draws the TUI without color: pane focus is shown by its border shape \(em
+rounded when unfocused, thick when focused, double for the filter pane \(em and
+the cursor row, the selected list row, and the status bar in reverse video, so
+nothing that color carried is lost. The predicate is the conventional one: any
+non-empty value, whatever it says.
+.IP
+A terminal that cannot show color, including
+.BR TERM=dumb ,
+is drawn the same way without the variable.
 .TP
 .B XDG_CONFIG_HOME
 When set, the default config path is

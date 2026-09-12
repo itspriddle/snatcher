@@ -569,11 +569,27 @@ func truncate(s string, limit int) string {
 	return string(runes[:limit-1]) + "…"
 }
 
+// envNoColor is the conventional variable from no-color.org. Unlike snatcher's
+// own SNATCHER_-prefixed variables it is not paired with a flag: there is no
+// --no-color, because the convention is an environment one.
+const envNoColor = "NO_COLOR"
+
+// noColor reports whether NO_COLOR is set in the environment.
+//
+// The predicate is "non-empty", per no-color.org, and it is deliberately not
+// colorprofile's: that package parses the value with strconv.ParseBool, so
+// NO_COLOR=yes would disable color in snatcher's plaintext output and not in its
+// TUI. One helper, read in one place, is what keeps the two in agreement — see
+// ResolveClientSettings, which hands the answer to the TUI.
+func noColor() bool {
+	return os.Getenv(envNoColor) != ""
+}
+
 // isTTY reports whether w is a terminal whose colored/aligned table output is
 // appropriate. A non-empty NO_COLOR forces the plain piped contract regardless
 // of whether w is a terminal.
 func isTTY(w io.Writer) bool {
-	if os.Getenv("NO_COLOR") != "" {
+	if noColor() {
 		return false
 	}
 

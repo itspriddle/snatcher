@@ -2,11 +2,13 @@ package tui
 
 import (
 	"image/color"
+	"regexp"
 	"testing"
 	"unicode"
 	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,17 +82,17 @@ func TestUnknownThemeNameFallsBackToTheDefault(t *testing.T) {
 // palette. T1 hardcoded help.DefaultStyles(true), which answered to neither the
 // theme name nor the light/dark reply.
 func TestHelpStylesFollowTheTheme(t *testing.T) {
-	dracula := helpStyles(themeFor(themeDracula, true))
+	dracula := helpStyles(themeFor(themeDracula, true), false)
 
 	assert.Equal(t, themeFor(themeDracula, true).Muted, dracula.ShortDesc.GetForeground())
-	assert.NotEqual(t, helpStyles(themeFor(themeNord, true)).ShortDesc.GetForeground(), dracula.ShortDesc.GetForeground())
-	assert.NotEqual(t, helpStyles(themeFor(themeDracula, false)).ShortKey.GetForeground(), dracula.ShortKey.GetForeground())
+	assert.NotEqual(t, helpStyles(themeFor(themeNord, true), false).ShortDesc.GetForeground(), dracula.ShortDesc.GetForeground())
+	assert.NotEqual(t, helpStyles(themeFor(themeDracula, false), false).ShortKey.GetForeground(), dracula.ShortKey.GetForeground())
 }
 
 // TestFocusIsEncodedInTheBorderShape pins decision 3: focus is legible without
 // color, so each of the three pane states gets its own border shape.
 func TestFocusIsEncodedInTheBorderShape(t *testing.T) {
-	styles := newStyles(themeFor("default", true))
+	styles := newStyles(themeFor("default", true), false)
 
 	shapes := map[string]lipgloss.Border{
 		"unfocused": styles.Pane.GetBorderStyle(),
@@ -188,4 +190,67 @@ func TestUnmarkedGlyphIsBlank(t *testing.T) {
 		assert.Equal(t, " ", icons.mark(false))
 		assert.Equal(t, 1, lipgloss.Width(icons.mark(true)))
 	}
+}
+
+// TestMonochromeIsAProfileQuestion pins which profiles mean "no color". The two
+// that do are the two ultraviolet strips color for; everything else, including
+// the sixteen-color terminal the default theme is written for, renders in color.
+func TestMonochromeIsAProfileQuestion(t *testing.T) {
+	for _, p := range []colorprofile.Profile{colorprofile.Ascii, colorprofile.NoTTY} {
+		assert.Truef(t, monochrome(p), "%s must render without color", p)
+	}
+
+	for _, p := range []colorprofile.Profile{colorprofile.ANSI, colorprofile.ANSI256, colorprofile.TrueColor} {
+		assert.Falsef(t, monochrome(p), "%s can carry color", p)
+	}
+}
+
+// reverseSGR matches the reverse-video attribute, which is what carries the
+// cursor row, the selected table row, and the status bar once color cannot.
+var reverseSGR = regexp.MustCompile(`\x1b\[(?:\d+;)*7(?:;\d+)*m`)
+
+// TestMonochromeStylesTradeColorForReverseVideo checks the three styles whose
+// whole job was a background color still say something when they cannot set
+// one, and that nothing in the monochrome set paints.
+func TestMonochromeStylesTradeColorForReverseVideo(t *testing.T) {
+	for _, name := range themeNames {
+		theme := themeFor(name, true)
+		mono := newStyles(theme, true)
+		colored := newStyles(theme, false)
+
+		for label, pair := range map[string][2]lipgloss.Style{
+			"Cursor":         {mono.Cursor, colored.Cursor},
+			"Table.Selected": {mono.Table.Selected, colored.Table.Selected},
+			"StatusBar":      {mono.StatusBar, colored.StatusBar},
+		} {
+			t.Run(name+"/"+label, func(t *testing.T) {
+				assert.Regexp(t, reverseSGR, pair[0].Render("x"), "monochrome must fall back to reverse video")
+				assert.NotRegexp(t, reverseSGR, pair[1].Render("x"), "reverse video is the monochrome fallback, not a color style")
+			})
+		}
+
+		for label, style := range map[string]lipgloss.Style{
+			"Pane": mono.Pane, "PaneFocused": mono.PaneFocused, "PaneLoud": mono.PaneLoud,
+			"Title": mono.Title, "Tab": mono.Tab, "TabActive": mono.TabActive,
+			"Cursor": mono.Cursor, "Muted": mono.Muted, "StatusBar": mono.StatusBar,
+			"Toast": mono.Toast, "Overlay": mono.Overlay,
+			"Table.Header": mono.Table.Header, "Table.Cell": mono.Table.Cell,
+			"Help.ShortKey": mono.Help.ShortKey, "Help.ShortDesc": mono.Help.ShortDesc,
+		} {
+			t.Run(name+"/"+label+"/paints nothing", func(t *testing.T) {
+				assert.NotRegexp(t, colorPattern, style.Render("x"))
+			})
+		}
+	}
+}
+
+// TestMonochromeKeepsTheFocusBorderShapes is the reason focus needed no
+// monochrome fallback of its own: the shape is the signal, and it is the same
+// shape with and without color.
+func TestMonochromeKeepsTheFocusBorderShapes(t *testing.T) {
+	mono := newStyles(themeFor("default", true), true)
+
+	assert.Equal(t, lipgloss.RoundedBorder(), mono.Pane.GetBorderStyle())
+	assert.Equal(t, lipgloss.ThickBorder(), mono.PaneFocused.GetBorderStyle())
+	assert.Equal(t, lipgloss.DoubleBorder(), mono.PaneLoud.GetBorderStyle())
 }

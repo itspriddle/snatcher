@@ -18,6 +18,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
@@ -37,6 +38,14 @@ type Deps struct {
 
 	// NerdFont reports whether Nerd Font glyphs may be used.
 	NerdFont bool
+
+	// NoColor is set when NO_COLOR is in the environment, resolved by the
+	// command layer with the same predicate the CLI's plaintext output uses.
+	// colorprofile has a NO_COLOR check of its own, but it parses the value
+	// with strconv.ParseBool, so NO_COLOR=yes would strip color from
+	// `snatcher list` and not from the TUI; the command layer decides, and the
+	// TUI keeps reading no environment of its own.
+	NoColor bool
 
 	// PollInterval is how often T4's refresh spine will poll.
 	PollInterval time.Duration
@@ -68,9 +77,29 @@ func Run(ctx context.Context, deps Deps) error {
 
 	// ctrl+c and SIGINT are how a TUI is meant to be left, so the sentinel
 	// bubbletea reports them with is not an error to show the user.
-	if _, err := tea.NewProgram(m, tea.WithContext(ctx)).Run(); err != nil && !errors.Is(err, tea.ErrInterrupted) {
+	if _, err := tea.NewProgram(m, programOptions(ctx, deps)...).Run(); err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		return err
 	}
 
 	return nil
+}
+
+// programOptions is the option set Run starts the program with.
+//
+// It is a function rather than a slice literal inside Run so the NO_COLOR
+// branch is testable without a terminal: starting a program to find out whether
+// it was told to drop color is not a test this suite can run.
+//
+// Forcing the Ascii profile is all NO_COLOR does. bubbletea still detects and
+// still reports a tea.ColorProfileMsg, so the forced profile reaches the model
+// by exactly the path a detected one does, and monochrome rendering has one
+// implementation rather than two.
+func programOptions(ctx context.Context, deps Deps) []tea.ProgramOption {
+	opts := []tea.ProgramOption{tea.WithContext(ctx)}
+
+	if deps.NoColor {
+		opts = append(opts, tea.WithColorProfile(colorprofile.Ascii))
+	}
+
+	return opts
 }

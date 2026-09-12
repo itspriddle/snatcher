@@ -3,6 +3,8 @@ package tui
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -166,6 +168,29 @@ func TestBackgroundColorMsgRethemes(t *testing.T) {
 	got, _ := m.update(lightBackgroundMsg())
 
 	assert.False(t, got.isDark)
+}
+
+// TestColorProfileMsgRethemes checks the terminal's color profile is applied
+// when it arrives, and that it is what decides whether the frame carries color
+// at all.
+//
+// Both directions matter. The Ascii message is what NO_COLOR, TERM=dumb, and a
+// forced profile all reduce to, and the TrueColor message after it proves the
+// monochrome rendering is a function of the profile rather than a latch.
+func TestColorProfileMsgRethemes(t *testing.T) {
+	m := newTestModel(120, 40)
+	require.Regexp(t, colorPattern, m.render(), "the color frame must carry color to begin with")
+
+	m, _ = m.update(tea.ColorProfileMsg{Profile: colorprofile.Ascii})
+
+	frame := m.render()
+
+	assert.NotRegexp(t, colorPattern, frame, "a monochrome profile still painted")
+	assert.Regexp(t, reverseSGR, frame, "nothing marks the cursor row without color")
+
+	m, _ = m.update(tea.ColorProfileMsg{Profile: colorprofile.TrueColor})
+
+	assert.Regexp(t, colorPattern, m.render(), "color did not come back")
 }
 
 // TestWindowSizeMsgReflows checks the resize path runs through Update, not only

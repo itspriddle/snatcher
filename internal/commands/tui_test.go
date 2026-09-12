@@ -94,6 +94,29 @@ func TestResolveClientSettingsRejectsInvalidPollInterval(t *testing.T) {
 	assert.Contains(t, err.Error(), keyPollInterval)
 }
 
+// TestResolveClientSettingsReportsNoColor checks the TUI is told about NO_COLOR
+// with the same predicate the plaintext output paths use — non-empty, per
+// no-color.org, and not colorprofile's strconv.ParseBool, which would leave
+// NO_COLOR=yes disabling color in "snatcher list" and not in the TUI.
+func TestResolveClientSettingsReportsNoColor(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
+	require.NoError(t, err)
+	assert.False(t, settings.NoColor)
+
+	for _, value := range []string{"1", "yes", "0", "false"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envNoColor, value)
+
+			settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
+			require.NoError(t, err)
+
+			assert.True(t, settings.NoColor, "any non-empty value sets NO_COLOR")
+		})
+	}
+}
+
 // TestDialerReportsUnconfigured checks that the dialer the TUI is handed fails
 // with the CLI's own not-configured error. The launcher calls it before starting
 // the program, so this is the message a user with an empty config sees on the
