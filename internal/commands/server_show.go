@@ -10,6 +10,7 @@ import (
 
 	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // serverShowResult is the JSON shape emitted by "server show": the local
@@ -34,7 +35,8 @@ type serverShowResult struct {
 
 // serverShowField is one selectable line of the connection block: the kebab-case
 // key used by --fields and the piped output, the human label used on a TTY, and
-// an accessor rendering the value. Setting keys live in settingRegistry and are
+// an accessor rendering the value. Setting keys live in transmission's settings
+// registry and are
 // selectable by the same --fields flag.
 type serverShowField struct {
 	key      string
@@ -133,9 +135,9 @@ func newServerShowCmd() *cobra.Command {
 				}
 			}
 
-			var category settingCategory
+			var category transmission.SettingCategory
 			if categoryFlag != "" {
-				parsed, err := parseCategory(categoryFlag)
+				parsed, err := transmission.ParseCategory(categoryFlag)
 				if err != nil {
 					return err
 				}
@@ -250,14 +252,14 @@ func loadServerShowResult(cmd *cobra.Command, alias string) (serverShowResult, b
 // explicitly (keys, in registry order); otherwise the optional --category and
 // --search filters apply. The two paths are mutually exclusive at the flag level,
 // so at most one of them is ever in play.
-func selectSettings(category settingCategory, search string, keys map[string]bool) []settingDef {
+func selectSettings(category transmission.SettingCategory, search string, keys map[string]bool) []transmission.SettingDef {
 	if keys == nil {
-		return filterSettings(category, search)
+		return transmission.FilterSettings(category, search)
 	}
 
-	defs := make([]settingDef, 0, len(keys))
-	for _, def := range settingRegistry {
-		if keys[def.key] {
+	defs := make([]transmission.SettingDef, 0, len(keys))
+	for _, def := range transmission.SettingDefs() {
+		if keys[def.Key] {
 			defs = append(defs, def)
 		}
 	}
@@ -302,7 +304,7 @@ func parseServerShowFields(spec string) ([]serverShowField, map[string]bool, err
 
 	settingKeys := make(map[string]bool)
 	for key := range wanted {
-		if _, ok := lookupSetting(key); ok {
+		if _, ok := transmission.LookupSetting(key); ok {
 			settingKeys[key] = true
 		}
 	}
@@ -318,7 +320,7 @@ func isServerShowField(key string) bool {
 		}
 	}
 
-	_, ok := lookupSetting(key)
+	_, ok := transmission.LookupSetting(key)
 
 	return ok
 }
@@ -326,11 +328,13 @@ func isServerShowField(key string) bool {
 // validServerShowFieldKeys lists every selectable --fields key in display order —
 // the connection fields first, then the settings in registry order.
 func validServerShowFieldKeys() string {
-	keys := make([]string, 0, len(serverShowFields)+len(settingRegistry))
+	settingKeys := transmission.SettingKeys()
+
+	keys := make([]string, 0, len(serverShowFields)+len(settingKeys))
 	for _, field := range serverShowFields {
 		keys = append(keys, field.key)
 	}
-	keys = append(keys, allSettingKeys()...)
+	keys = append(keys, settingKeys...)
 
 	return strings.Join(keys, ", ")
 }
