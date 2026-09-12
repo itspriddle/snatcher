@@ -57,6 +57,12 @@ var (
 		"ctrl+w":    'w',
 		"ctrl+t":    't',
 		"ctrl+p":    'p',
+		"backspace": tea.KeyBackspace,
+		"delete":    tea.KeyDelete,
+		"ctrl+h":    'h',
+		"ctrl+a":    'a',
+		"ctrl+e":    'e',
+		"ctrl+k":    'k',
 	}
 
 	namedMods = map[string]tea.KeyMod{
@@ -67,6 +73,10 @@ var (
 		"ctrl+w":    tea.ModCtrl,
 		"ctrl+t":    tea.ModCtrl,
 		"ctrl+p":    tea.ModCtrl,
+		"ctrl+h":    tea.ModCtrl,
+		"ctrl+a":    tea.ModCtrl,
+		"ctrl+e":    tea.ModCtrl,
+		"ctrl+k":    tea.ModCtrl,
 	}
 )
 

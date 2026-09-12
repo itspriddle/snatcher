@@ -83,7 +83,7 @@ func globalHandlers() map[Action]handler {
 		},
 		actionHelp:           plain(Model.toggleHelp),
 		actionWindowTorrents: plain(func(m Model) Model { return m.switchWindow(windowTorrents) }),
-		actionWindowSettings: plain(func(m Model) Model { return m.switchWindow(windowSettings) }),
+		actionWindowSettings: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.openSettings() },
 	}
 }
 
@@ -141,11 +141,24 @@ func detailHandlers() map[Action]handler {
 	return out
 }
 
-// settingsHandlers are the settings window's implemented actions.
+// settingsHandlers are the settings window's keys and the text input's two
+// escapes. An open dropdown is closed by any key that moves away from its row.
 func settingsHandlers() map[Action]handler {
 	return map[Action]handler{
-		actionSettingsNextTab: plain(func(m Model) Model { m.settings = m.settings.nextTab(); return m }),
-		actionSettingsPrevTab: plain(func(m Model) Model { m.settings = m.settings.prevTab(); return m }),
+		actionSettingsPrevTab: windowStep(func(w settingsWindow) settingsWindow { return w.closeDropdown().switchTab(-1) }),
+		actionSettingsNextTab: windowStep(func(w settingsWindow) settingsWindow { return w.closeDropdown().switchTab(1) }),
+		actionSettingsNextField: windowStep(func(w settingsWindow) settingsWindow {
+			return w.closeDropdown().moveField(1)
+		}),
+		actionSettingsPrevField: windowStep(func(w settingsWindow) settingsWindow {
+			return w.closeDropdown().moveField(-1)
+		}),
+		actionSettingsFieldUp:   windowStep(func(w settingsWindow) settingsWindow { return w.fieldStep(-1) }),
+		actionSettingsFieldDown: windowStep(func(w settingsWindow) settingsWindow { return w.fieldStep(1) }),
+		actionSettingsEdit:      settingsHandler(Model.settingsEnter),
+
+		actionInputBlur:   plain(Model.blurInput),
+		actionInputSubmit: plain(func(m Model) Model { return m.submitInput().syncSettings() }),
 	}
 }
 

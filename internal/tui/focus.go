@@ -95,6 +95,7 @@ func (m Model) switchWindow(w window) Model {
 	m.overlays = nil
 	m.chord = chordNone
 	m.window = w
+	m.settings = m.settings.closeDropdown()
 
 	if w == windowTorrents {
 		return m.ensureFocusIsOpen()

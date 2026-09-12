@@ -32,9 +32,25 @@ var ladder = []rung{
 		apply:   Model.pop,
 	},
 	{
+		// A dropdown is not an overlay — it is drawn inline, under its row — but
+		// it is the thing on top, so it closes before anything below it unwinds.
+		// The row keeps its value.
+		name:    "close dropdown",
+		applies: func(m Model) bool { return m.window == windowSettings && m.settings.mode == modeSelect },
+		apply: func(m Model) Model {
+			m.settings = m.settings.closeDropdown()
+
+			return m
+		},
+	},
+	{
+		// vision.md says blurring keeps the input's contents, and for a search
+		// field — whose text is its state — it does. A settings row's state is its
+		// last committed value, so there the contents are a draft and blurring
+		// discards it; see Model.blurInput.
 		name:    "blur input",
 		applies: func(m Model) bool { return m.inputFocused },
-		apply:   func(m Model) Model { m.inputFocused = false; return m },
+		apply:   Model.blurInput,
 	},
 	{
 		name:    "focus main pane",

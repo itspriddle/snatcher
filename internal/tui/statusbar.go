@@ -29,6 +29,12 @@ func (m Model) statusBarView(width int) string {
 		segments = append(segments, fmt.Sprintf("marks: %d", n))
 	}
 
+	// Unsaved settings are shown from every window: leaving the settings window
+	// does not save them, and the count is the reminder that they exist.
+	if n := m.settings.dirtyCount(); n > 0 {
+		segments = append(segments, fmt.Sprintf("unsaved: %d", n))
+	}
+
 	if m.chord.pending() {
 		segments = append(segments, "pending: "+m.chord.label())
 	}

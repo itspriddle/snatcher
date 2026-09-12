@@ -1,21 +1,19 @@
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ General  Polling  Download  Network  Bandwidth  Queue                                                                ┃
+┃ General  Polling  Download  Network*  Bandwidth  Queue                                                               ┃
 ┃──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┃
-┃client.theme                                                                                                   default┃
-┃client.nerd_font                                                                                                 false┃
-┃                                                                                                                      ┃
-┃editing lands in T3                                                                                                   ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
-┃                                                                                                                      ┃
+┃  peer-port*                  31500                                                                                   ┃
+┃  peer-port-random-on-start   [ ]                                                                                     ┃
+┃  port-forwarding-enabled     [x]                                                                                     ┃
+┃> encryption*                 < required >                                                                            ┃
+┃  peer-limit-global           240                                                                                     ┃
+┃  peer-limit-per-torrent      60                                                                                      ┃
+┃  pex-enabled                 [x]                                                                                     ┃
+┃  dht-enabled                 [x]                                                                                     ┃
+┃  lpd-enabled                 [ ]                                                                                     ┃
+┃  utp-enabled                 [x]                                                                                     ┃
+┃  blocklist-enabled           [ ]                                                                                     ┃
+┃  blocklist-url               http://list.example/blocklist                                                           ┃
+┃  blocklist-size              1234 (read-only)                                                                        ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
@@ -35,6 +33,8 @@
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
+┃Peer encryption mode (allowed, preferred, required)                                                                   ┃
+┃[ Save (2) ]  [ Revert ]                                                                                              ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 [ previous tab • ] next tab • tab next field • shift+tab previous field • enter edit field • ↑ field up • ↓ field down …
-snatcher v1.2.3 │ mock                                                                                                  
+snatcher v1.2.3 │ mock │ unsaved: 2                                                                                     

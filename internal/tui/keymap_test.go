@@ -141,7 +141,7 @@ func TestLookupMissReportsNotFound(t *testing.T) {
 
 // TestSettingsStackExcludesNavigation pins the one stack that is deliberately
 // not built on ctxNav: in the settings window up/down belong to the focused
-// field and tab moves fields, so a nav rung underneath would fight huh in T3.
+// field and tab moves fields, so a nav rung underneath would fight the form.
 func TestSettingsStackExcludesNavigation(t *testing.T) {
 	assert.NotContains(t, paneContexts(paneSettings), ctxNav)
 

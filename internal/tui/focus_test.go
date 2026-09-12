@@ -120,10 +120,12 @@ func TestTabDoesNotCycleInSettings(t *testing.T) {
 
 	require.Equal(t, windowSettings, m.window)
 
+	require.Equal(t, buttonSave, m.settings.current().key)
+
 	m = press(m, "tab")
 
 	assert.Equal(t, paneSettings, m.focusedPane())
-	assert.Contains(t, m.toast, actionSettingsNextField)
+	assert.Equal(t, buttonRevert, m.settings.current().key, "tab must move between fields, not panes")
 }
 
 // TestSwitchWindowPopsOverlaysAndCancelsChord checks that neither an overlay nor

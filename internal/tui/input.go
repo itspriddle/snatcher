@@ -62,15 +62,12 @@ const (
 )
 
 // handleInputKey resolves a key while a text input owns the keyboard. Only the
-// two keys ctxTextInput binds resolve; everything else is left for the input
+// two keys ctxTextInput binds resolve; everything else is forwarded to the input
 // itself, which is the "a focused text input owns the keyboard" rule.
-//
-// There is no text input in T1. The rule is implemented here anyway because it
-// is a routing rule, and T5 must inherit it rather than invent it.
 func (m Model) handleInputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	action, ok := lookup([]Context{ctxTextInput}, msg)
 	if !ok {
-		return m, nil
+		return m.forwardToInput(msg)
 	}
 
 	return m.dispatch(action, msg)

@@ -79,10 +79,9 @@ type Model struct {
 	// chord is the pending multi-key sequence, if any.
 	chord chord
 
-	// inputFocused reports whether a text input owns the keyboard. There is no
-	// text input in T1 — `/` and the search fields land in T5 — but the router
-	// rule that a focused input swallows everything is T1's to get right, so
-	// the flag exists and is tested.
+	// inputFocused reports whether a text input owns the keyboard. The settings
+	// window's input is the first to set it (alongside settings.mode ==
+	// modeEdit); `/` and the search fields follow in T5.
 	inputFocused bool
 
 	// toast is a transient status-bar message, cleared by the next key press.
@@ -110,7 +109,7 @@ func New(deps Deps) Model {
 
 	m = m.applyTheme(true)
 	m.torrents = newTorrentsWindow(m.styles, m.icons, deps.Torrents)
-	m.settings = newSettingsWindow(deps.Theme, deps.NerdFont, deps.PollInterval.String())
+	m.settings = newSettingsWindow(m.styles, deps)
 
 	return m
 }
@@ -132,6 +131,7 @@ func (m Model) applyTheme(isDark bool) Model {
 	m.icons = newIcons(m.deps.NerdFont)
 	m.help.Styles = m.styles.Help
 	m.torrents.list = m.torrents.list.setStyles(m.styles)
+	m.settings = m.settings.setStyles(m.styles)
 
 	return m
 }
@@ -150,9 +150,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.update(msg)
 }
 
-// update handles the three message kinds T1 knows about. Everything else is
-// ignored rather than forwarded: there is no ticker, spinner, or fetch in T1, so
-// a message the router does not name is one nothing asked for.
+// update handles the message kinds the model names. Anything else goes to the
+// settings text input while it is being edited — a bracketed paste, the
+// cursor's blink ticks — and is dropped otherwise: a message nothing on screen
+// asked for has nowhere to go.
 func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -167,7 +168,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 
-	return m, nil
+	return m.forwardToInput(msg)
 }
 
 // resize recomputes the layout and reflows the windows.
@@ -182,7 +183,7 @@ func (m Model) resize(w, h int) Model {
 	m.help.SetWidth(w)
 	m.torrents = m.torrents.resize(l)
 
-	return m
+	return m.syncSettings()
 }
 
 // layout is the current frame's geometry.

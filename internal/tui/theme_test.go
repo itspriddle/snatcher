@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -236,11 +237,36 @@ func TestMonochromeStylesTradeColorForReverseVideo(t *testing.T) {
 			"Toast": mono.Toast, "Overlay": mono.Overlay,
 			"Table.Header": mono.Table.Header, "Table.Cell": mono.Table.Cell,
 			"Help.ShortKey": mono.Help.ShortKey, "Help.ShortDesc": mono.Help.ShortDesc,
+			"FieldCursor": mono.FieldCursor, "FieldDirty": mono.FieldDirty,
+			"FieldReadOnly": mono.FieldReadOnly, "FieldError": mono.FieldError,
+			"Button": mono.Button, "ButtonFocused": mono.ButtonFocused,
+			"Input.Text": mono.Input.Focused.Text,
 		} {
 			t.Run(name+"/"+label+"/paints nothing", func(t *testing.T) {
 				assert.NotRegexp(t, colorPattern, style.Render("x"))
 			})
 		}
+	}
+}
+
+// TestMonochromeSettingsFramesPaintNothing extends the monochrome rule to the
+// settings form, including the text input's cursor, whose component default is a
+// hardcoded 256-color grey.
+func TestMonochromeSettingsFramesPaintNothing(t *testing.T) {
+	m := networkTab(settingsModel(120, 40))
+	m, _ = m.update(tea.ColorProfileMsg{Profile: colorprofile.Ascii})
+
+	frames := map[string]Model{
+		"loaded":  m,
+		"dirty":   press(m, "tab", "enter"),
+		"editing": press(m, "enter"),
+		"select":  press(m, "tab", "tab", "tab", "enter"),
+	}
+
+	for name, frame := range frames {
+		t.Run(name, func(t *testing.T) {
+			assert.NotRegexp(t, colorPattern, frame.render())
+		})
 	}
 }
 

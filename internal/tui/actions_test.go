@@ -130,7 +130,7 @@ func TestSettingsTabsCycle(t *testing.T) {
 	m := press(newTestModel(120, 40), ",")
 
 	assert.Equal(t, 1, press(m, "]").settings.tab)
-	assert.Equal(t, len(settingsTabs)-1, press(m, "[").settings.tab)
+	assert.Equal(t, len(m.settings.tabs)-1, press(m, "[").settings.tab)
 }
 
 // TestUnboundKeysAreIgnored checks a key nothing binds leaves the model alone

@@ -5,6 +5,8 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 
@@ -186,6 +188,22 @@ type Styles struct {
 
 	// Table styles the torrent list.
 	Table table.Styles
+
+	// FieldCursor is the settings row under the cursor; FieldDirty a row with
+	// an unsaved change; FieldReadOnly a row that cannot be edited; FieldError
+	// the hint line when it carries an error. The cursor and dirty states are
+	// also spelled in text ("> " and "*"), so they survive monochrome.
+	FieldCursor   lipgloss.Style
+	FieldDirty    lipgloss.Style
+	FieldReadOnly lipgloss.Style
+	FieldError    lipgloss.Style
+
+	// Button and ButtonFocused are the settings window's Save / Revert row.
+	Button        lipgloss.Style
+	ButtonFocused lipgloss.Style
+
+	// Input styles the settings window's text input.
+	Input textinput.Styles
 }
 
 // monochrome reports whether a color profile can carry color at all.
@@ -250,6 +268,41 @@ func newStyles(t Theme, mono bool) Styles {
 		Overlay:     borderStyle(lipgloss.NewStyle().Padding(0, 1), lipgloss.RoundedBorder(), t.Accent, mono),
 		Help:        helpStyles(t, mono),
 		Table:       tbl,
+
+		FieldCursor:   paint(lipgloss.NewStyle().Bold(true), t.Accent, nil),
+		FieldDirty:    paint(lipgloss.NewStyle().Bold(true), t.Warn, nil),
+		FieldReadOnly: paint(lipgloss.NewStyle(), t.Muted, nil),
+		FieldError:    paint(lipgloss.NewStyle().Bold(true), t.Warn, nil),
+		Button:        paint(lipgloss.NewStyle(), t.Text, nil),
+		ButtonFocused: cursor.Bold(true),
+		Input:         inputStyles(t, mono),
+	}
+}
+
+// inputStyles builds the text input's styles from the theme, replacing
+// textinput.DefaultStyles, whose hardcoded 256-color greys answer to neither the
+// palette nor a monochrome profile.
+//
+// The virtual cursor is drawn in reverse video whatever its color, so under a
+// monochrome profile it keeps no color at all and is still visible.
+func inputStyles(t Theme, mono bool) textinput.Styles {
+	text := lipgloss.NewStyle()
+	placeholder := lipgloss.NewStyle()
+
+	var cursorColor color.Color = lipgloss.NoColor{}
+
+	if !mono {
+		text = text.Foreground(t.Text)
+		placeholder = placeholder.Foreground(t.Muted)
+		cursorColor = t.Accent
+	}
+
+	state := textinput.StyleState{Text: text, Placeholder: placeholder, Suggestion: placeholder, Prompt: lipgloss.NewStyle()}
+
+	return textinput.Styles{
+		Focused: state,
+		Blurred: state,
+		Cursor:  textinput.CursorStyle{Color: cursorColor, Shape: tea.CursorBlock, Blink: true},
 	}
 }
 

@@ -58,6 +58,9 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"marked", press(base, "space", "down", "space")},
 		{"help", press(base, "?")},
 		{"settings", press(base, ",")},
+		{"settings loaded", networkTab(settingsModel(w, h))},
+		{"settings editing", press(networkTab(settingsModel(w, h)), "enter")},
+		{"settings select", press(networkTab(settingsModel(w, h)), "tab", "tab", "tab", "enter")},
 		{"toast", press(base, "s")},
 		{"chord", press(base, "y")},
 	}
@@ -86,9 +89,40 @@ func TestTorrentsMarkedGolden(t *testing.T) {
 	assertGolden(t, "torrents_marked", press(newTestModel(120, 40), "space", "down", "space", "down").render())
 }
 
-// TestSettingsGolden pins the mock settings window and its tab strip.
-func TestSettingsGolden(t *testing.T) {
-	assertGolden(t, "settings", press(newTestModel(120, 40), ",").render())
+// TestSettingsNoServerGolden pins the settings window with no dialed client and
+// no config store: read-only client rows, and no server rows to draw.
+func TestSettingsNoServerGolden(t *testing.T) {
+	assertGolden(t, "settings_noserver_120x40", press(newTestModel(120, 40), ",").render())
+}
+
+// TestSettingsLoadedGolden pins a loaded server tab at both reference sizes:
+// the cursor marker, the read-only row, and the button row, with Network's
+// thirteen rows fitting at 80x24.
+func TestSettingsLoadedGolden(t *testing.T) {
+	assertGolden(t, "settings_loaded_120x40", networkTab(settingsModel(120, 40)).render())
+	assertGolden(t, "settings_loaded_80x24", networkTab(settingsModel(80, 24)).render())
+}
+
+// TestSettingsDirtyGolden pins the three places an unsaved change shows: the
+// row's "*", the tab's "*", and the counts on Save and in the status bar.
+func TestSettingsDirtyGolden(t *testing.T) {
+	m := editField(networkTab(settingsModel(120, 40)), "31500")
+	m = press(m, "tab", "tab", "tab", "down")
+
+	assertGolden(t, "settings_dirty", m.render())
+}
+
+// TestSettingsEditingGolden pins a row with the text input in place of its value.
+func TestSettingsEditingGolden(t *testing.T) {
+	assertGolden(t, "settings_editing", press(networkTab(settingsModel(120, 40)), "enter").render())
+}
+
+// TestSettingsSelectOpenGolden pins the inline dropdown, pushing the rows below
+// it down.
+func TestSettingsSelectOpenGolden(t *testing.T) {
+	m := press(networkTab(settingsModel(120, 40)), "tab", "tab", "tab", "enter")
+
+	assertGolden(t, "settings_select_open", m.render())
 }
 
 // TestHelpOverlayGolden pins the overlay composited over the frame.

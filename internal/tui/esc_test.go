@@ -28,6 +28,10 @@ func TestEscLadderRungs(t *testing.T) {
 		chord  chord
 		window window
 
+		// setup applies any remaining state the case needs, after the window
+		// switch, or is nil.
+		setup func(Model) Model
+
 		// check asserts the rung's effect, and that the next rung down has not
 		// also run.
 		check func(*testing.T, Model)
@@ -48,6 +52,22 @@ func TestEscLadderRungs(t *testing.T) {
 				t.Helper()
 
 				assert.Empty(t, m.overlays)
+				assert.True(t, m.inputFocused, "the input below must stay focused")
+			},
+		},
+		{
+			name:   "close dropdown",
+			from:   "close overlay",
+			window: windowSettings,
+			setup: func(m Model) Model {
+				m.settings.mode = modeSelect
+
+				return m
+			},
+			check: func(t *testing.T, m Model) {
+				t.Helper()
+
+				assert.Equal(t, modeNav, m.settings.mode)
 				assert.True(t, m.inputFocused, "the input below must stay focused")
 			},
 		},
@@ -136,6 +156,10 @@ func TestEscLadderRungs(t *testing.T) {
 				m = m.switchWindow(tc.window)
 			}
 
+			if tc.setup != nil {
+				m = tc.setup(m)
+			}
+
 			got, rung := m.escape()
 
 			require.Equal(t, tc.name, rung)
@@ -217,5 +241,5 @@ func TestLadderRungNamesAreUnique(t *testing.T) {
 		names[r.name] = true
 	}
 
-	assert.Len(t, ladder, 9)
+	assert.Len(t, ladder, 10)
 }
