@@ -24,9 +24,11 @@ Runtime dependencies — the entire set for v1 of the TUI:
 | `charm.land/bubbletea/v2` | v2.0.8 | framework (Elm architecture, `View() tea.View`) |
 | `charm.land/lipgloss/v2` | v2.0.5 | styling + `Compositor` (overlays/modals/toasts) |
 | `charm.land/bubbles/v2` | v2.2.1 | table, viewport, help, key, spinner, progress, textinput |
-| `charm.land/huh/v2` | v2.0.3 | forms (settings, upload, labels) — **added in T3**, not needed by the shell |
+| `charm.land/huh/v2` | — | **deferred** — T3 hand-rolled the settings form over `textinput` instead; re-evaluate for the upload and labels forms |
 
-The first three landed in T1. Two more are direct dependencies:
+The first three landed in T1. `bubbles/v2/textinput`, first used in T3, brings
+`github.com/atotto/clipboard` in as an indirect dependency. Two more are direct
+dependencies:
 `github.com/charmbracelet/x/ansi` for the golden helper's `ansi.Strip`, and
 `github.com/charmbracelet/colorprofile` (v0.4.3), added in T2 for
 `colorprofile.Profile` — the model stores the one bubbletea reports, and forces
@@ -45,7 +47,8 @@ Deferred (v2-ready, add when mouse lands):
 | In-list search (`/`) | `bubbles/v2/textinput` over the existing `transmission.SearchByName` |
 | Detail pane (scrollable) | `bubbles/v2/viewport` |
 | Modals / confirmations / toasts | lipgloss `Compositor` layers |
-| Settings / upload / labels forms | `huh/v2` (wrapped — not a drop-in `tea.Model`) |
+| Settings form | **hand-rolled** over `bubbles/v2/textinput` — see the T3 decision in `tui-todo.md` |
+| Upload / labels forms | re-evaluate `huh/v2`; otherwise reuse the T3 form pattern |
 | Verify / port-test progress | `bubbles/v2/spinner` + `progress` |
 | Copy magnet/tracker URL | `tea.SetClipboard` (OSC52, built-in) |
 | Speed graph | hand-rolled `▁▂▃▄▅▆▇█` sparkline from a rolling buffer |
@@ -130,7 +133,8 @@ the man page.
 
 - **`huh` is not a drop-in `tea.Model`.** `Form.Update` returns `huh.Model`
   (assert to `*huh.Form`), `Form.View()` returns `string`. Wrap it inside the
-  outer model's `View() tea.View`. Solve this once in the settings page.
+  outer model's `View() tea.View`. T3 did not use `huh` (see its decisions in
+  `tui-todo.md`); this still applies if the upload or labels forms do.
 - **Neither table sorts.** `bubbles/v2/table` and `lipgloss/v2/table` render
   only — sort the underlying data and rebuild rows via `SetRows`.
 - **Overlays use `Compositor`, not just Canvas/Layer.**
@@ -168,7 +172,8 @@ the man page.
   - `bubbles/v2/list`: `q`/`esc` quit, `?` help, `h`/`l`/`u`/`d`/`f`/`b`
     paging, `ctrl+j`/`ctrl+k` accept while filtering
   - `bubbles/v2/textinput` and `textarea`: `ctrl+p`/`ctrl+n` suggestions or
-    lines, `ctrl+d`, `ctrl+u`, `ctrl+w`, `ctrl+h`, `ctrl+t` (textarea)
+    lines, `ctrl+d`, `ctrl+u`, `ctrl+w`, `ctrl+h`, `ctrl+t` (textarea), and
+    seven `alt+` chords for word movement and deletion (textinput v2.2.1)
   - `huh/v2`: `ctrl+j`/`ctrl+k` on Select and MultiSelect, `ctrl+j` newline
     on Text, `enter` = next field, `h`/`l` toggle Confirm, `y`/`Y` accept
     Confirm, `x`/`space` toggle MultiSelect, `ctrl+a` select all
@@ -181,9 +186,11 @@ the man page.
   the registry against itself - a default that survives construction is a
   binding the registry never saw. Text inputs are the one exception, and
   deliberately: their readline chords are the "focused input owns the
-  keyboard" rule in `vision.md`, so they keep their defaults minus the banned
-  `ctrl+h`, and the router simply does not forward other keys while one has
-  focus.
+  keyboard" rule in `vision.md`. They are not "defaults minus `ctrl+h`",
+  though — the `alt+` chords are banned too — so each input gets an explicitly
+  built readline keymap with no banned key, no suggestion keys, and no
+  clipboard-reading paste, and a focused input is handed every key the router
+  does not reserve (`esc`, `enter`, `ctrl+c`).
 
 ## Build sequence
 
@@ -208,7 +215,8 @@ default). Fills in the substrate stood up in step 1.
 
 ### 3. Settings page
 
-`huh` forms (solve the v2 embedding gotcha here), settings tabs
+A hand-rolled form over `bubbles/v2/textinput` (`huh` was evaluated and
+deferred — see the T3 decisions in `tui-todo.md`), settings tabs
 (General/Polling/Download/Network/Bandwidth/Queue per `vision.md`), and the
 first real backend round-trip: `GetSession` load + `SetSession` write with
 loading/error UX. Establishes the form pattern (reused by upload/labels) and

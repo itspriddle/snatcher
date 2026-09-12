@@ -173,21 +173,97 @@ draw a frame whose focus and cursor are still readable. **Met.**
   cell, so a marked row is a glyph, not a color. T5 adds a slot back if it finds
   a use.
 
-## T3. Settings window
+## T3. Settings window — **done**
 
 First real backend round-trip, and the place the form pattern gets solved.
 
-- `huh/v2` embedding (it is **not** a drop-in `tea.Model` - see TUI-PLAN)
-- Tab strip: General, Polling, Download, Network, Bandwidth, Queue
-- General/Polling read and write `snatcher config`; the rest read `GetSession`
+- ~~`huh/v2` embedding (it is **not** a drop-in `tea.Model` - see TUI-PLAN)~~ —
+  not embedded: the form is hand-rolled over `bubbles/v2/textinput` (see
+  Decisions)
+- ~~Tab strip: General, Polling, Download, Network, Bandwidth, Queue~~
+- ~~General/Polling read and write `snatcher config`; the rest read `GetSession`
   and write `SetSession`, driven by the same category table behind
-  `server show --category`
-- Field navigation per vision.md: `tab` moves fields, `up`/`down` belong to the
-  focused field. Decide it here, before there are forty fields
-- Loading / error / dirty states; `esc` prompts to save pending changes
+  `server show --category`~~ — the table now lives in `internal/transmission`,
+  and the config writes go through `Deps.Config`
+- ~~Field navigation per vision.md: `tab` moves fields, `up`/`down` belong to the
+  focused field. Decide it here, before there are forty fields~~
+- ~~Loading / error / dirty states; `esc` prompts to save pending changes~~
 
 **Done when:** both a client-config write and a session write round-trip with
-visible loading and error states, and the form keymap does not fight `huh`.
+visible loading and error states, and the form keymap does not fight the
+registry. **Met.**
+
+### Decisions
+
+- **No `huh/v2`.** The form is hand-rolled over `bubbles/v2/textinput`, the same
+  call T1 made for the filter sidebar. Source review found five frictions:
+  `huh.Input` cannot strip the banned `ctrl+h` from its embedded textinput; its
+  field accessors write on every keystroke, so a draft cannot be discarded;
+  `NewForm` reads `TERM`, and the TUI reads no environment; a submitted form's
+  `View()` goes blank; and it pulls in about nine more modules. The window needs
+  three widget kinds (toggle, text, single select) plus a button row. `huh` is
+  re-evaluated when the upload and labels forms are built.
+- **The session settings registry moved to `internal/transmission`** as exported
+  domain metadata (`SettingDefs`, `LookupSetting`, `FilterSettings`, …), because
+  the TUI may import `transmission` but never `commands`. It gained
+  `ParseSettingValue` (so the window and a `server update` flag accept the same
+  spellings), a display-only `Unit`, and `ServerDerived`, which replaced the
+  command layer's private sanitize map. The CLI surface did not change.
+- **Client settings reach the TUI through `Deps.Config`,** a `tui.ClientConfig`
+  interface implemented by `commands.ClientConfigStore` and adapted in
+  `internal/cli`. It wraps the same resolve/validate/write functions as
+  `config list` and `config set`, so the window cannot accept a value the CLI
+  rejects. A key overridden by a flag or environment variable for this run is
+  read-only and names the override (`(set by --theme for this run)`), since
+  writing the file would change nothing the user can see. With no store the
+  client rows show this run's values read-only.
+- **`client.list_columns`, `list_sort`, and `list_reverse` are not in the window.**
+  T5 decides where they live, next to the `c` and `o` keys that change them.
+- **`up`/`down` belong to the row:** a toggle flips, a select cycles its option,
+  an open dropdown moves its cursor, and a text row or button ignores them.
+  `enter` flips a toggle, opens or commits a dropdown, starts editing a text row,
+  or presses a button. `tab`/`shift+tab` move rows, buttons included.
+- **esc in a settings input discards the draft.** vision.md's "blur, keeping
+  contents" was written for a search field, whose text is its state; a settings
+  row's state is its last committed value. A submitted value that does not parse
+  keeps the input open with the reason on the hint line.
+- **Read-only rows are skipped by `tab` and never hold the cursor.** The Save and
+  Revert buttons are on every tab and act on every tab. The focused button is
+  marked in its text (`[>Save (2)<]`) as well as its style, so focus survives
+  `NO_COLOR` and a stripped golden.
+- **Units are raw.** `KB/s`, minutes, and MiB values are shown and edited exactly
+  as Transmission stores them, with a muted unit hint. `output.Speed` (IEC over
+  bytes) is never used for the KB/s keys.
+- **Client config is read synchronously; the session is fetched asynchronously.**
+  The config store is a local file read on every open; `GetSession` is the first
+  `Cmd`/msg pair, with a 15s timeout derived from the program context. A loaded
+  window is not re-fetched on re-entry, so edits survive leaving it; `R`
+  reloads, confirming first when it would discard changes. A save blocks every
+  settings key; a load blocks only Save and `R`, because the server rows are not
+  selectable until it lands and the client tabs have nothing to race. Save
+  writes client keys first (all validated before any is written), then one
+  `SetSession` and a `GetSession` to show what the server kept.
+- **The confirm overlay is modal.** Its stack is `ctxConfirm` alone, so a stray
+  `q` cannot quit past "Save 2 changes before quitting?". `q` prompts from any
+  window while settings are unsaved, since leaving the window does not save
+  them; `ctrl+c` never prompts. The status bar shows `unsaved: N` everywhere.
+- **The ladder gained two rungs:** `close dropdown` (the inline dropdown is not an
+  overlay, but it is on top) below `close overlay`, and `prompt to save` above
+  `return to torrents`. Eleven rungs.
+- **The settings input's keymap is built explicitly,** not taken as "defaults
+  minus `ctrl+h`": `textinput.DefaultKeyMap` also binds seven `alt+` chords, and
+  the registry bans the prefix. Paste is unbound too — textinput's paste reads
+  the system clipboard, which vision.md rules out — and the terminal's bracketed
+  paste still arrives as a forwarded `tea.PasteMsg`. The input keeps the virtual
+  cursor; `tea.View.Cursor` stays nil.
+- **The help line advertises `?` and `q` only where they resolve.** Under a
+  focused input, a confirm, or a pending chord they are swallowed, and a line
+  offering them would be advertising dead keys.
+- **`errorLine` is the first typed-error presentation** — auth, unreachable,
+  unsupported, server — used by the settings window. T4 relocates it and makes
+  it the one presentation.
+- `bubbles/v2/textinput` brings `github.com/atotto/clipboard` in as an indirect
+  dependency; nothing in snatcher calls it.
 
 ## T4. Status bar + data/refresh spine
 

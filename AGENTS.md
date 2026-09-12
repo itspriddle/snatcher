@@ -67,12 +67,18 @@ Layers, outermost to innermost:
   which are type-aware. The power-user `api` escape hatch (`api.go`) calls
   `client.CallAPI(...)` directly on either backend — `--prowlarr` switches its
   positional from an RPC method to a REST path, and its output from the
-  Transmission envelope to the raw response body.
+  Transmission envelope to the raw response body. `tui.go` holds the seams
+  `internal/cli` hands the TUI: `Dialer`, `ResolveClientSettings`, and
+  `ClientConfigStore`, which reads and writes client settings through the same
+  functions `config list` and `config set` use.
 - **`internal/tui`** — the terminal UI, launched by `internal/cli` when
   `snatcher` is run bare on a terminal. It depends on `transmission` and
   `output` and **never imports `commands`**: everything it needs arrives through
   `tui.Deps`, built from the `commands.Dialer` / `commands.ResolveClientSettings`
-  seam. It is handed the *dialer*, not a dialed client, so switching servers
+  / `commands.ClientConfigStore` seam — the last as `Deps.Config`, the
+  `tui.ClientConfig` store the settings window reads and writes client settings
+  through (adapted in `internal/cli`, since neither package imports the other).
+  It is handed the *dialer*, not a dialed client, so switching servers
   mid-session needs no new seam, and `tui.Run` dials before entering the alt
   screen so a configuration error reaches the terminal. The keymap registry in
   `keymap.go` is this package's `.surface`: every key the UI responds to is one
@@ -83,7 +89,10 @@ Layers, outermost to innermost:
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list
-  transforms (filter/search/sort), the error sentinels (`ErrAuth` /
+  transforms (filter/search/sort), the session settings registry
+  (`SettingDefs`: every setting's key, type, category, default, and accessor,
+  shared by `server show`/`update`/`reset` and the TUI settings window), the
+  error sentinels (`ErrAuth` /
   `ErrUnreachable` / `ErrServer` / `ErrUnsupported`), and the concrete `Client`
   that wraps `*rpc.Client` and maps rpc errors to those sentinels. It is the
   **only** package that imports `rpc`.
