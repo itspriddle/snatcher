@@ -647,7 +647,7 @@ func (w settingsWindow) statusLines() []string {
 	case w.noServer:
 		return []string{"(no server)"}
 	case w.state == stateError:
-		return []string{errorLine(w.loadErr), "press R to retry"}
+		return []string{errorLine(w.loadErr), errorHint(w.loadErr)}
 	}
 
 	return []string{"loading settings…"}

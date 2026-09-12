@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -127,26 +126,6 @@ func writeClientChanges(cfg ClientConfig, changes []clientChange, msg settingsSa
 	}
 
 	return msg
-}
-
-// errorLine is a backend error as one line a user can act on. The sentinels get
-// a sentence saying what to check; anything else is shown sanitized, since a
-// server's error text is untrusted.
-func errorLine(err error) string {
-	switch {
-	case err == nil:
-		return ""
-	case errors.Is(err, transmission.ErrAuth):
-		return "authentication failed: check the server's username and password"
-	case errors.Is(err, transmission.ErrUnsupported):
-		return "unsupported server: snatcher needs Transmission 4.0 or newer"
-	case errors.Is(err, transmission.ErrUnreachable):
-		return "server unreachable: check the URL and that Transmission is running"
-	case errors.Is(err, transmission.ErrServer):
-		return "server error: " + output.SanitizeTerminal(err.Error())
-	}
-
-	return output.SanitizeTerminal(err.Error())
 }
 
 // sessionChanges is every unsaved server setting, keyed as SetSession expects.

@@ -517,20 +517,3 @@ func TestStaleSettingsRepliesAreDropped(t *testing.T) {
 	assert.Equal(t, 31129, peer)
 	assert.Empty(t, got.toast)
 }
-
-// TestErrorLineCoversTheSentinels checks each backend sentinel gets its own
-// sentence, and that other text is sanitized.
-func TestErrorLineCoversTheSentinels(t *testing.T) {
-	assert.Contains(t, errorLine(transmission.ErrAuth), "authentication failed")
-	assert.Contains(t, errorLine(transmission.ErrUnreachable), "server unreachable")
-	assert.Contains(t, errorLine(transmission.ErrUnsupported), "Transmission 4.0")
-	assert.Contains(t, errorLine(transmission.ErrServer), "server error")
-	assert.NotContains(t, errorLine(io.ErrUnexpectedEOF), "server")
-	assert.NotContains(t, errorLine(&hostileError{}), "\x1b")
-	assert.Empty(t, errorLine(nil))
-}
-
-// hostileError is an error whose text carries an escape sequence.
-type hostileError struct{}
-
-func (*hostileError) Error() string { return "boom\x1b[2J" }
