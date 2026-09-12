@@ -1,0 +1,40 @@
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ General  Polling  Download  Network*  Bandwidth  Queue                                                               ┃
+┃──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┃
+┃  peer-port                   31129                                                                                   ┃
+┃> peer-port-random-on-start*  [x]                                                                                     ┃
+┃  port-forwarding-enabled     [x]                                                                                     ┃
+┃  encryption                  < preferred >                                                                           ┃
+┃  peer-limit-global           240                                                                                     ┃
+┃  peer-limit-per-torrent      60                                                                                      ┃
+┃  pex-enabled                 [x]                                                                                     ┃
+┃  dht-enabled                 [x]                                                                                     ┃
+┃  lpd-enabled                 [ ]                                                                                     ┃
+┃  utp-enabled                 [x]                                                                                     ┃
+┃  blocklist-enabled           [ ]                                                                                     ┃
+┃  blocklist-url               http://list.example/blocklist                                                           ┃
+┃  blocklist-size              1234 (read-only)                                                                        ┃
+┃                                                                                                                      ┃
+┃                                         ╭─────────────────────────────────╮                                          ┃
+┃                                         │ Save 1 change before leaving?   │                                          ┃
+┃                                         │ unsaved on: Network             │                                          ┃
+┃                                         │                                 │                                          ┃
+┃                                         │ y/enter yes • n no • esc cancel │                                          ┃
+┃                                         ╰─────────────────────────────────╯                                          ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃Pick a random peer port on each start                                                                                 ┃
+┃[ Save (1) ]  [ Revert ]                                                                                              ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+y/enter yes • n no • esc cancel                                                                                         
+snatcher v1.2.3 │ mock │ unsaved: 1                                                                                     

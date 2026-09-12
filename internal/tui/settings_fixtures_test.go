@@ -185,6 +185,19 @@ func networkTab(m Model) Model {
 	return gotoTab(m, tabNetwork)
 }
 
+// withDirtySetting gives a model one unsaved server setting — a flipped toggle
+// on the Network tab — without leaving the window it is in.
+func withDirtySetting(m Model) Model {
+	w := m.settings.loadSession(fixtureSession())
+	w.noServer = false
+	w.tab = tabNetwork
+	w = w.moveField(1).fieldStep(1)
+
+	m.settings = w
+
+	return m
+}
+
 // typeText types s into whatever has the keyboard, one key per rune.
 func typeText(m Model, s string) Model {
 	for _, r := range s {

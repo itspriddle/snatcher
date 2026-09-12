@@ -81,6 +81,14 @@ var ladder = []rung{
 		},
 	},
 	{
+		// Leaving the settings window with unsaved changes asks first. The prompt
+		// is an overlay, so the next esc closes it (rung "close overlay") and the
+		// window stays open with its changes.
+		name:    "prompt to save",
+		applies: func(m Model) bool { return m.window == windowSettings && m.settings.dirtyCount() > 0 },
+		apply:   Model.promptSaveBeforeLeaving,
+	},
+	{
 		name:    "return to torrents",
 		applies: func(m Model) bool { return m.window != windowTorrents },
 		apply:   func(m Model) Model { return m.switchWindow(windowTorrents) },

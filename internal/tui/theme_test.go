@@ -261,6 +261,7 @@ func TestMonochromeSettingsFramesPaintNothing(t *testing.T) {
 		"dirty":   press(m, "tab", "enter"),
 		"editing": press(m, "enter"),
 		"select":  press(m, "tab", "tab", "tab", "enter"),
+		"confirm": press(m, "tab", "enter", "esc"),
 	}
 
 	for name, frame := range frames {

@@ -122,6 +122,19 @@ func TestEscLadderRungs(t *testing.T) {
 			},
 		},
 		{
+			name:   "prompt to save",
+			from:   "deselect cursor",
+			window: windowSettings,
+			setup:  withDirtySetting,
+			check: func(t *testing.T, m Model) {
+				t.Helper()
+
+				require.True(t, m.hasOverlay(confirmOverlayKind))
+				assert.Equal(t, windowSettings, m.window, "the window below must stay open")
+				assert.Equal(t, 1, m.settings.dirtyCount(), "prompting must not discard the change")
+			},
+		},
+		{
 			name:   "return to torrents",
 			from:   "deselect cursor",
 			window: windowSettings,
@@ -241,5 +254,5 @@ func TestLadderRungNamesAreUnique(t *testing.T) {
 		names[r.name] = true
 	}
 
-	assert.Len(t, ladder, 10)
+	assert.Len(t, ladder, 11)
 }

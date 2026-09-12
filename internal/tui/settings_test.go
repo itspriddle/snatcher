@@ -353,6 +353,101 @@ func TestSettingsReentryKeepsEdits(t *testing.T) {
 	assert.Equal(t, themeDracula, m.settings.tabs[tabGeneral].fields[0].value)
 }
 
+// TestEscWithUnsavedChangesPrompts walks the leave prompt: esc asks, esc on the
+// prompt stays with the changes, and no discards them and leaves.
+func TestEscWithUnsavedChangesPrompts(t *testing.T) {
+	m := press(networkTab(settingsModel(120, 40)), "tab", "enter")
+	require.Equal(t, 1, m.settings.dirtyCount())
+
+	m = press(m, "esc")
+	require.True(t, m.hasOverlay(confirmOverlayKind))
+	assert.Contains(t, ansi.Strip(m.render()), "Save 1 change before leaving?")
+	assert.Contains(t, ansi.Strip(m.render()), "unsaved on: Network")
+
+	stayed := press(m, "esc")
+	assert.Empty(t, stayed.overlays)
+	assert.Equal(t, windowSettings, stayed.window)
+	assert.Equal(t, 1, stayed.settings.dirtyCount())
+
+	left := press(m, "n")
+	assert.Empty(t, left.overlays)
+	assert.Equal(t, windowTorrents, left.window)
+	assert.Zero(t, left.settings.dirtyCount())
+}
+
+// TestEscWhenCleanLeavesWithoutPrompting checks the prompt is only for unsaved
+// changes.
+func TestEscWhenCleanLeavesWithoutPrompting(t *testing.T) {
+	m := press(settingsModel(120, 40), "esc")
+
+	assert.Empty(t, m.overlays)
+	assert.Equal(t, windowTorrents, m.window)
+}
+
+// TestQuitWithUnsavedChangesPrompts checks q asks before quitting past unsaved
+// settings, from the settings window and from the torrents window, and that no
+// quits.
+func TestQuitWithUnsavedChangesPrompts(t *testing.T) {
+	dirty := press(settingsModel(120, 40), "down")
+
+	for name, m := range map[string]Model{"settings": dirty, "torrents": press(dirty, "ctrl+t")} {
+		t.Run(name, func(t *testing.T) {
+			m, cmd := pressCmd(m, "q")
+
+			assert.Nil(t, cmd, "q must not quit past unsaved changes")
+			require.True(t, m.hasOverlay(confirmOverlayKind))
+			assert.Contains(t, ansi.Strip(m.render()), "Save 1 change before quitting?")
+
+			_, cmd = pressCmd(m, "n")
+			require.NotNil(t, cmd)
+
+			_, quit := cmd().(tea.QuitMsg)
+			assert.True(t, quit)
+		})
+	}
+}
+
+// TestQuitWhenCleanQuits checks q with nothing unsaved quits at once.
+func TestQuitWhenCleanQuits(t *testing.T) {
+	_, cmd := pressCmd(settingsModel(120, 40), "q")
+	require.NotNil(t, cmd)
+
+	_, quit := cmd().(tea.QuitMsg)
+	assert.True(t, quit)
+}
+
+// TestCtrlCNeverPrompts pins the never-trapped rule: ctrl+c quits past unsaved
+// changes and past an open prompt.
+func TestCtrlCNeverPrompts(t *testing.T) {
+	dirty := press(settingsModel(120, 40), "down")
+
+	for name, m := range map[string]Model{"dirty": dirty, "prompting": press(dirty, "q")} {
+		t.Run(name, func(t *testing.T) {
+			_, cmd := pressCmd(m, "ctrl+c")
+			require.NotNil(t, cmd)
+
+			_, quit := cmd().(tea.QuitMsg)
+			assert.True(t, quit)
+		})
+	}
+}
+
+// TestConfirmSwallowsGlobalKeys checks nothing but an answer gets past an open
+// prompt.
+func TestConfirmSwallowsGlobalKeys(t *testing.T) {
+	m := press(press(settingsModel(120, 40), "down"), "esc")
+	require.True(t, m.hasOverlay(confirmOverlayKind))
+
+	got, cmd := pressCmd(m, "q")
+	assert.Nil(t, cmd)
+
+	got = press(got, ",", "?", "ctrl+t", "]")
+
+	assert.Len(t, got.overlays, 1)
+	assert.Equal(t, windowSettings, got.window)
+	assert.Equal(t, tabGeneral, got.settings.tab)
+}
+
 // TestSettingsScrollKeepsTheCursorVisible checks a tab taller than the region
 // scrolls to follow the cursor at the smallest supported size.
 func TestSettingsScrollKeepsTheCursorVisible(t *testing.T) {

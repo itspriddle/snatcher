@@ -61,6 +61,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"settings loaded", networkTab(settingsModel(w, h))},
 		{"settings editing", press(networkTab(settingsModel(w, h)), "enter")},
 		{"settings select", press(networkTab(settingsModel(w, h)), "tab", "tab", "tab", "enter")},
+		{"settings confirm", press(networkTab(settingsModel(w, h)), "tab", "enter", "esc")},
 		{"toast", press(base, "s")},
 		{"chord", press(base, "y")},
 	}
@@ -115,6 +116,13 @@ func TestSettingsDirtyGolden(t *testing.T) {
 // TestSettingsEditingGolden pins a row with the text input in place of its value.
 func TestSettingsEditingGolden(t *testing.T) {
 	assertGolden(t, "settings_editing", press(networkTab(settingsModel(120, 40)), "enter").render())
+}
+
+// TestSettingsConfirmGolden pins the save prompt composited over the window.
+func TestSettingsConfirmGolden(t *testing.T) {
+	m := press(networkTab(settingsModel(120, 40)), "tab", "enter", "esc")
+
+	assertGolden(t, "settings_confirm", m.render())
 }
 
 // TestSettingsSelectOpenGolden pins the inline dropdown, pushing the rows below

@@ -902,6 +902,67 @@ func (m Model) forwardToInput(msg tea.Msg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
+// dirtyTabList names the tabs holding unsaved changes, for a prompt's detail
+// line.
+func (w settingsWindow) dirtyTabList() string {
+	var names []string
+
+	for i, t := range w.tabs {
+		if w.tabDirtyCount(i) > 0 {
+			names = append(names, t.name)
+		}
+	}
+
+	return "unsaved on: " + strings.Join(names, ", ")
+}
+
+// savePrompt is the question asked before unsaved settings would be left
+// behind. no is what happens to them if the answer is no.
+func (m Model) savePrompt(tail string, no confirmAction) confirmOverlay {
+	n := m.settings.dirtyCount()
+
+	o := newConfirm(countQuestion("Save", n, "change", tail), saveNotYet, no)
+	o.secondary = m.settings.dirtyTabList()
+
+	return o
+}
+
+// saveNotYet stands in for the save a yes answer starts, until the session
+// round trip exists.
+func saveNotYet(m Model) (Model, tea.Cmd) {
+	m.toast = "save: not implemented yet"
+
+	return m, nil
+}
+
+// promptSaveBeforeLeaving is the ladder's "prompt to save" rung. No discards the
+// changes and leaves.
+func (m Model) promptSaveBeforeLeaving() Model {
+	return m.push(m.savePrompt("before leaving?", func(m Model) (Model, tea.Cmd) {
+		m.settings = m.settings.revert()
+
+		return m.switchWindow(windowTorrents), nil
+	}))
+}
+
+// quitHandler is q. With unsaved settings — from any window, since leaving the
+// settings window does not save them — it asks first, and no quits without
+// saving. It never discards edits silently.
+//
+// ctrl+c shares the action but never reaches here: the router quits on it before
+// the registry is consulted, so it can never be trapped behind this prompt.
+func quitHandler(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
+	m.settings = m.settings.closeDropdown()
+
+	if m.settings.dirtyCount() == 0 {
+		return m, tea.Quit
+	}
+
+	return m.push(m.savePrompt("before quitting?", func(m Model) (Model, tea.Cmd) {
+		return m, tea.Quit
+	})), nil
+}
+
 // plural returns noun, or noun with an "s", for a count.
 func plural(n int, noun string) string {
 	if n == 1 {

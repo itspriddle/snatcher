@@ -54,6 +54,10 @@ const (
 	// ctxHelp is the help overlay's scroll keys.
 	ctxHelp
 
+	// ctxConfirm is the whole stack while a confirm overlay is open: its
+	// answers, and nothing global.
+	ctxConfirm
+
 	// ctxChordYank is the second key of the y chord.
 	ctxChordYank
 
@@ -82,6 +86,8 @@ func (c Context) String() string {
 		return "input"
 	case ctxHelp:
 		return "help"
+	case ctxConfirm:
+		return "confirm"
 	case ctxChordYank:
 		return "yank"
 	case ctxChordWindow:
@@ -174,6 +180,9 @@ const (
 
 	actionInputBlur   Action = "input.blur"
 	actionInputSubmit Action = "input.submit"
+
+	actionConfirmYes Action = "confirm.yes"
+	actionConfirmNo  Action = "confirm.no"
 
 	actionHelpScrollUp   Action = "help.scroll-up"
 	actionHelpScrollDown Action = "help.scroll-down"
@@ -307,6 +316,13 @@ var registry = []Binding{
 	// Text input — the only two keys that escape a focused input.
 	bind(ctxTextInput, actionInputBlur, "esc", "blur", "esc"),
 	bind(ctxTextInput, actionInputSubmit, "enter", "submit", "enter"),
+
+	// Confirm overlay — modal: nothing global resolves under it. esc is listed
+	// so help shows it, but the router sends it to the ladder, whose "close
+	// overlay" rung is what cancels.
+	bind(ctxConfirm, actionConfirmYes, "y/enter", "yes", "y", "enter"),
+	bind(ctxConfirm, actionConfirmNo, "n", "no", "n"),
+	bind(ctxConfirm, actionEscape, "esc", "cancel", "esc"),
 
 	// Help overlay.
 	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
@@ -459,6 +475,7 @@ func paneContexts(p Pane) []Context {
 // test iterates every reachable stack, not only the per-pane ones.
 var modalStacks = [][]Context{
 	{ctxHelp, ctxGlobal},
+	{ctxConfirm},
 	{ctxChordYank},
 	{ctxChordWindow},
 	{ctxTextInput},

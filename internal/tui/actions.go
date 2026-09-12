@@ -56,6 +56,7 @@ func init() {
 	register(detailHandlers())
 	register(settingsHandlers())
 	register(helpHandlers())
+	register(confirmHandlers())
 	register(chordHandlers())
 	register(notYetHandlers())
 }
@@ -75,7 +76,7 @@ func register(batch map[Action]handler) {
 // globalHandlers are the actions that mean the same thing in every window.
 func globalHandlers() map[Action]handler {
 	return map[Action]handler{
-		actionQuit: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m, tea.Quit },
+		actionQuit: quitHandler,
 		actionEscape: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
 			m, _ = m.escape()
 

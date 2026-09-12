@@ -166,6 +166,26 @@ func TestTextInputStackOwnsTheKeyboard(t *testing.T) {
 	}
 }
 
+// TestConfirmStackIsModal pins the confirm overlay's swallow-everything rule: a
+// stray q must not quit past "save before quitting?", and no window key may
+// switch out from under a question.
+func TestConfirmStackIsModal(t *testing.T) {
+	stack := []Context{ctxConfirm}
+
+	for k, want := range map[string]Action{"y": actionConfirmYes, "enter": actionConfirmYes, "n": actionConfirmNo} {
+		action, ok := lookup(stack, stringKey(k))
+		require.Truef(t, ok, "%q must answer the confirm", k)
+		assert.Equal(t, want, action)
+	}
+
+	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "ctrl+p", "S", "R", "t"} {
+		_, ok := lookup(stack, stringKey(k))
+		assert.Falsef(t, ok, "%q must do nothing while a confirm is open", k)
+	}
+
+	assert.NotContains(t, confirmOverlay{}.contexts(), ctxGlobal)
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.

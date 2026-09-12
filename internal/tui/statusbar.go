@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -87,8 +88,13 @@ func (m Model) shortBindings() []key.Binding {
 		}
 	}
 
-	for _, action := range []Action{actionHelp, actionQuit} {
-		out = append(out, bindingFor(ctxGlobal, action))
+	// The global pair is only advertised where it resolves. A modal stack — a
+	// focused input, a confirm prompt, a pending chord — swallows ? and q, and a
+	// help line offering them there would be advertising dead keys.
+	if slices.Contains(stack, ctxGlobal) {
+		for _, action := range []Action{actionHelp, actionQuit} {
+			out = append(out, bindingFor(ctxGlobal, action))
+		}
 	}
 
 	return out
