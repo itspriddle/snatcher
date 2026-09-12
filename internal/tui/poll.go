@@ -45,6 +45,13 @@ type sessionMsg struct {
 	err     error
 }
 
+// altSpeedMsg is the answer to setAltSpeed.
+type altSpeedMsg struct {
+	gen int
+	on  bool
+	err error
+}
+
 // dialedMsg is the answer to dialServer.
 type dialedMsg struct {
 	gen    int
@@ -358,4 +365,65 @@ func (m Model) dialed(msg dialedMsg) (Model, tea.Cmd) {
 	m, poll := m.pollNow()
 
 	return m, tea.Batch(settingsCmd, poll)
+}
+
+// setAltSpeed turns alt-speed on or off.
+func setAltSpeed(ctx context.Context, client *transmission.Client, gen int, on bool) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
+		defer cancel()
+
+		err := client.SetSession(ctx, map[string]any{"alt-speed-enabled": on})
+
+		return altSpeedMsg{gen: gen, on: on, err: err}
+	}
+}
+
+// toggleAltSpeed is t: flip alt-speed from what the last slow refresh said. It
+// does not confirm — it is one switch, and t again undoes it. Before the first
+// slow refresh there is nothing to flip from, and guessing could turn on the
+// mode the user meant to turn off.
+func (m Model) toggleAltSpeed() (Model, tea.Cmd) {
+	switch {
+	case m.client == nil:
+		m.toast = "no server"
+
+		return m, nil
+	case m.live.switching:
+		m.toast = "switching servers…"
+
+		return m, nil
+	case !m.live.hasSession:
+		m.toast = "alt-speed: waiting for the server"
+
+		return m, nil
+	}
+
+	m.toast = "alt-speed: switching…"
+
+	return m, setAltSpeed(m.ctx, m.client, m.live.gen, !m.live.session.AltSpeedEnabled)
+}
+
+// altSpeedSet settles t. A success shows at once, then re-reads the session so
+// the bar's limits are what the server actually kept. The settings window's
+// loaded Bandwidth tab is left alone; R there reloads it.
+func (m Model) altSpeedSet(msg altSpeedMsg) (Model, tea.Cmd) {
+	if msg.gen != m.live.gen {
+		return m, nil
+	}
+
+	if msg.err != nil {
+		m.toast = "alt-speed: " + errorLine(msg.err)
+
+		return m, nil
+	}
+
+	m.live.session.AltSpeedEnabled = msg.on
+
+	m.toast = "alt-speed off"
+	if msg.on {
+		m.toast = "alt-speed on"
+	}
+
+	return m, pollSession(m.ctx, m.client, m.live.gen)
 }

@@ -189,6 +189,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.sessionPolled(msg)
 	case dialedMsg:
 		return m.dialed(msg)
+	case altSpeedMsg:
+		return m.altSpeedSet(msg)
 	}
 
 	return m.forwardToInput(msg)

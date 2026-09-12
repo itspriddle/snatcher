@@ -200,9 +200,13 @@ func chordHandlers() map[Action]handler {
 	return out
 }
 
-// spineHandlers are the actions that ride the refresh spine: the server picker.
+// spineHandlers are the actions that ride the refresh spine: the server picker
+// and the alt-speed switch.
 func spineHandlers() map[Action]handler {
-	return pickerHandlers()
+	out := pickerHandlers()
+	out[actionServerAltSpeed] = func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.toggleAltSpeed() }
+
+	return out
 }
 
 // notYetHandlers covers every registered action no milestone has implemented.
