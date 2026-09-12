@@ -115,6 +115,7 @@ func Run(ctx context.Context, deps Deps) error {
 	m := New(deps)
 	m.client = client
 	m.serverURL = serverURL
+	m.ctx = ctx
 
 	// ctrl+c and SIGINT are how a TUI is meant to be left, so the sentinel
 	// bubbletea reports them with is not an error to show the user.

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -46,6 +47,11 @@ type Model struct {
 	// serverURL is the server the client is pointed at, shown in the status
 	// bar.
 	serverURL string
+
+	// ctx is the program's context, which every backend command derives its
+	// timeout from, so quitting cancels a round trip still in flight. New
+	// starts it as context.Background; Run replaces it with the program's.
+	ctx context.Context
 
 	// width and height are the terminal's size in cells.
 	width, height int
@@ -101,6 +107,7 @@ func New(deps Deps) Model {
 
 	m := Model{
 		deps:    deps,
+		ctx:     context.Background(),
 		isDark:  true,
 		profile: colorprofile.TrueColor,
 		chord:   chordNone,
@@ -166,6 +173,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.applyTheme(m.isDark), nil
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+	case settingsLoadedMsg:
+		return m.settingsLoaded(msg)
+	case settingsSavedMsg:
+		return m.settingsSaved(msg)
 	}
 
 	return m.forwardToInput(msg)

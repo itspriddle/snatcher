@@ -76,7 +76,8 @@ func register(batch map[Action]handler) {
 // globalHandlers are the actions that mean the same thing in every window.
 func globalHandlers() map[Action]handler {
 	return map[Action]handler{
-		actionQuit: quitHandler,
+		actionQuit:    quitHandler,
+		actionRefresh: refreshHandler,
 		actionEscape: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
 			m, _ = m.escape()
 

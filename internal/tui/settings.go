@@ -61,6 +61,20 @@ const (
 	stateError
 )
 
+// afterSave is what a save prompt promised to do once the save succeeds.
+type afterSave int
+
+const (
+	// afterNone stays put: the Save button.
+	afterNone afterSave = iota
+
+	// afterLeave returns to the torrents window: esc's "save before leaving?".
+	afterLeave
+
+	// afterQuit quits: q's "save before quitting?".
+	afterQuit
+)
+
 // settingsTab is one tab of the form.
 type settingsTab struct {
 	// name is the tab's label.
@@ -101,6 +115,13 @@ type settingsWindow struct {
 	// noServer is set when the TUI has no dialed client, so the server tabs
 	// have nothing to show.
 	noServer bool
+
+	// loadErr is the failed load behind stateError; saveErr the session-side
+	// failure of the last save, shown on the hint line.
+	loadErr, saveErr error
+
+	// after is the follow-up of the save in flight.
+	after afterSave
 }
 
 // newSettingsWindow builds the form. The client tabs start from the values this
@@ -194,9 +215,14 @@ func (w settingsWindow) cloned() settingsWindow {
 }
 
 // visible reports whether a tab's rows are drawn at all. A server tab with no
-// server, or no snapshot yet, draws a status line instead.
+// server, or no snapshot yet, draws a status line instead. A save in flight
+// keeps the rows it is saving on screen.
 func (w settingsWindow) visible(tab int) bool {
-	return !w.tabs[tab].session() || (w.state == stateLoaded && !w.noServer)
+	if !w.tabs[tab].session() {
+		return true
+	}
+
+	return !w.noServer && (w.state == stateLoaded || w.state == stateSaving)
 }
 
 // selectable reports whether the cursor may rest on a row: a button always, a
@@ -342,9 +368,11 @@ func (w settingsWindow) closeDropdown() settingsWindow {
 }
 
 // loadSession fills the server tabs from a snapshot, discarding any unsaved
-// server edits, and puts each server tab's cursor back on its first row.
+// server edits. A fresh load puts each server tab's cursor back on its first
+// row; the re-read that settles a save leaves the cursor where the user left it.
 func (w settingsWindow) loadSession(s transmission.SessionSettings) settingsWindow {
 	w = w.cloned()
+	reset := w.state != stateSaving
 	w.state = stateLoaded
 
 	for i := range w.tabs {
@@ -362,7 +390,9 @@ func (w settingsWindow) loadSession(s transmission.SessionSettings) settingsWind
 			w.tabs[i].fields[j] = f
 		}
 
-		w.tabs[i].cursor, w.tabs[i].offset = 0, 0
+		if reset {
+			w.tabs[i].cursor, w.tabs[i].offset = 0, 0
+		}
 	}
 
 	return w.fixCursors()
@@ -587,7 +617,12 @@ func (w settingsWindow) view(st Styles, l layout) string {
 // on a server tab with nothing to show.
 func (w settingsWindow) regionLines(st Styles, width, height int) []string {
 	if !w.visible(w.tab) {
-		return []string{st.Muted.Render(centered(w.statusText(), width))}
+		lines := w.statusLines()
+		for i, line := range lines {
+			lines[i] = st.Muted.Render(centered(truncate(line, width), width))
+		}
+
+		return lines
 	}
 
 	t := w.tabs[w.tab]
@@ -606,13 +641,16 @@ func (w settingsWindow) regionLines(st Styles, width, height int) []string {
 	return rows[w.scrolledOffset(height):]
 }
 
-// statusText is what a server tab says in place of rows it cannot draw.
-func (w settingsWindow) statusText() string {
-	if w.noServer {
-		return "(no server)"
+// statusLines are what a server tab says in place of rows it cannot draw.
+func (w settingsWindow) statusLines() []string {
+	switch {
+	case w.noServer:
+		return []string{"(no server)"}
+	case w.state == stateError:
+		return []string{errorLine(w.loadErr), "press R to retry"}
 	}
 
-	return "(not loaded)"
+	return []string{"loading settings…"}
 }
 
 // fieldRow renders one row: the cursor marker, the label (with "*" when dirty),
@@ -684,8 +722,11 @@ func (w settingsWindow) optionRows(st Styles, f settingsField) []string {
 func (w settingsWindow) hintLine(st Styles, width int) string {
 	f := w.current()
 
-	if f.err != "" {
+	switch {
+	case f.err != "":
 		return st.FieldError.Render(truncate("error: "+output.SanitizeTerminal(f.err), width))
+	case w.saveErr != nil:
+		return st.FieldError.Render(truncate("save failed: "+errorLine(w.saveErr), width))
 	}
 
 	return st.Muted.Render(truncate(f.desc, width))
@@ -709,11 +750,15 @@ func (w settingsWindow) buttonsLine(st Styles) string {
 }
 
 // settingsHandler wraps a settings key's transition with what every settings
-// key needs: the busy guard, and keeping the cursor row scrolled into view.
+// key needs: the save guard, and keeping the cursor row scrolled into view.
+//
+// Only a save blocks every key. A load blocks just the actions that would race
+// it — Save, Revert's reload twin R, and a second load — because the server rows
+// are not selectable until it lands, and the client tabs have nothing to race.
 func settingsHandler(f func(Model) (Model, tea.Cmd)) handler {
 	return func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
-		if busy := m.settings.busy(); busy != "" {
-			m.toast = busy
+		if m.settings.state == stateSaving {
+			m.toast = m.settings.busy()
 
 			return m, nil
 		}
@@ -750,7 +795,9 @@ func (m Model) syncSettings() Model {
 //
 // The client tabs are re-read from the config store every time — a local file
 // read, cheap enough to do synchronously — but a row with an unsaved edit keeps
-// it.
+// it. The session is fetched asynchronously, and only when the window has no
+// snapshot yet (or its last fetch failed): re-entering a loaded window keeps
+// its edits rather than reloading over them.
 func (m Model) openSettings() (Model, tea.Cmd) {
 	m = m.switchWindow(windowSettings)
 
@@ -767,6 +814,14 @@ func (m Model) openSettings() (Model, tea.Cmd) {
 		m.settings.noServer = true
 		m.settings.state = stateLoaded
 		m.settings = m.settings.fixCursors()
+
+		return m.syncSettings(), nil
+	}
+
+	if m.settings.state == stateIdle || m.settings.state == stateError {
+		m, cmd := m.startLoad()
+
+		return m.syncSettings(), cmd
 	}
 
 	return m.syncSettings(), nil
@@ -811,9 +866,7 @@ func (m Model) pressButton(k string) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.toast = "save: not implemented yet"
-
-	return m, nil
+	return m.startSave(afterNone)
 }
 
 // beginEdit focuses the text input on the cursor row, pre-filled with its value.
@@ -917,28 +970,23 @@ func (w settingsWindow) dirtyTabList() string {
 }
 
 // savePrompt is the question asked before unsaved settings would be left
-// behind. no is what happens to them if the answer is no.
-func (m Model) savePrompt(tail string, no confirmAction) confirmOverlay {
+// behind. Yes saves and then runs after; no is what happens to the changes
+// otherwise.
+func (m Model) savePrompt(tail string, after afterSave, no confirmAction) confirmOverlay {
 	n := m.settings.dirtyCount()
 
-	o := newConfirm(countQuestion("Save", n, "change", tail), saveNotYet, no)
+	yes := func(m Model) (Model, tea.Cmd) { return m.startSave(after) }
+
+	o := newConfirm(countQuestion("Save", n, "change", tail), yes, no)
 	o.secondary = m.settings.dirtyTabList()
 
 	return o
 }
 
-// saveNotYet stands in for the save a yes answer starts, until the session
-// round trip exists.
-func saveNotYet(m Model) (Model, tea.Cmd) {
-	m.toast = "save: not implemented yet"
-
-	return m, nil
-}
-
-// promptSaveBeforeLeaving is the ladder's "prompt to save" rung. No discards the
-// changes and leaves.
+// promptSaveBeforeLeaving is the ladder's "prompt to save" rung. Yes saves and
+// leaves once the save succeeds; no discards the changes and leaves.
 func (m Model) promptSaveBeforeLeaving() Model {
-	return m.push(m.savePrompt("before leaving?", func(m Model) (Model, tea.Cmd) {
+	return m.push(m.savePrompt("before leaving?", afterLeave, func(m Model) (Model, tea.Cmd) {
 		m.settings = m.settings.revert()
 
 		return m.switchWindow(windowTorrents), nil
@@ -958,7 +1006,7 @@ func quitHandler(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	return m.push(m.savePrompt("before quitting?", func(m Model) (Model, tea.Cmd) {
+	return m.push(m.savePrompt("before quitting?", afterQuit, func(m Model) (Model, tea.Cmd) {
 		return m, tea.Quit
 	})), nil
 }
