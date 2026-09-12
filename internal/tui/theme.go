@@ -163,8 +163,9 @@ func newStyles(t Theme) Styles {
 // spellings — Nerd Font and ASCII — chosen by --no-nerd-font / client.nerd_font.
 //
 // Every glyph occupies exactly one terminal cell in both spellings, and status
-// glyphs live in their own fixed-width column, so T2's fallback work cannot
-// move a column.
+// glyphs live in their own fixed-width column, so switching spellings cannot
+// move a column. theme_test.go asserts that on the glyphs themselves, because a
+// golden of a private-use glyph cannot tell a missing glyph from a present one.
 type Icons struct {
 	// Marked and Unmarked are the first column of the torrent list.
 	Marked   string
@@ -176,16 +177,27 @@ type Icons struct {
 
 // nerdFontIcons and asciiIcons are the two glyph sets. The ASCII set is the one
 // every golden but one is rendered with, so a golden diff is readable.
+//
+// The Nerd Font glyphs are written as \u escapes, never as literal characters.
+// They live in the Unicode private use area, where a glyph is invisible in a
+// diff, unreadable in review, and — as T1 proved by shipping this map as eight
+// empty strings — silently droppable by any tool in the chain between an editor
+// and a commit. An escape survives every one of them.
+//
+// They are drawn from Nerd Fonts' Font Awesome range (nf-fa-*, U+F000–U+F2E0),
+// which is in the basic multilingual plane and measures one cell. The nf-md-*
+// range is supplementary-plane and renders two cells in some terminals, which
+// would move the status column.
 var (
 	nerdFontIcons = map[transmission.Status]string{
-		transmission.StatusStopped:          "",
-		transmission.StatusQueuedToVerify:   "",
-		transmission.StatusVerifying:        "",
-		transmission.StatusQueuedToDownload: "",
-		transmission.StatusDownloading:      "",
-		transmission.StatusQueuedToSeed:     "",
-		transmission.StatusSeeding:          "",
-		transmission.StatusError:            "",
+		transmission.StatusStopped:          "\uf04c", // nf-fa-pause
+		transmission.StatusQueuedToVerify:   "\uf017", // nf-fa-clock_o
+		transmission.StatusVerifying:        "\uf021", // nf-fa-refresh
+		transmission.StatusQueuedToDownload: "\uf017", // nf-fa-clock_o
+		transmission.StatusDownloading:      "\uf019", // nf-fa-download
+		transmission.StatusQueuedToSeed:     "\uf017", // nf-fa-clock_o
+		transmission.StatusSeeding:          "\uf093", // nf-fa-upload
+		transmission.StatusError:            "\uf071", // nf-fa-warning
 	}
 
 	asciiIcons = map[transmission.Status]string{
@@ -200,13 +212,25 @@ var (
 	}
 )
 
+// nerdFontMark and asciiMark are the marked-row glyphs.
+//
+// The Nerd Font mark is a private-use glyph for the same reason the status
+// glyphs are: it is one cell wide by construction. The obvious Unicode choice,
+// "◉" (U+25C9), is East-Asian-ambiguous width — one cell here and two in a CJK
+// locale, which would break the frame-fills-the-terminal invariant on somebody
+// else's terminal and nowhere in this suite.
+const (
+	nerdFontMark = "\uf058" // nf-fa-check_circle
+	asciiMark    = "*"
+)
+
 // newIcons returns the glyph set for this invocation.
 func newIcons(nerdFont bool) Icons {
 	if nerdFont {
-		return Icons{Marked: "◉", Unmarked: " ", statuses: nerdFontIcons}
+		return Icons{Marked: nerdFontMark, Unmarked: " ", statuses: nerdFontIcons}
 	}
 
-	return Icons{Marked: "*", Unmarked: " ", statuses: asciiIcons}
+	return Icons{Marked: asciiMark, Unmarked: " ", statuses: asciiIcons}
 }
 
 // status returns the glyph for a torrent status, or "?" for a value the enum
