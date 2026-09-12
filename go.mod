@@ -3,6 +3,7 @@ module github.com/itspriddle/snatcher
 go 1.26.6
 
 require (
+	charm.land/bubbles/v2 v2.2.1
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/itchyny/gojq v0.12.19
 	github.com/spf13/cobra v1.10.2

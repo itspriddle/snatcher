@@ -1,0 +1,322 @@
+▗ ▗   ▖ ▖  Claude Code v2.1.228
+           Opus 5 · Claude Max
+  ▘▘ ▝▝    ~/work/snatcher
+
+
+❯ analyze docs/vision.md the UI section. i want to make sure nothing is being
+  overlooked before we start building the TUI interface. the keyboard shortcuts
+  are very important, so lets pay close attention to those to make sure that
+  everything makes sense and is cohesive with each other. if anything is out of
+  place or you have suggestions to make it better, lets discuss them after
+  your review.
+
+  Searched for 1 pattern, read 3 files, listed 1 directory, recalled 1 memory (ctrl+o to expand)
+
+⏺ Read the full UI section, cross-checked it against the shipped CLI surface
+  (.surface), the settings categories in internal/commands/settings.go, and the
+  locked Charm-v2 stack. Here's what I found.
+
+  ---
+  1. Hard conflicts — these break as written
+
+  Key: q
+  Conflict: global quit vs list pane "move in queue"
+  Notes: The list pane is always visible and is the default focus, so q is
+  ambiguous exactly where it's most used. Must move one.
+  ────────────────────────────────────────
+  Key: l
+  Conflict: torrents-window "scroll right" vs list pane "set labels"
+  Notes: Same pane, same moment. Must move one.
+  ────────────────────────────────────────
+  Key: d
+  Conflict: delete torrent (torrents) vs download to Transmission (prowlarr)
+  Notes: Not a technical conflict, but it's the dangerous kind: the same finger
+  motion destroys in one window and creates in another.
+  ────────────────────────────────────────
+  Key: y
+  Conflict: copy magnet (torrents) vs copy tracker URL (prowlarr), where Y is
+  magnet
+  Notes: y means two different things depending on window.
+  ────────────────────────────────────────
+  Key: enter
+  Conflict: open details (torrents) vs open in tracker/browser (prowlarr)
+  Notes: Enter should never be the key that launches a browser.
+  ────────────────────────────────────────
+  Key: o / O
+  Conflict: o=sort, O=overview tab (torrents); o=sort, O=open-in-tracker
+  (prowlarr)
+  Notes: o is consistent; O is not.
+  ────────────────────────────────────────
+  Key: P
+  Conflict: peers tab (torrents) vs open Prowlarr web UI (prowlarr)
+  Notes: Cross-window collision.
+  ────────────────────────────────────────
+  Key: c vs o
+  Conflict: c = "configure visible columns", o = "sort … /manage col sort order
+  and display"
+  Notes: Overlapping definitions. Pick: o = sort only, c = columns only.
+
+  Also: s/p/v/d mean the same verbs in the list pane and the filter pane, but in
+  the filter pane they hit everything in the group. Focus is the only thing
+  standing between "pause this torrent" and "pause 400 torrents." That's a real
+  footgun — needs either loud focus styling plus mandatory confirmation with a
+  count, or distinct keys in that pane.
+
+> this is exactly what i wanted to discover. i think they're covered by your
+> suggestions below.
+
+  2. Three structural gaps
+
+  No multi-select anywhere. This is the biggest omission. The CLI's whole
+  mutation model is a selector (ids/hashes/--all), and the TUI can only ever act
+  on one torrent or on a whole filter group. Everything in between — "pause
+  these five" — is unreachable. Adding marks also fixes the filter-pane blast
+  radius problem, because bulk becomes explicit rather than focus-dependent.
+
+  The fix implies one governing rule worth writing into the vision as a
+  principle:
+
+  ▎ Every action key operates on the marked set if any marks exist, otherwise on
+  ▎ the cursor row.
+
+  That single line makes every action binding self-consistent and maps 1:1 onto
+  transmission.Selector.
+
+> yes lets add multi-select and the vision update.
+
+  No defined esc ladder. "Spamming esc gets back to the torrents page" is a
+  vibe, not a spec, and esc currently has three different local meanings. It
+  needs one ordered stack, e.g.: close overlay/modal → exit search input → clear
+  search → clear marks → deselect row → return to torrents window → (root: does
+  nothing; never quits).
+
+> we should define it properly. i guess it is a vibe, but that is the behavior
+> i want in the end. will definitely need care and thought as we add different
+> windows and ui elements.
+
+  tab conflates pane focus with tab selection. "filter → torrents → overview →
+  files → trackers → peers → labels → filter" means seven presses to get out of
+  the detail pane, and it duplicates [/], which already cycles tabs. Cleaner:
+  tab/shift-tab cycles panes only; [/] (and h/l when the detail pane is focused)
+  cycles tabs. Given the vision says "like a vim window," ctrl-w h/j/k/l for
+  direct pane targeting is the cohesive power-user addition.
+
+  3. Missing bindings
+
+  Nothing is specified for: g/G (top/bottom), ctrl-d/ctrl-u (half page), n/N
+  (next/prev search match), home/end/pgup/pgdn. For a vim-flavored audience
+  that's a conspicuous hole. Also missing: no way to switch servers in the TUI
+  at all, despite named servers + --server being core to the CLI. And no torrent
+  move (set location) anywhere — not as a key, not in the action menu — despite
+  torrent move/mv shipping. The action menu also omits --sequential-download
+  and --group, both of which exist on torrent update.
+
+> yes good call, all of these should be added.
+
+  4. CLI parity is inverted for the detail pane
+
+  The vision's rule is "anything TUI can do can be done with the CLI." The
+  detail pane breaks it hardest: files, peers, trackers, and pieces have no CLI
+  representation at all — I checked, list.go has a peers count column and that's
+  it. The files tab is worse, because it's the only place in the design that
+  mutates something the CLI can't touch (priority high/normal/low,
+  wanted/unwanted).
+
+  That's not a keybinding problem, but it's the thing most likely to derail the
+  TUI build: you'd be adding RPC surface and a domain model under a TUI
+  deadline. Suggest landing snatcher torrent files <id> (list) and file
+  priority/wanted mutation on the CLI before the files tab, so the TUI is a view
+  over an existing capability like every other pane. Same for torrent peers /
+  torrent trackers, even if read-only.
+
+  Missing from both sides: file/torrent rename (torrent-rename-path) — worth
+  deciding now whether it's in scope.
+
+> good finding. we should add these needed cli's first. prowlarr search still
+> needs to be done as well. lets identify them.
+
+  5. Terminal-level gotchas that constrain the keymap
+
+  - ctrl-l (prowlarr: focus search) is the universal redraw/clear convention.
+  Users will hit it expecting a repaint. Drop it; / is enough.
+
+> understood and agreed
+
+  - Never bind ctrl-j, ctrl-i, ctrl-m, ctrl-h — legacy terminals send them as
+  Enter/Tab/Enter/Backspace. Kitty protocol disambiguates, Bubble Tea v2
+  supports it, but you can't rely on it. This kills the otherwise-obvious
+  ctrl-j/ctrl-k for queue moves.
+
+> yes good call
+
+  - Avoid ctrl-s/ctrl-q — XOFF/XON flow control on many setups. Relevant if you
+  want ctrl-s for "save settings."
+
+> yes good call
+
+  - Alt/Option chords need "use Option as Meta" on macOS Terminal.app. Don't put
+  anything essential there.
+
+> yes. i dont want to use alt/option at all. they perform weirdly on Macos
+> Terminal.app which I use (i.e. fzf I can't use option chords at all even
+> with that option set).
+
+  - Clipboard is write-only. tea.SetClipboard (OSC 52) copies fine, but OSC 52
+  read is disabled in nearly every terminal for security. So y-anything works;
+  an "add from clipboard" affordance in the upload modal cannot — you must rely
+  on the terminal's own paste (enable bracketed paste).
+
+> we can skip any read from clipboard stuff. users can just paste manually like they'd
+> do in most other apps
+
+  - Settings window vs huh keymaps will fight. The spec says
+  tab/shift-tab/up/down all move between fields, but inside a Select or a
+  multi-line input, up/down belong to the widget. Spec it as: tab moves fields,
+  up/down belong to the focused field.
+
+> i am fine with whatever approach will let someone navigate through the
+> fields properly. in a prior spike of this app i tried doing the navigation
+> after we added all the form fields. there wasn't enough thought put into it
+> so there were weird little surprises/bugs. the spec notes on it were trying
+> to account for that and think about it earlier.
+
+  6. What's already right
+
+  Worth keeping deliberately: [/] cycles tabs in both the detail pane and the
+  settings window — that's the one binding that's already cross-window
+  consistent. f = "refine what's shown" is consistent across torrents and
+  prowlarr. And the settings tabs (Download, Network, Bandwidth, Queue) map
+  exactly onto the existing settingCategory constants, so the TUI can drive off
+  the same table that powers server show --category. General + Polling are the
+  two client-side additions, and those need a new config.json schema section —
+  today internal/config only knows servers + default_server.
+
+  7. Strawman keymap
+
+  Not a proposal to adopt wholesale — a concrete target to argue against.
+
+  Global: q/ctrl-c quit · ? help · : command palette · ctrl-t/ctrl-p/, windows ·
+  esc ladder
+
+  Torrents window:
+
+  Key: j/k/g/G/ctrl-d/ctrl-u
+  Action: navigate
+  Change from spec: new
+  ────────────────────────────────────────
+  Key: h/l
+  Action: horizontal scroll (list) / prev-next tab (detail)
+  Change from spec: disambiguated
+  ────────────────────────────────────────
+  Key: tab/shift-tab, ctrl-w hjkl
+  Action: pane focus
+  Change from spec: tabs removed from cycle
+  ────────────────────────────────────────
+  Key: { / }
+  Action: toggle filter pane / detail pane
+  Change from spec: wording fix: detail pane is bottom
+  ────────────────────────────────────────
+  Key: space
+  Action: mark / unmark
+  Change from spec: was action menu
+  ────────────────────────────────────────
+  Key: m
+  Action: action menu
+  Change from spec: was space
+  ────────────────────────────────────────
+  Key: enter
+  Action: open + focus details
+  Change from spec: O dropped
+  ────────────────────────────────────────
+  Key: 1–5
+  Action: jump to detail tab (overview/files/trackers/peers/pieces)
+  Change from spec: replaces O/F/C/P/T capitals
+  ────────────────────────────────────────
+  Key: / n N
+  Action: search, next, prev
+  Change from spec: n/N new
+  ────────────────────────────────────────
+  Key: f / c / o
+  Action: filter modal / columns / sort
+  Change from spec: o no longer does columns
+  ────────────────────────────────────────
+  Key: a / A
+  Action: add torrent / add with options
+  Change from spec: was u, matches CLI torrent add
+  ────────────────────────────────────────
+  Key: t
+  Action: toggle alt-speed
+  Change from spec: was a — Transmission calls it Turtle Mode
+  ────────────────────────────────────────
+  Key: s / p / v / r
+  Action: start / pause / verify / reannounce
+  Change from spec: unchanged
+  ────────────────────────────────────────
+  Key: d
+  Action: delete (always confirms)
+  Change from spec: unchanged
+  ────────────────────────────────────────
+  Key: J / K
+  Action: queue down / up
+  Change from spec: frees q for quit; top/bottom live in the action menu
+  ────────────────────────────────────────
+  Key: L
+  Action: labels editor
+  Change from spec: frees l
+  ────────────────────────────────────────
+  Key: M
+  Action: move / set location
+  Change from spec: new — closes the torrent move gap
+  ────────────────────────────────────────
+  Key: y + m/h/n/u/p
+  Action: yank magnet / hash / name / URL / path
+  Change from spec: replaces the y vs Y inconsistency
+  ────────────────────────────────────────
+  Key: R
+  Action: force refresh
+  Change from spec: unchanged
+  ────────────────────────────────────────
+  Key: S
+  Action: server picker
+  Change from spec: new
+
+  Prowlarr: a/A add to Transmission (was d) · w write .torrent locally (was D) ·
+  enter details · O open in browser · y… same yank chords · M fetch more · f
+  filters · / search · m action menu.
+
+  The through-line: a always adds, d always destroys, enter always opens
+  details, m always opens the menu, y always yanks, o always sorts — in every
+  window.
+
+  ---
+  Three things I'd want your call on before drafting the revised section:
+
+  1. Marks + space, or keep space as the action menu? Everything else in the
+  strawman follows from this. I think multi-select is non-negotiable given the
+  CLI's selector model, but the key is negotiable.
+
+> lets use space to mark things and move actions to m like proposed above
+
+  2. Detail tabs on 1–5, or keep the F/C/P/T capitals? Numbers free up a lot of
+  capitals and are unused otherwise; capitals are faster to recall. Numbers
+  could alternatively be filter quick-jumps.
+
+> lets go with numbers. i dont think these will get a ton of use. and if the
+> tab count ends up different between views it's trivial to add/remove numbers
+> and not much of a mental leap.
+
+  3. Command palette on :? It's the cheapest way to reach the long tail (server
+  switch, port test, reset a setting, obscure torrent update flags) without
+  inventing thirty more bindings — and it directly serves the "anything the TUI
+  can do, the CLI can do" goal by making the CLI be the escape hatch. Adds real
+  implementation cost though.
+
+> yes good idea
+
+  And one scope question that isn't about keys: do you want the
+  files/peers/trackers CLI commands landed before the TUI starts, or are you
+  comfortable with the TUI temporarily being the only way to touch file
+  priorities?
+
+> yes we should wrap up the other missing cli commands first. the search
+> command also still needs to be implemented.
