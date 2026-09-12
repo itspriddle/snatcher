@@ -1,4 +1,4 @@
-.TH SNATCHER 1 2026-05-30 snatcher "Snatcher Manual"
+.TH SNATCHER 1 2026-09-12 snatcher "Snatcher Manual"
 .SH NAME
 snatcher \- Transmission BitTorrent CLI client
 .SH SYNOPSIS
@@ -10,11 +10,24 @@ snatcher \- Transmission BitTorrent CLI client
 .br
 .B snatcher
 .RB [ \-\-version ]
+.br
+.B snatcher
 .SH DESCRIPTION
 .B snatcher
-is a modern CLI for managing the Transmission BitTorrent client.
-It is built so that anything the (forthcoming) TUI can do is also scriptable
-from the command line.
+is a modern CLI and TUI for managing the Transmission BitTorrent client.
+It is built so that anything the TUI can do is also scriptable from the command
+line.
+.PP
+Run
+.B snatcher
+with no arguments on a terminal to start the TUI. A subcommand,
+.BR \-\-help ,
+or a redirected standard input or output keeps the command\-line behavior, so
+.B snatcher | cat
+prints usage rather than trying to draw a full\-screen interface. The TUI is
+currently a shell: it lays out the torrents and settings windows, routes focus
+between panes, and renders placeholder data. Live server data arrives in a
+later release.
 .PP
 snatcher requires
 .B Transmission 4.0 or newer

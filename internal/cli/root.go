@@ -25,12 +25,24 @@ func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snatcher",
 		Short: "Transmission BitTorrent CLI client",
-		Long:  "Transmission BitTorrent CLI client\n\nA modern CLI/TUI for managing BitTorrent clients, Transmission first.",
+		Long: "Transmission BitTorrent CLI client\n\n" +
+			"A modern CLI/TUI for managing BitTorrent clients, Transmission first.\n\n" +
+			"Run without arguments on a terminal to start the TUI.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), version.FullVersion())
 				return nil
 			}
+
+			// A bare invocation on a terminal starts the TUI; anything else —
+			// a subcommand, --help, or a pipe on either side — keeps the CLI
+			// behavior. Both streams are checked because the TUI reads keys as
+			// well as drawing: a piped stdin has no keys to give it, and a
+			// piped stdout is someone asking for text.
+			if len(args) == 0 && isTerminal(cmd.InOrStdin()) && isTerminal(cmd.OutOrStdout()) {
+				return launchTUI(cmd)
+			}
+
 			return cmd.Help()
 		},
 		SilenceUsage:  true,

@@ -10,8 +10,26 @@ a terminal) and scripts (`--json` and `gh`-style `--jq` filters), and your
 server password never goes in the config file — by default it lives in the OS
 keyring.
 
-> **Status:** alpha. The CLI is functional and stable; the TUI described in
-> [`docs/vision.md`](docs/vision.md) is on the roadmap.
+> **Status:** alpha. The CLI is functional and stable. The TUI described in
+> [`docs/vision.md`](docs/vision.md) is under construction: running `snatcher`
+> with no arguments on a terminal starts it today, but it is a shell — it lays
+> out the torrents and settings windows, routes focus between panes, and shows
+> placeholder rows. Live server data arrives in a later release.
+
+## The TUI
+
+```sh
+# Bare invocation on a terminal starts the TUI
+snatcher
+
+# Anything else keeps the command line: a subcommand, --help, or a pipe
+snatcher | cat
+```
+
+Inside it, `?` lists every key the focused pane responds to, `tab` and
+`ctrl-w hjkl` move between panes, `{` and `}` toggle the filter sidebar and
+the detail pane, `,` opens settings, and `esc` unwinds one step at a time
+without ever quitting — `q` or `ctrl-c` does that.
 
 ## Highlights
 
