@@ -94,13 +94,15 @@ through `tui.Deps`.
 behavior. `--config`, `--theme`, and `--no-nerd-font` are persistent root flags
 already in `.surface` and the man page.
 
-The seam is `commands.Dialer(cmd)` plus `commands.ResolveClientSettings(cmd)`:
-`internal/cli` builds a `tui.Deps` from them and calls `tui.Run`, and
-`internal/tui` imports neither `internal/commands` nor `internal/config`. It is
-handed the *dialer* rather than a dialed client, so T4's server picker re-dials
-without a second seam. `tui.Run` dials before `tea.NewProgram`, so an
-unconfigured machine sees the CLI's own error on the terminal instead of inside
-an alt screen.
+The seam is `commands.Dialer(cmd)`, `commands.Servers(cmd)`, and
+`commands.ResolveClientSettings(cmd)`: `internal/cli` adapts them into a
+`tui.Deps` and calls `tui.Run`, and `internal/tui` imports neither
+`internal/commands` nor `internal/config`. It is handed the *dialer* rather than
+a dialed client, so the server picker re-dials without a second seam. A dial
+returns a `DialResult` with the resolved alias and any unavailable-store
+warning, captured rather than written to stderr under the alt screen.
+`tui.Run` dials before `tea.NewProgram`, so an unconfigured machine sees the
+CLI's own error on the terminal instead of inside an alt screen.
 
 **Focus / routing is the core architecture.** The keybindings in `vision.md`
 are deeply context-dependent — the same key means different things in the
@@ -192,6 +194,18 @@ the man page.
   clipboard-reading paste, and a focused input is handed every key the router
   does not reserve (`esc`, `enter`, `ctrl+c`).
 
+- **`tea.Tick` cannot be canceled.** Its timer starts when `Tick` is called and
+  there is no handle to stop it. Retire a superseded tick instead: carry a
+  sequence number on the message and drop any tick that no longer matches, and
+  a generation for anything that must not outlive a server switch. The timer can
+  outlive the program by one interval; it only delivers a message nobody reads.
+- **`tea.Batch` delivers a `tea.BatchMsg`** (`[]Cmd`), which the runtime runs
+  concurrently — except that a batch of one non-nil command is returned as that
+  command. A synchronous test helper that runs a `Cmd` and feeds its message
+  back has to flatten a `BatchMsg` itself, or it silently tests nothing.
+- **Every backend `Cmd` derives from the program context** (`tea.WithContext`)
+  with its own timeout, so quitting cancels a round trip in flight.
+
 ## Build sequence
 
 Each step states its goal and what it de-risks. Steps 1–2 establish the shell;
@@ -227,9 +241,11 @@ session-write paths.
 
 ### 4. Status bar + data/refresh spine
 
-Generic poll loop over `Stats` (down/up rates, counts), live UI updates, and
-the `▁▂▃▄▅▆▇█` speed sparkline from a rolling rate buffer. Deliverable: the
-reusable fetch→update→render machine the torrent list will ride.
+A tick-driven poll over `ListTorrents` + `Stats`, with a slower refresh of the
+session and free space, feeding the torrent list and a status bar of live
+rates, limits, and `▁▂▃▄▅▆▇█` sparklines; explicit loading, empty, and error
+states; the `S` server picker and `t` alt-speed. Deliverable: the reusable
+fetch→update→render machine the torrent list rides.
 
 ### 5. Torrent list (live)
 

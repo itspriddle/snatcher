@@ -265,18 +265,94 @@ registry. **Met.**
 - `bubbles/v2/textinput` brings `github.com/atotto/clipboard` in as an indirect
   dependency; nothing in snatcher calls it.
 
-## T4. Status bar + data/refresh spine
+## T4. Status bar + data/refresh spine — **done**
 
 The reusable machine everything live rides on.
 
-- `tea.Tick` → fetch `Cmd` → `DataMsg` → update, with explicit loading, empty,
-  and error states; poll interval from config
-- Status bar: version, host, current server alias, global down/up and limits,
-  free space, total size, mark count
-- `▁▂▃▄▅▆▇█` sparkline from a rolling rate buffer
-- Server picker (`S`) - switch named servers without leaving the TUI, tearing
-  down and re-dialing cleanly
-- The typed-error presentation decided once, here
+- ~~`tea.Tick` → fetch `Cmd` → `DataMsg` → update, with explicit loading, empty,
+  and error states; poll interval from config~~
+- ~~Status bar: version, host, current server alias, global down/up and limits,
+  free space, total size, mark count~~
+- ~~`▁▂▃▄▅▆▇█` sparkline from a rolling rate buffer~~
+- ~~Server picker (`S`) - switch named servers without leaving the TUI, tearing
+  down and re-dialing cleanly~~
+- ~~The typed-error presentation decided once, here~~
+- ~~`t` alt-speed~~ — moved here from T5 as the spine's first mutation→refresh
+
+**Done when:** the torrent list and status bar fill from a live poll with
+visible loading, empty, and error states; `R`, `t`, and `S` each round-trip;
+and every frame still fills the terminal exactly at 60, 80, 120, and 200
+columns. **Met.**
+
+### Decisions
+
+- **Split cadence.** Every tick polls `ListTorrents` (every torrent,
+  `AllFields`) and `Stats`. The first poll, and every sixth after it, also runs
+  the slow refresh: one `Session` round-trip (`ServerInfo` + `SessionSettings`)
+  and `FreeSpace` on the session's download directory, skipped when it has none.
+  `R`, `t`, a server switch, and a settings save that wrote session keys run it
+  early. Limits another client changes can lag by up to six ticks.
+- **The interval runs from the reply.** The next tick is scheduled when a poll
+  answers, so a slow server stretches the cadence rather than stacking polls,
+  and polls never overlap. `Deps.PollInterval` is read at scheduling time, so a
+  saved `client.poll_interval` applies from the next tick.
+- **Stale work is retired, not canceled.** `tea.Tick` cannot be stopped, so
+  every tick carries a sequence number and every reply a generation: `R` bumps
+  the sequence, a server switch the generation, and whatever no longer matches
+  is dropped. Every backend `Cmd` derives its 15s timeout from the program
+  context.
+- **The poll projects `AllFields`.** The list pane, the sidebar (labels,
+  errors), and T6's overview need nearly all of them, and none is nested.
+  `PollFields` stays for a caller that wants the light set.
+- **Rows are in queue order,** the CLI's default `list_sort`. A non-default
+  `client.list_sort` is not honored until T5 wires `o`, so until then the TUI
+  and `snatcher list` can disagree for a user who changed it.
+- **Mock data is test-only.** `mock.go` became `mock_test.go`. A non-nil
+  `Deps.Torrents` is a static set that disables polling (tests); nil with a
+  client polls; nil without one is the `no server` state.
+- **The cursor follows its torrent by ID** across a poll, and marks on torrents
+  that disappeared are dropped silently — the status bar's count is the only
+  tell, the stance vision.md takes on hidden marks. The sidebar is rebuilt on
+  every poll, keeping its cursor and applied filter by what they name rather
+  than by index.
+- **Used space is Σ (`SizeWhenDone` − `LeftUntilDone`)** over the polled rows.
+  T5's filter must keep summing the unfiltered set.
+- **Limits render raw,** `(5000 KB/s)`, exactly as `server bandwidth show`
+  prints them, never through `output.Speed` (IEC over bytes). The limit shown is
+  the one in force: alt-speed's while it is on, otherwise a global limit only
+  while it is enabled. Rates use `output.Speed`.
+- **Sparklines are hand-rolled:** eight samples per direction, scaled to that
+  ring's own maximum, blank until there are two, and left-padded to eight cells
+  so the segment does not jitter. No `ntcharts`.
+- **The status bar degrades by rank** when it does not fit: the Transmission
+  version first, then used, free, the two rates (sparkline, then limit, then
+  dropped, evenly between them), then snatcher's version. The server, an error
+  (`! unreachable`), `alt-speed`, and the mark/unsaved/chord counts are never
+  dropped. Alt-speed is plain text rather than a glyph, so `Icons` stays
+  status-only.
+- **One typed-error presentation, in `errors.go`.** Each sentinel has a short
+  form for the status bar (`auth failed`, `unsupported server`, `unreachable`,
+  `server error`), the sentence T3 introduced, and a pane hint that always ends
+  "press R to retry". Any other error is sanitized, and bounded in the bar.
+- **`t` flips alt-speed from the last slow refresh** with one `SetSession`,
+  shows the change at once, then re-reads the session. It does not confirm, and
+  before the first slow refresh it says it is waiting rather than guessing. The
+  settings window's loaded Bandwidth tab is not touched; `R` there reloads it.
+- **The picker is session-only,** like `--server`. It lists Transmission aliases
+  only, never writes `default_server`, and asks before discarding unsaved
+  settings. The dial runs as a `Cmd`, because resolving a secret can raise a
+  Keychain prompt, and a second `S` is refused until it lands. A failed dial
+  keeps the old server and resumes its polling; a successful one empties the
+  rows, rebuilds the settings window (reloading it if it is in front), and polls
+  at once.
+- **Two seams changed.** `commands.Dialer` returns a `DialResult` carrying the
+  resolved alias and any unavailable-store warning, captured by swapping the
+  command's error writer around the dial so it becomes the first toast instead
+  of a line under the alt screen; the single-flight picker is what keeps the
+  swap safe. `commands.Servers` lists the picker's aliases without touching a
+  secret store. `internal/cli` adapts both to the TUI's own types. The status
+  bar's version is `v` + `version.Version`; `FullVersion()` had printed
+  "snatcher" twice.
 
 ## T5. Torrent list, live
 
@@ -289,7 +365,7 @@ The main event. Reuses everything above.
 - Marks (`space`), `/` search with `n`/`N`, `f` filter modal, `o` sort,
   `c` columns
 - Actions on marks-or-cursor: `s p v r d`, `J`/`K` queue, `L` labels, `M` move,
-  `t` alt-speed, `R` refresh, `y` yank chords, `a`/`A` add
+  `R` refresh, `y` yank chords, `a`/`A` add (`t` alt-speed shipped in T4)
 - `m` action menu with the full vision.md list
 - Filter-pane group actions with counted confirmation and loud focus styling
 - Optimistic update or immediate refetch after each mutation - pick one and
@@ -372,15 +448,19 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
   **Decided** in `docs/vision.md` (Selection principle): marks survive sort
   and `/` search, and clear on a filter change - a single hidden mark would
   otherwise silently displace the cursor row with no confirmation.
-- Poll cadence vs. server load: one interval for everything, or a cheap
-  `PollFields` tick for the list plus a slower full refresh?
-- Where does the status bar (T4) get its global speed limits: poll
+- ~~Poll cadence vs. server load: one interval for everything, or a cheap
+  `PollFields` tick for the list plus a slower full refresh?~~
+  **Decided** in T4: the full record and stats every tick, the session and
+  free space every sixth.
+- ~~Where does the status bar (T4) get its global speed limits: poll
   `snatcher server bandwidth show`'s object on the refresh interval, or reuse
   the `stats` call the bar already makes and refresh the limits on a slower
   tick? `bandwidth show` returns the current rates, both limit pairs, and the
   alt-speed switch together, but costs two round-trips (`session-get` +
   `session-stats`); `stats` alone is one round-trip and carries the rates only.
-  The CLI contract supports either, so this is a TUI cost decision.
+  The CLI contract supports either, so this is a TUI cost decision.~~
+  **Decided** in T4: rates from `Stats` every tick, limits from `Session` on
+  the slow refresh.
 - Does the torrent action menu's "trackers" entry edit trackers in place, or
   defer to the trackers tab?
 - Does the `Labels (dynamic)` filter group derive its labels client-side from

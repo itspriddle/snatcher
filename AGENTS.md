@@ -68,24 +68,31 @@ Layers, outermost to innermost:
   `client.CallAPI(...)` directly on either backend — `--prowlarr` switches its
   positional from an RPC method to a REST path, and its output from the
   Transmission envelope to the raw response body. `tui.go` holds the seams
-  `internal/cli` hands the TUI: `Dialer`, `ResolveClientSettings`, and
-  `ClientConfigStore`, which reads and writes client settings through the same
-  functions `config list` and `config set` use.
+  `internal/cli` hands the TUI: `Dialer`, whose `DialResult` carries the
+  resolved alias and any unavailable-store warning (captured, never written to
+  stderr under the alt screen); `Servers`, the Transmission aliases for the
+  server picker; `ResolveClientSettings`; and `ClientConfigStore`, which reads
+  and writes client settings through the same functions `config list` and
+  `config set` use.
 - **`internal/tui`** — the terminal UI, launched by `internal/cli` when
   `snatcher` is run bare on a terminal. It depends on `transmission` and
   `output` and **never imports `commands`**: everything it needs arrives through
-  `tui.Deps`, built from the `commands.Dialer` / `commands.ResolveClientSettings`
-  / `commands.ClientConfigStore` seam — the last as `Deps.Config`, the
+  `tui.Deps`, built from the `commands.Dialer` / `commands.Servers` /
+  `commands.ResolveClientSettings` / `commands.ClientConfigStore` seam — the
+  picker's list as `Deps.Servers`, the config store as `Deps.Config`, the
   `tui.ClientConfig` store the settings window reads and writes client settings
   through (adapted in `internal/cli`, since neither package imports the other).
   It is handed the *dialer*, not a dialed client, so switching servers
   mid-session needs no new seam, and `tui.Run` dials before entering the alt
-  screen so a configuration error reaches the terminal. The keymap registry in
-  `keymap.go` is this package's `.surface`: every key the UI responds to is one
-  row of it, components are constructed from those rows rather than from their
-  own defaults, and the collision test asserts no key resolves twice in any
-  focus context a user can be in. Adding a binding means adding a registry row,
-  not a `switch` case.
+  screen so a configuration error reaches the terminal. Live data rides one
+  refresh spine (`poll.go`): a tick-driven poll whose superseded ticks and
+  replies are dropped by sequence and generation rather than canceled. Mock
+  torrents exist only in tests, where a non-nil `Deps.Torrents` disables
+  polling. The keymap registry in `keymap.go` is this package's `.surface`:
+  every key the UI responds to is one row of it, components are constructed from
+  those rows rather than from their own defaults, and the collision test asserts
+  no key resolves twice in any focus context a user can be in. Adding a binding
+  means adding a registry row, not a `switch` case.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list
