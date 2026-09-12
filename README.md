@@ -83,13 +83,21 @@ snatcher torrent list
 | `server reset <key>...` | Restore settings to their Transmission defaults |
 | `server stats` | Session statistics: counts, speeds, transfer totals |
 | `server port get\|set\|test` | View, change, or test the peer/listening port |
+| `server bandwidth show\|update\|alt` | View or change speed limits and the alt-speed switch |
+| `server free-space [path]` | Free space on the server's download disk |
 | `torrent add` | Add torrents from files, URLs, or magnet links |
 | `torrent list` (`ls`) | List torrents, with filter/search/sort/columns |
 | `torrent show` (`info`) `<id\|hash>` | Show every field for one torrent |
+| `torrent files\|peers\|trackers <id\|hash>` | One torrent's files, connected peers, or trackers |
+| `torrent files update <id\|hash> <index>...` | Set file priority and wanted/unwanted |
 | `torrent start\|stop\|verify\|reannounce` | Act on torrents by id, hash, or `--all` (`stop` is also `pause`) |
+| `torrent update` | Set torrent fields: limits, priority, labels, trackers, and more |
+| `torrent label list\|add\|remove\|set` | Manage torrent labels |
 | `torrent queue top\|up\|down\|bottom` | Reorder torrents in the queue |
 | `torrent move` (`mv`) `<id\|hash> <location>` | Change a torrent's download location |
+| `torrent rename <id\|hash> <path> <new-name>` | Rename a file, directory, or the torrent itself |
 | `torrent remove` (`rm`) | Remove torrents (and optionally their data) |
+| `config list\|get\|set\|unset` | snatcher's own client settings (theme, icons, list defaults) |
 | `search <query>` | Search a Prowlarr instance's indexers |
 | `search grab\|download` | Hand a result to Prowlarr's download client, or write its `.torrent` here |
 | `search indexers\|categories` | List the indexer and torznab category ids the filters take |

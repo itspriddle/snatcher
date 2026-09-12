@@ -23,7 +23,8 @@ one. The "unblocks" line on each milestone says which pane is waiting.
 ## Sequence
 
 1. ~~**M1** keyring bug - blocks real use on headless Linux today~~ **done**
-2. **M2**, **M3** detail-pane surface + rename - unblocks TUI detail pane
+2. ~~**M2**, **M3** detail-pane surface + rename - unblocks TUI detail
+   pane~~ **done**
 3. ~~**M4** client config - unblocks TUI settings window, needed before the
    settings window is built, not after~~ **done**
 4. ~~**M5** `server bandwidth`~~, ~~**M6** `torrent label`~~, and ~~**M7** small
@@ -78,7 +79,7 @@ override for fully unattended runs.
 
 ---
 
-## M2. Torrent detail CLI surface
+## M2. Torrent detail CLI surface - **done**
 
 **Unblocks:** the TUI detail pane (files / peers / trackers / pieces tabs) and
 the `y m` yank-magnet key.
@@ -484,12 +485,20 @@ url - *is* the grab, which is the wrong verb for a local write.
 
 ## M9. Pre-TUI hygiene
 
-- `make release-check` green (`check` + `replace-check` + `vuln` + `race-test`)
-- Man page reviewed end to end, not just coverage-gated
-- README/help text reflects the new commands
-- One pass over `docs/vision.md`'s command checklists so they match `.surface`
-- Confirm `commands.dial()` has an exported seam for the TUI to inject a
-  client (`docs/TUI-PLAN.md` "Launch model")
+- ~~`make release-check` green (`check` + `replace-check` + `vuln` +
+  `race-test`)~~ green on 2026-09-12
+- ~~Man page reviewed end to end, not just coverage-gated~~ done in the
+  `torrent-detail` and `prowlarr-search` PRD reviews
+- ~~README/help text reflects the new commands~~ done
+- ~~One pass over `docs/vision.md`'s command checklists so they match
+  `.surface`~~ done - only `server doctor` is unticked, and it is backlog
+- ~~Confirm `commands.dial()` has an exported seam for the TUI to inject a
+  client~~ **moved to TUI T1**: `dial` is still unexported, and the seam's
+  shape (an exported `Dial`, or a TUI constructor taking a client) is a
+  launch-wiring decision that belongs with the launch wiring
+  (`docs/TUI-PLAN.md` "Launch model", `docs/tui-todo.md` T1)
+
+**M9 is closed.** `docs/tui-todo.md` T1 may start.
 
 ---
 

@@ -147,6 +147,46 @@ them (see the ladder). This is what makes bulk actions explicit instead of
 focus-dependent, and it maps 1:1 onto `transmission.Selector`
 (ids/hashes/`--all`), so every TUI action has an exact CLI equivalent.
 
+Marks survive a sort change and a `/` search, and are **cleared when the
+filter changes** (`f`, or `enter` in the filter pane). A mark hidden by a
+filter would otherwise be acted on invisibly - and with exactly one hidden
+mark, an action would skip the cursor row without any confirmation to say so.
+The status bar's mark count is the only other tell, and it is not enough.
+
+**A focused text input owns the keyboard.** While a text input has focus (the
+search fields, a settings field, a form in a modal) every key goes to the
+input: printable characters insert, and the readline chords (`ctrl-a`/`e`,
+`ctrl-w`, `ctrl-u`, `ctrl-k`, `ctrl-d`, `ctrl-p`/`n`) keep their readline
+meaning. Only two keys escape: `esc` blurs the input (ladder rung 2) and
+`enter` submits it. So `q`, `?`, `:`, `,`, `S`, `ctrl-t`, and `ctrl-p` do
+nothing special until the input is blurred - switching windows from a search
+field is `esc` then the chord. This is the rule that makes typing a `?` into a
+query possible; it is not a per-input exception.
+
+**Navigation is the same in every window.** These keys hold wherever there is
+a list, a table, or a scrollable pane, and are not restated per window:
+
+- `up` / `down` / `j` / `k` - move the cursor in the focused pane (live update
+  of the detail pane if open)
+- `g` / `G` - jump to top / bottom
+- `ctrl-d` / `ctrl-u` - half page down / up
+- `pgdn` / `pgup`, `home` / `end` - as expected
+- `tab` / `shift-tab` - move focus between open panes (panes only, never tabs)
+- `ctrl-w` + `h` / `j` / `k` / `l` - focus a pane directly, vim-style (a
+  focused text input keeps `ctrl-w` as delete-word, per the rule above)
+- `}` - toggle the detail pane (bottom) in any window that has one
+- `left` / `right` / `h` / `l` - horizontal scroll in a table pane; previous /
+  next tab when a tabbed detail pane is focused
+
+**Action verbs live in a window's main pane.** The torrent verbs (`s p v r d`,
+`J`/`K`, `L`, `M`, `y`, `m`) are bound in the torrent list pane and nowhere
+else in the torrents window. A focused detail pane owns navigation, its tab
+keys, and the files tab's own `space`/`m`; it does not also carry torrent
+verbs, because the files tab has marks of its own and a `d` that might mean
+"delete the torrent" next to a file cursor is exactly the ambiguity marks were
+introduced to remove. `esc` (or `shift-tab`) returns to the list pane, where
+the verbs are.
+
 **Verbs mean the same thing everywhere.** `a` adds, `d` destroys, `enter` opens
 details, `m` opens the action menu, `y` yanks, `o` sorts, `c` configures
 columns, `f` filters, `/` searches, `R` refreshes.
@@ -159,13 +199,22 @@ group actions confirm even when the group has one member.
 **esc ladder.** One ordered stack, evaluated top to bottom. The first
 applicable step runs, and only that step:
 
+0. cancel a pending chord (`y`, `ctrl-w`) - the status bar shows the pending
+   prefix while one is live
 1. close the topmost overlay (modal, action menu, palette, help)
 2. blur the focused text input (keeping its contents)
-3. clear the active search
-4. clear marks
-5. deselect the cursor row (detail pane stays, goes empty)
-6. return to the torrents window
-7. at rest in the torrents window: do nothing - **esc never quits**
+3. return focus to the window's main pane (torrent list, search results) from
+   a detail or filter pane
+4. clear the active search
+5. clear marks
+6. deselect the cursor row (detail pane stays, goes empty)
+7. return to the torrents window. Leaving the settings window with unsaved
+   changes asks to save first; that prompt is an overlay, so the next `esc`
+   closes it (rung 1) and the window stays open
+8. at rest in the torrents window: do nothing - **esc never quits**
+
+`q` runs the same save prompt as rung 7 when the settings window is dirty,
+then quits. It never discards edits silently.
 
 **Terminal constraints.** These are hard limits, not preferences:
 
@@ -190,7 +239,16 @@ applicable step runs, and only that step:
 - `ctrl-t` - open torrents window
 - `ctrl-p` - open prowlarr window
 - `,` - open settings window
-- `S` - server picker (named servers from config)
+- `S` - server picker (named servers from config). The picker lists servers of
+  the **type the current window uses**: Transmission aliases from the torrents
+  and settings windows, Prowlarr aliases from the prowlarr window. Switching
+  one never changes the other, exactly as `default_server` and
+  `default_prowlarr_server` are independent in the CLI.
+- `t` - toggle alt-speed (Transmission calls it turtle mode). A server session
+  setting, so it is not scoped to the torrents window
+- `R` - force a refresh: re-poll the server in the torrents window, resubmit
+  the current search in the prowlarr window, re-read settings in the settings
+  window
 - `esc` - the ladder above
 
 
@@ -215,28 +273,19 @@ applicable step runs, and only that step:
 +------------------------------------------------------------------------------+
 ```
 
-- `{` - toggle filter pane (left)
-- `}` - toggle detail pane (bottom)
-- `tab` / `shift-tab` - move focus between open panes (panes only, never tabs)
-- `ctrl-w` + `h` / `j` / `k` / `l` - focus a pane directly, vim-style. While a
-  text input is focused `ctrl-w` stays readline delete-word; the pane prefix
-  only applies when no input has focus.
-- `up` / `down` / `j` / `k` - move the cursor in the focused pane (live update
-  of the detail pane if open)
-- `g` / `G` - jump to top / bottom
-- `ctrl-d` / `ctrl-u` - half page down / up
-- `pgdn` / `pgup`, `home` / `end` - as expected
-- `left` / `right` / `h` / `l` - horizontal scroll in the list pane; previous /
-  next tab when the detail pane is focused
+Navigation (`j`/`k`, `g`/`G`, paging, `tab`/`shift-tab`, `ctrl-w`, `}`,
+`h`/`l`) is per the Principles. Additions here:
+
+- `{` - toggle filter pane (left). The filter pane is the torrents window's
+  own; `}` (detail pane) is global
 - `space` - toggle mark on the cursor row (the cursor does not move)
-- `f` - filter torrents shown (modal, saves state), shown in the UI
+- `f` - filter torrents shown (modal, saves state), shown in the UI. Clears
+  marks (Selection principle)
 - `/` - search/filter torrents by name; `n` / `N` - next / previous match
 - `o` - sort: fields and direction, nothing else
 - `c` - configure visible columns in list pane, nothing else
 - `a` - add torrent (file, URL, magnet link); `A` - add with options (download
   dir, labels, start paused)
-- `t` - toggle alt-speed (Transmission calls it turtle mode)
-- `R` - force state refresh from server
 
 #### Torrents Window > Torrent List Pane (Main)
 
@@ -309,7 +358,9 @@ any marks exist, otherwise the cursor row.
 
 With an item selected:
 
-- `enter` - apply the filter to the list pane
+- `enter` - apply the filter to the list pane (clears marks, per the
+  Selection principle)
+- `esc` - focus torrent list pane (ladder rung 3)
 - `s` / `p` / `v` / `d` - start / pause / verify / delete **every torrent in
   the group**. Always confirms and names the count ("Pause 412 torrents?"); `d`
   double-confirms and asks about data. The focused pane is styled loudly enough
@@ -329,7 +380,11 @@ action menu.
 - `tab` / `shift-tab` - move to the next / previous **pane**. Tabs are not in
   the pane cycle; `[` / `]` already own them, and seven presses to leave the
   detail pane is not navigation.
-- `esc` - focus torrent list pane
+- `esc` - focus torrent list pane (ladder rung 3)
+- No torrent verbs. `s p v r d`, `J`/`K`, `L`, `M`, `y`, and the torrent `m`
+  menu are list-pane keys (Principles, "Action verbs live in a window's main
+  pane"). The files tab's `space` and `m` below are file-scoped and are the
+  only action keys in this pane.
 
 Overview:
 
@@ -384,13 +439,17 @@ Trackers:
 +------------------------------------------------------------------------------+
 ```
 
+Panes: search (top), results (main), detail (bottom, toggled with `}`).
+Navigation and pane focus are per the Principles; there are no marks in this
+window in v1, so every action acts on the cursor row.
+
 #### Prowlarr Window > Search Pane (Top)
 
 Text area to enter a search, set categories/indexers
 
 - `enter` - submit search, show results in main listing pane
 - `esc` - if search field focused, unfocus, stay in prowlarr window/search
-  pane. if not focused, back to torrent window
+  pane (rung 2). if not focused, back to torrent window (rung 7)
 
 #### Prowlarr Window > Main Listing
 
@@ -414,7 +473,8 @@ cols: age, title, indexer, size, grabs, peers, seeders
 - `w` - write the .torrent file locally
 - `m` - action menu (grab, write locally, open in tracker, yanks)
 - `P` - open Prowlarr
-- `esc` - back to torrent window
+- `esc` - back to torrent window (rung 7; a live search is not "an active
+  search" in the ladder's sense - rung 4 is the torrents window's `/` filter)
 
 **Note on `a` (grab).** Prowlarr's grab endpoint hands the release to the
 download client **Prowlarr** is configured with, which is not necessarily the
@@ -434,8 +494,7 @@ fields: age, title, indexer, size, grabs, peers, seeders
 - `a` - grab (same semantics as the list pane)
 - `w` - write the .torrent file locally
 - `m` - action menu
-- `esc` - focus the results list
-- copy others from search?
+- `esc` - focus the results list (rung 3)
 
 #### Settings Window
 
@@ -446,8 +505,10 @@ write Transmission session settings and map onto the same category table that
 powers `snatcher server show --category`.
 
 - `esc`
-    - no field focused, close, ask to save pending changes if any, back to previous window
-    - field focused, unfocus, stay in settings window
+    - no field focused, close, ask to save pending changes if any, back to
+      previous window (rung 7)
+    - field focused, unfocus, stay in settings window (rung 2)
+- `q` - the same save prompt if there are pending changes, then quit
 - `[` / `]` - move between tabs, cycle
 - `tab` / `shift-tab` - move between fields, cycle on current tab only
 - `up` / `down` - belong to the **focused field** (moving through select

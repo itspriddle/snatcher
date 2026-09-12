@@ -68,8 +68,13 @@ the panes fall out of it.
 - Theme/styles/icon plumbing threaded from the first component (v2 has no
   global renderer - styles are passed explicitly)
 - Launch wiring: bare `snatcher` on a TTY starts the TUI, `--help`, an explicit
-  subcommand, or non-TTY stdout keeps CLI behavior; client injected through the
-  `dial()` seam
+  subcommand, or non-TTY stdout keeps CLI behavior; client injected through a
+  seam over `commands.dial()`, which is still unexported - exporting it (or
+  adding a TUI constructor that takes a client) is this milestone's job, moved
+  here from CLI M9
+- Every `bubbles`/`huh` component constructed with a zeroed keymap; the
+  collision test checks the components' active keymaps, not just the registry
+  (`docs/TUI-PLAN.md`, last gotcha)
 - Windows scaffolded with mock data: torrents + settings
 
 **Done when:** an empty shell navigates correctly - panes focus, `esc`
@@ -205,8 +210,10 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
 
 - Does `space` advance the cursor after marking? Spec says no (k9s-style);
   revisit if bulk marking feels slow in practice.
-- Do marks survive a filter or sort change, or are they cleared? Leaning
-  survive-with-a-count, since the status bar shows the number.
+- ~~Do marks survive a filter or sort change, or are they cleared?~~
+  **Decided** in `docs/vision.md` (Selection principle): marks survive sort
+  and `/` search, and clear on a filter change - a single hidden mark would
+  otherwise silently displace the cursor row with no confirmation.
 - Poll cadence vs. server load: one interval for everything, or a cheap
   `PollFields` tick for the list plus a slower full refresh?
 - Where does the status bar (T4) get its global speed limits: poll

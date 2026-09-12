@@ -128,6 +128,30 @@ the man page.
   subpackage if ever needed).
 - **Clipboard via OSC52** isn't universal across terminals; consider a fallback
   for copy actions.
+- **Every component ships a default keymap that fights `vision.md`.** Read
+  from the v2.1.0 / v2.0.3 sources:
+  - `bubbles/v2/table`: `f`/`b`/`space` page, `u`/`d` half-page, `g`/`G`
+  - `bubbles/v2/viewport`: `space`/`f`/`b` page, `u`/`d` half-page, `h`/`l`
+    horizontal scroll
+  - `bubbles/v2/list`: `q`/`esc` quit, `?` help, `h`/`l`/`u`/`d`/`f`/`b`
+    paging, `ctrl+j`/`ctrl+k` accept while filtering
+  - `bubbles/v2/textinput` and `textarea`: `ctrl+p`/`ctrl+n` suggestions or
+    lines, `ctrl+d`, `ctrl+u`, `ctrl+w`, `ctrl+h`, `ctrl+t` (textarea)
+  - `huh/v2`: `ctrl+j`/`ctrl+k` on Select and MultiSelect, `ctrl+j` newline
+    on Text, `enter` = next field, `h`/`l` toggle Confirm, `y`/`Y` accept
+    Confirm, `x`/`space` toggle MultiSelect, `ctrl+a` select all
+
+  `f`, `d`, `u`, `space`, `h`/`l`, `q`, `?`, and `enter` all mean something
+  else in the vision, and `ctrl+j`/`ctrl+k`/`ctrl+h` are on the banned list.
+  So no component keeps its default keymap: each is constructed with a zeroed
+  `KeyMap` and only the bindings the registry hands it. The T1 collision test
+  must assert the components' *active* keymaps against the registry, not just
+  the registry against itself - a default that survives construction is a
+  binding the registry never saw. Text inputs are the one exception, and
+  deliberately: their readline chords are the "focused input owns the
+  keyboard" rule in `vision.md`, so they keep their defaults minus the banned
+  `ctrl+h`, and the router simply does not forward other keys while one has
+  focus.
 
 ## Build sequence
 
