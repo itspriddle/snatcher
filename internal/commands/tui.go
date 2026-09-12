@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -90,4 +91,117 @@ func ResolveClientSettings(cmd *cobra.Command) (ClientSettings, error) {
 	}
 
 	return ClientSettings{Theme: theme, NerdFont: nerdFont, PollInterval: poll, NoColor: noColor()}, nil
+}
+
+// ClientEntry is one client setting as the TUI's settings window sees it: its
+// effective value for this invocation, the rung that supplied it, and the fixed
+// choices it accepts. internal/cli converts it to tui.ClientEntry; this package
+// never imports internal/tui.
+type ClientEntry struct {
+	// Key is the dotted config key, e.g. "client.theme".
+	Key string
+
+	// Value is the effective value in the key's natural type.
+	Value any
+
+	// Source is the rung that supplied Value: flag, env, config, or default.
+	Source string
+
+	// Allowed lists the fixed choices for a key that has them (client.theme),
+	// and is nil otherwise.
+	Allowed []string
+
+	// SetBy names the flag ("--theme") or environment variable
+	// ("SNATCHER_THEME") behind a flag or env Source, so the TUI can say why a
+	// setting cannot be edited for this run. It is empty for the lower rungs.
+	SetBy string
+}
+
+// clientOverrideNames spells, per overridable key, the flag and variable that
+// sit above the config file — the same pair each key's override function reads.
+var clientOverrideNames = map[string]struct{ flag, env string }{
+	keyTheme:    {flag: "--" + flagTheme, env: envTheme},
+	keyNerdFont: {flag: "--" + flagNoNerdFont, env: envNoNerdFont},
+}
+
+// ConfigStore is the client-config seam the TUI writes through: read every key
+// with its source, validate a value, and persist one. It wraps the same
+// resolve/validate/write functions "config list" and "config set" use, so the
+// settings window cannot accept a value the CLI rejects or store it anywhere
+// the CLI would not.
+type ConfigStore struct {
+	cmd  *cobra.Command
+	path string
+}
+
+// ClientConfigStore returns a ConfigStore for this invocation. The --config path
+// is captured once, so every read and write in a TUI session targets the file
+// the process was launched against.
+func ClientConfigStore(cmd *cobra.Command) ConfigStore {
+	return ConfigStore{cmd: cmd, path: configFlag(cmd)}
+}
+
+// Entries resolves every client key for this invocation, sorted by key. The file
+// is read fresh on every call, so a value written by Set is reflected by the
+// next Entries.
+func (s ConfigStore) Entries() ([]ClientEntry, error) {
+	cfg, _, err := loadConfig(s.path)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved, err := clientEntries(s.cmd, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]ClientEntry, len(resolved))
+	for i, e := range resolved {
+		entry := ClientEntry{Key: e.Key, Value: e.Value, Source: e.Source}
+
+		if e.Key == keyTheme {
+			entry.Allowed = slices.Clone(clientThemes)
+		}
+
+		names := clientOverrideNames[e.Key]
+
+		switch e.Source {
+		case sourceFlag:
+			entry.SetBy = names.flag
+		case sourceEnv:
+			entry.SetBy = names.env
+		}
+
+		out[i] = entry
+	}
+
+	return out, nil
+}
+
+// Validate reports whether value is acceptable for key, with the error "config
+// set" would give.
+func (s ConfigStore) Validate(key string, value any) error {
+	def, err := lookupClientKey(key)
+	if err != nil {
+		return err
+	}
+
+	return validateClientValue(def, value)
+}
+
+// Set validates value and, only if it is acceptable, writes it to the config
+// file. An invalid value leaves the file untouched.
+func (s ConfigStore) Set(key string, value any) error {
+	def, err := lookupClientKey(key)
+	if err != nil {
+		return err
+	}
+
+	if err := validateClientValue(def, value); err != nil {
+		return err
+	}
+
+	_, err = writeClientKey(def, s.path, value)
+
+	return err
 }

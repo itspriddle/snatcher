@@ -3,10 +3,14 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/itspriddle/snatcher/internal/commands"
+	"github.com/itspriddle/snatcher/internal/tui"
 )
 
 // TestIsTerminalRejectsNonFiles checks the gate's negative case, which is the
@@ -72,6 +76,38 @@ func TestBareRootThroughBuffersPrintsUsage(t *testing.T) {
 	assert.Contains(t, out.String(), "Usage:")
 	assert.NotContains(t, out.String(), "not configured")
 	assert.NotContains(t, errOut.String(), "not configured")
+}
+
+// TestClientConfigAdapterCarriesEveryField checks the adapter between the two
+// entry types drops nothing: a field added to one and forgotten here would reach
+// the settings window as a zero value.
+func TestClientConfigAdapterCarriesEveryField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"servers": {}, "client": {"poll_interval": "30s"}}`), 0o600))
+
+	t.Setenv(envTheme, "nord")
+
+	cmd := NewRootCmd()
+	require.NoError(t, cmd.PersistentFlags().Set("config", path))
+
+	adapter := clientConfig{store: commands.ClientConfigStore(cmd)}
+
+	entries, err := adapter.Entries()
+	require.NoError(t, err)
+
+	byKey := map[string]tui.ClientEntry{}
+	for _, e := range entries {
+		byKey[e.Key] = e
+	}
+
+	assert.Equal(t, tui.ClientEntry{
+		Key: "client.theme", Value: "nord", Source: "env",
+		Allowed: []string{"default", "dracula", "nord"}, SetBy: envTheme,
+	}, byKey["client.theme"])
+	assert.Equal(t, tui.ClientEntry{Key: "client.poll_interval", Value: "30s", Source: "config"}, byKey["client.poll_interval"])
+
+	require.Error(t, adapter.Validate("client.theme", "neon"))
+	require.NoError(t, adapter.Set("client.poll_interval", "1m"))
 }
 
 // TestRootLongMentionsTheTUI checks the help text documents the bare

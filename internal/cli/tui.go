@@ -42,10 +42,45 @@ func launchTUI(cmd *cobra.Command) error {
 
 	return tui.Run(cmd.Context(), tui.Deps{
 		Dial:         commands.Dialer(cmd),
+		Config:       clientConfig{store: commands.ClientConfigStore(cmd)},
 		Theme:        settings.Theme,
 		NerdFont:     settings.NerdFont,
 		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,
 		Version:      version.FullVersion(),
 	})
+}
+
+// clientConfig adapts commands.ConfigStore to tui.ClientConfig. The two packages
+// each declare their own entry type because neither may import the other; this
+// is the one place they meet.
+type clientConfig struct {
+	store commands.ConfigStore
+}
+
+var _ tui.ClientConfig = clientConfig{}
+
+// Entries implements tui.ClientConfig.
+func (c clientConfig) Entries() ([]tui.ClientEntry, error) {
+	entries, err := c.store.Entries()
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]tui.ClientEntry, len(entries))
+	for i, e := range entries {
+		out[i] = tui.ClientEntry{Key: e.Key, Value: e.Value, Source: e.Source, Allowed: e.Allowed, SetBy: e.SetBy}
+	}
+
+	return out, nil
+}
+
+// Validate implements tui.ClientConfig.
+func (c clientConfig) Validate(key string, value any) error {
+	return c.store.Validate(key, value)
+}
+
+// Set implements tui.ClientConfig.
+func (c clientConfig) Set(key string, value any) error {
+	return c.store.Set(key, value)
 }

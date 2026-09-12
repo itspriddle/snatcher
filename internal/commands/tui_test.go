@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -115,6 +116,100 @@ func TestResolveClientSettingsReportsNoColor(t *testing.T) {
 			assert.True(t, settings.NoColor, "any non-empty value sets NO_COLOR")
 		})
 	}
+}
+
+// entryFor finds one key in a ClientConfigStore listing.
+func entryFor(t *testing.T, entries []ClientEntry, key string) ClientEntry {
+	t.Helper()
+
+	for _, e := range entries {
+		if e.Key == key {
+			return e
+		}
+	}
+
+	require.FailNowf(t, "missing entry", "no entry for %s", key)
+
+	return ClientEntry{}
+}
+
+// TestClientConfigStoreEntriesReportSources checks each rung is reported, with
+// the name of the flag or variable behind an override so the TUI can say why a
+// field is read-only.
+func TestClientConfigStoreEntriesReportSources(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord"}}`)
+	t.Setenv(envNoNerdFont, "1")
+
+	entries, err := ClientConfigStore(dialCmd(t, cfgPath)).Entries()
+	require.NoError(t, err)
+
+	theme := entryFor(t, entries, keyTheme)
+	assert.Equal(t, ClientEntry{Key: keyTheme, Value: "nord", Source: sourceConfig, Allowed: clientThemes}, theme)
+
+	nerd := entryFor(t, entries, keyNerdFont)
+	assert.Equal(t, ClientEntry{Key: keyNerdFont, Value: false, Source: sourceEnv, SetBy: envNoNerdFont}, nerd)
+
+	poll := entryFor(t, entries, keyPollInterval)
+	assert.Equal(t, ClientEntry{Key: keyPollInterval, Value: "5s", Source: sourceDefault}, poll)
+}
+
+// TestClientConfigStoreEntriesReportTheFlag checks the top rung names the flag.
+func TestClientConfigStoreEntriesReportTheFlag(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	cmd := dialCmd(t, cfgPath)
+	require.NoError(t, cmd.PersistentFlags().Set(flagTheme, "dracula"))
+
+	entries, err := ClientConfigStore(cmd).Entries()
+	require.NoError(t, err)
+
+	theme := entryFor(t, entries, keyTheme)
+	assert.Equal(t, sourceFlag, theme.Source)
+	assert.Equal(t, "--theme", theme.SetBy)
+	assert.Equal(t, "dracula", theme.Value)
+}
+
+// TestClientConfigStoreSetValidatesBeforeWriting checks a rejected value leaves
+// the file byte-for-byte as it was.
+func TestClientConfigStoreSetValidatesBeforeWriting(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord"}}`)
+
+	before, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+
+	store := ClientConfigStore(dialCmd(t, cfgPath))
+
+	require.Error(t, store.Validate(keyTheme, "neon"))
+	require.Error(t, store.Set(keyTheme, "neon"))
+	require.Error(t, store.Set(keyPollInterval, "2h"))
+	require.Error(t, store.Set("client.nope", "x"))
+
+	after, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, string(before), string(after))
+}
+
+// TestClientConfigStoreSetWritesToTheConfigPath checks a write lands in the file
+// named by --config, and that the next Entries reflects it.
+func TestClientConfigStoreSetWritesToTheConfigPath(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+
+	store := ClientConfigStore(dialCmd(t, cfgPath))
+
+	require.NoError(t, store.Set(keyPollInterval, "30s"))
+	require.NoError(t, store.Set(keyNerdFont, false))
+
+	cfg, _, err := loadConfig(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Client.PollInterval)
+	require.NotNil(t, cfg.Client.NerdFont)
+	assert.Equal(t, "30s", *cfg.Client.PollInterval)
+	assert.False(t, *cfg.Client.NerdFont)
+
+	entries, err := store.Entries()
+	require.NoError(t, err)
+	assert.Equal(t, sourceConfig, entryFor(t, entries, keyPollInterval).Source)
 }
 
 // TestDialerReportsUnconfigured checks that the dialer the TUI is handed fails

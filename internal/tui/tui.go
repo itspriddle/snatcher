@@ -56,6 +56,47 @@ type Deps struct {
 	// Torrents seeds the torrent list. A nil value means the mock set, which
 	// is what T1 runs on; T4 replaces it with a live poll.
 	Torrents []transmission.Torrent
+
+	// Config reads and writes snatcher's own client settings for the settings
+	// window. It is nil in tests and whenever the launcher did not wire one, in
+	// which case the General and Polling tabs are shown read-only.
+	Config ClientConfig
+}
+
+// ClientEntry is one client setting as the settings window sees it.
+type ClientEntry struct {
+	// Key is the dotted config key, e.g. "client.theme".
+	Key string
+
+	// Value is the effective value: a string or a bool for the keys the window
+	// edits.
+	Value any
+
+	// Source is the rung that supplied Value: "flag", "env", "config", or
+	// "default". A flag or env value is an override for this run and is shown
+	// read-only, since writing the file would not change what the user sees.
+	Source string
+
+	// Allowed lists the fixed choices for a key that has them (client.theme),
+	// and is nil otherwise.
+	Allowed []string
+
+	// SetBy names the flag or environment variable behind a flag or env Source.
+	SetBy string
+}
+
+// ClientConfig is the client-config store the launcher injects. The TUI never
+// reads the config file or validates a client value itself: both belong to the
+// command layer, which the TUI does not import.
+type ClientConfig interface {
+	// Entries resolves every client key for this invocation.
+	Entries() ([]ClientEntry, error)
+
+	// Validate reports whether value is acceptable for key.
+	Validate(key string, value any) error
+
+	// Set validates value and, only if it is acceptable, persists it.
+	Set(key string, value any) error
 }
 
 // Run dials, then starts the program and blocks until it exits.
