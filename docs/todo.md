@@ -202,8 +202,9 @@ value at any rung is an error naming that rung, and `config list` reports which
 rung each value came from. The three list keys are load-bearing: `torrent list`
 uses them whenever `--fields`, `--sort`, or `--reverse` is not passed, and an
 explicitly passed flag wins even when it equals the flag's own default.
-`theme`, `nerd_font`, and `poll_interval` are stored and validated but
-store-only - nothing renders them until the TUI does.
+`theme`, `nerd_font`, and `poll_interval` are the TUI's own; `theme` and
+`nerd_font` have been rendered by it since TUI T2, and `poll_interval` waits
+for T4's refresh spine.
 
 ---
 

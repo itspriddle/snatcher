@@ -21,14 +21,17 @@ Runtime dependencies — the entire set for v1 of the TUI:
 
 | Module | Version | Used for |
 |--------|---------|----------|
-| `charm.land/bubbletea/v2` | v2.0.9 | framework (Elm architecture, `View() tea.View`) |
-| `charm.land/lipgloss/v2` | v2.0.6 | styling + `Compositor` (overlays/modals/toasts) |
+| `charm.land/bubbletea/v2` | v2.0.8 | framework (Elm architecture, `View() tea.View`) |
+| `charm.land/lipgloss/v2` | v2.0.5 | styling + `Compositor` (overlays/modals/toasts) |
 | `charm.land/bubbles/v2` | v2.2.1 | table, viewport, help, key, spinner, progress, textinput |
 | `charm.land/huh/v2` | v2.0.3 | forms (settings, upload, labels) — **added in T3**, not needed by the shell |
 
-The first three landed in T1; `github.com/charmbracelet/x/ansi` is a direct
-dependency too, for the golden helper's `ansi.Strip`. No `replace` directives
-anywhere in the graph.
+The first three landed in T1. Two more are direct dependencies:
+`github.com/charmbracelet/x/ansi` for the golden helper's `ansi.Strip`, and
+`github.com/charmbracelet/colorprofile` (v0.4.3), added in T2 for
+`colorprofile.Profile` — the model stores the one bubbletea reports, and forces
+`colorprofile.Ascii` under `NO_COLOR`. No `replace` directives anywhere in the
+graph.
 
 Deferred (v2-ready, add when mouse lands):
 `github.com/lrstanley/bubblezone/v2@v2.0.0`.
@@ -54,7 +57,11 @@ Deferred (v2-ready, add when mouse lands):
   but still bubbletea v1.)
 - **Tabs** (detail tabs, settings tabs) — styled tab strip. No tabs component
   exists in bubbles v2; the core PR for one is still open.
-- **Themes** (`default|dracula|nord`) — small hex const map per theme.
+- **Themes** (`default|dracula|nord`) — one function per theme returning the
+  named color slots. `default` is the terminal's own ANSI-16 palette (text is
+  `lipgloss.NoColor{}`), identical light and dark; `dracula` and `nord` are
+  fixed truecolor palettes, each with a light arrangement (Alucard, and Nord's
+  bright guidance) picked by `lipgloss.LightDark`.
   (`catppuccin/go` is v2-agnostic if Catppuccin is ever added.)
 - **Nerd Font icons** — const glyph map keyed by torrent state, with the
   `--no-nerd-font` ASCII fallback.
@@ -140,6 +147,19 @@ the man page.
   subpackage if ever needed).
 - **Clipboard via OSC52** isn't universal across terminals; consider a fallback
   for copy actions.
+- **The color profile arrives as a message, like the background color.**
+  bubbletea detects it with `colorprofile.Detect` unless
+  `tea.WithColorProfile` forced one, then sends `tea.ColorProfileMsg`. A
+  truecolor palette is safe on a 16-color terminal: ultraviolet downsamples
+  ANSI/ANSI256 automatically. The two profiles that carry no color differ —
+  `Ascii` drops fg/bg/underline color but **keeps** bold, reverse, and
+  underline; `NoTTY` strips everything — so reverse video is a usable fallback
+  under `Ascii`, which is the profile `NO_COLOR` forces.
+- **colorprofile's own `NO_COLOR` check is `strconv.ParseBool`,** not
+  "non-empty". `NO_COLOR=yes` would not disable color there, while the CLI's
+  `isTTY` treats any non-empty value as set, per no-color.org. So the command
+  layer decides, with one helper, and hands the answer to the TUI as
+  `Deps.NoColor`; the TUI reads no environment of its own.
 - **Every component ships a default keymap that fights `vision.md`.** Read
   from the v2.1.0 / v2.0.3 sources:
   - `bubbles/v2/table`: `f`/`b`/`space` page, `u`/`d` half-page, `g`/`G`

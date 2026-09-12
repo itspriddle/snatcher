@@ -115,15 +115,63 @@ These were settled while building T1 and are not open in later milestones.
   silently drop two of the four contexts, leaving a help view that does not
   mention `q`.
 
-## T2. Theme + Nerd Font content
+## T2. Theme + Nerd Font content — **done**
 
 Fills in the substrate stood up in T1.
 
-- `default` / `dracula` / `nord` palettes, light/dark detection via
-  `lipgloss.LightDark(hasDark)`
-- Status→glyph icon map with the `--no-nerd-font` ASCII fallback
-- Wire flag > `snatcher config` > default (the precedence built in CLI M4)
-- `NO_COLOR` honored, matching the CLI's plaintext behavior
+- ~~`default` / `dracula` / `nord` palettes, light/dark detection via
+  `lipgloss.LightDark(hasDark)`~~
+- ~~Status→glyph icon map with the `--no-nerd-font` ASCII fallback~~
+- ~~Wire flag > `snatcher config` > default (the precedence built in CLI M4)~~ —
+  the chain was already built and wired in T1; what T2 added is that the three
+  names now render differently
+- ~~`NO_COLOR` honored, matching the CLI's plaintext behavior~~
+
+**Done when:** the three theme names render as three distinct palettes, each
+legible on a light and a dark terminal; the Nerd Font and ASCII glyph sets both
+draw one cell per status; and `NO_COLOR`, `TERM=dumb`, and a piped stdout all
+draw a frame whose focus and cursor are still readable. **Met.**
+
+### Decisions
+
+- **`default` is the terminal's own ANSI-16 palette,** identical for light and
+  dark: text is `lipgloss.NoColor{}` (the terminal's configured foreground) and
+  every other slot is one of the sixteen colors the terminal already resolves
+  for every other program. The terminal has already made both decisions, so a
+  light/dark pick for this theme would only second-guess it. `dracula` and
+  `nord` are the opt-in fixed truecolor looks.
+- **Every theme ships light and dark.** `dracula`'s light variant is Alucard,
+  Dracula's own official light palette; `nord`'s follows Nord's guidance for
+  bright interfaces (Polar Night for text, Snow Storm for surfaces). All three
+  go through one `lipgloss.LightDark` pick, so no theme can render invisible
+  text on a background it did not expect.
+- **Focus is encoded in the border shape, always** — rounded when unfocused,
+  thick when focused, double for the focused filter pane whose group actions hit
+  every torrent in a group. Color stays too, but shape is what survives
+  `NO_COLOR`, a 16-color terminal, and a colorblind user, and it is why the
+  ANSI-stripped goldens now record which pane has focus.
+- **Monochrome is a color-profile question, decided once in the model.** The
+  model keeps the `colorprofile.Profile` from `tea.ColorProfileMsg` exactly as
+  it keeps `isDark` from `tea.BackgroundColorMsg`, and `newStyles` takes a
+  `mono` flag: no `Foreground`/`Background` call at all, with reverse video for
+  the cursor row, the table's selected row, and the status bar. `NO_COLOR`,
+  `TERM=dumb`, a pipe, and a forced profile are all one branch.
+- **`NO_COLOR` is resolved at the command layer,** by the same non-empty
+  predicate `isTTY` uses, and forced into the program with
+  `tea.WithColorProfile(colorprofile.Ascii)`. colorprofile's own check is
+  `strconv.ParseBool`, so left to it `NO_COLOR=yes` would strip color from
+  `snatcher list` and not from the TUI. The TUI still reads no environment of
+  its own.
+- **Nerd Font glyphs are written as `\uXXXX` escapes,** never as literal
+  private-use characters. T1 shipped the map as eight empty strings — the
+  glyphs were lost between editor and commit, and the golden faithfully pinned a
+  zero-width column — and the same thing happened once more while planning T2.
+  The invariants (one rune, in U+E000–U+F8FF, one cell wide) are asserted on the
+  glyphs rather than on a frame, because a golden cannot tell a private-use
+  glyph from a missing one.
+- **The `Mark` color slot is removed.** `bubbles/v2/table` cannot style one
+  cell, so a marked row is a glyph, not a color. T5 adds a slot back if it finds
+  a use.
 
 ## T3. Settings window
 

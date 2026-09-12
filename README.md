@@ -13,8 +13,9 @@ keyring.
 > **Status:** alpha. The CLI is functional and stable. The TUI described in
 > [`docs/vision.md`](docs/vision.md) is under construction: running `snatcher`
 > with no arguments on a terminal starts it today, but it is a shell — it lays
-> out the torrents and settings windows, routes focus between panes, and shows
-> placeholder rows. Live server data arrives in a later release.
+> out the torrents and settings windows, routes focus between panes, draws
+> itself in the theme and icon set you configured, and shows placeholder rows.
+> Live server data arrives in a later release.
 
 ## The TUI
 
@@ -29,7 +30,15 @@ snatcher | cat
 Inside it, `?` lists every key the focused pane responds to, `tab` and
 `ctrl-w hjkl` move between panes, `{` and `}` toggle the filter sidebar and
 the detail pane, `,` opens settings, and `esc` unwinds one step at a time
-without ever quitting — `q` or `ctrl-c` does that.
+without ever quitting — `q` or `ctrl-c` does that. The focused pane is drawn
+with a thicker border, so focus is never color alone.
+
+`--theme default|dracula|nord` picks the palette (`default` is your terminal's
+own sixteen colors; the other two ship a light and a dark arrangement, chosen
+from the terminal's background) and `--no-nerd-font` swaps the Nerd Font status
+glyphs for ASCII. Both have `SNATCHER_`-prefixed environment companions and
+`snatcher config` keys. `NO_COLOR` draws the whole UI without color, with focus
+shown by border shape and the cursor row in reverse video.
 
 ## Highlights
 
