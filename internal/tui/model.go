@@ -208,7 +208,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 		return m.applyTheme(m.isDark), nil
 	case tea.KeyPressMsg:
-		return m.handleKey(msg)
+		// Every key that moves the cursor or opens the pane funnels through one
+		// debounce, rather than each handler remembering to fetch.
+		m, cmd := m.handleKey(msg)
+
+		return m.ensureDetail(cmd)
 	case settingsLoadedMsg:
 		return m.settingsLoaded(msg)
 	case settingsSavedMsg:
@@ -229,6 +233,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.added(msg)
 	case magnetMsg:
 		return m.magnetFetched(msg)
+	case detailMsg:
+		return m.detailFetched(msg)
+	case detailTickMsg:
+		return m.detailTick(msg)
 	}
 
 	return m.forwardToInput(msg)

@@ -107,6 +107,13 @@ type liveData struct {
 	// the server reported it.
 	free    transmission.FreeSpace
 	hasFree bool
+
+	// detailWant is the torrent the detail pane last asked for, detailSeq
+	// retires superseded debounce timers, and detailInFlight is the torrent a
+	// detail fetch is running for, 0 for none. Transmission IDs start at 1.
+	detailWant     int64
+	detailSeq      int
+	detailInFlight int64
 }
 
 // polling reports whether the spine should run: there is a server, and the rows
@@ -220,6 +227,15 @@ func (m Model) startPoll() (Model, tea.Cmd) {
 		cmds = append(cmds, pollSession(m.ctx, m.client, m.live.gen))
 	}
 
+	// The detail rides along while the pane is open, so it refreshes at the
+	// poll's cadence, under its single-flight, and on R, for free.
+	if id, ok := m.wantedDetailID(); ok && m.live.detailInFlight == 0 {
+		var detail tea.Cmd
+
+		m, detail = m.startDetailFetch(id)
+		cmds = append(cmds, detail)
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -247,7 +263,10 @@ func (m Model) polled(msg pollMsg) (Model, tea.Cmd) {
 	m.live.up = m.live.up.push(msg.stats.UploadSpeed)
 	m = m.refreshTorrents(msg.torrents)
 
-	return m.afterPoll()
+	// A poll can take the cursor's torrent away, which moves the detail's want.
+	m, next := m.afterPoll()
+
+	return m.ensureDetail(next)
 }
 
 // afterPoll is what a poll's reply schedules: the queued refetch, when one was
@@ -353,6 +372,7 @@ func (m Model) switchServer(name string) (Model, tea.Cmd) {
 	m.live.switching = true
 	m.live.inFlight = false
 	m.live.pollAgain = false
+	m.live.detailInFlight = 0
 	m.toast = "connecting to " + name + "…"
 
 	return m, dialServer(m.deps.Dial, name, m.live.gen)

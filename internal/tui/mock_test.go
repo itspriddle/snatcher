@@ -102,3 +102,41 @@ func mockTorrents() []transmission.Torrent {
 		},
 	}
 }
+
+// mockDetail is the detail of mockTorrents()[0], the static set's cursor row. Like
+// the rows, it is awkward on purpose: one file, one peer client, one peer flag
+// string, and one tracker result carry escape sequences, the second tracker has
+// scraped nothing (-1 counts), and the pieces bitfield has a known pattern.
+func mockDetail() transmission.TorrentDetail {
+	return transmission.TorrentDetail{
+		Torrent: mockTorrents()[0],
+		Files: []transmission.File{
+			{Name: "ubuntu/ubuntu-24.04.1-desktop-amd64.iso", Length: 6203355136, BytesCompleted: 2605409157, Wanted: true, Priority: 1},
+			{Name: "ubuntu/SHA256SUMS", Length: 1024, BytesCompleted: 1024, Wanted: true},
+			{Name: "ubuntu/hostile\x1b[31mfile\x1b[0m.txt", Length: 0, Wanted: false, Priority: -1},
+		},
+		Peers: []transmission.Peer{
+			{Address: "203.0.113.7", Port: 51413, Client: "Transmission 4.0.6", Progress: 1, RateToClient: 1048576, IsEncrypted: true, FlagStr: "TDEI"},
+			{Address: "198.51.100.23", Port: 6881, Client: "evil\x1b]0;pwned\x07client", Progress: 0.25, RateToPeer: 65536, FlagStr: "u\x1b[2JX"},
+		},
+		Trackers: []transmission.Tracker{
+			{Announce: "https://tracker.example.org/announce", Host: "https://tracker.example.org:443", Tier: 0, AnnounceState: 1, SeederCount: 120, LeecherCount: 8, DownloadCount: 3021, LastAnnounceResult: "Success"},
+			{Announce: "udp://backup.example.net:6969/announce", Host: "udp://backup.example.net:6969", Tier: 1, SeederCount: -1, LeecherCount: -1, DownloadCount: -1, LastAnnounceResult: "Could not connect\x1b[31m"},
+		},
+		Pieces:             []bool{true, true, true, false, true, false, false, false, true, true},
+		DownloadedEver:     2605409157,
+		UploadedEver:       312655872,
+		CorruptEver:        16384,
+		HaveValid:          2605409157,
+		PieceCount:         10,
+		PieceSize:          4194304,
+		Comment:            "Ubuntu CD releases.ubuntu.com",
+		Creator:            "mktorrent 1.1",
+		IsPrivate:          true,
+		SecondsDownloading: 5025,
+		SecondsSeeding:     0,
+		RecheckProgress:    0,
+
+		MetadataPercentComplete: 1,
+	}
+}

@@ -101,6 +101,10 @@ type rpcStub struct {
 	responses map[string]string
 	fail      map[string]bool
 
+	// when are the answers that depend on a request's arguments, checked before
+	// responses: the poll and a detail fetch are both torrent-get.
+	when []conditionalResponse
+
 	// status, when non-zero, is returned for every request instead of an
 	// answer.
 	status atomic.Int32
@@ -132,6 +136,62 @@ func (s *rpcStub) respond(method, body string) {
 	defer s.mu.Unlock()
 
 	s.responses[method] = body
+}
+
+// conditionalResponse answers a method only when its arguments match.
+type conditionalResponse struct {
+	method string
+	match  func(args map[string]any) bool
+	body   string
+}
+
+// respondWhen answers a method with body whenever match accepts the request's
+// arguments, ahead of the method's plain answer.
+func (s *rpcStub) respondWhen(method string, match func(args map[string]any) bool, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.when = append(s.when, conditionalResponse{method: method, match: match, body: body})
+}
+
+// isDetailRequest reports whether torrent-get arguments ask for a torrent's
+// detail rather than the list: only a detail read names files.
+func isDetailRequest(args map[string]any) bool {
+	fields, _ := args["fields"].([]any)
+
+	for _, f := range fields {
+		if f == "files" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// detailCalls is how many detail reads the stub has received.
+func (s *rpcStub) detailCalls(t *testing.T) int {
+	t.Helper()
+
+	n := 0
+
+	for _, args := range s.args(t, "torrent-get") {
+		if isDetailRequest(args) {
+			n++
+		}
+	}
+
+	return n
+}
+
+// argsOf decodes a request body's arguments.
+func argsOf(body string) map[string]any {
+	var envelope struct {
+		Arguments map[string]any `json:"arguments"`
+	}
+
+	_ = json.Unmarshal([]byte(body), &envelope)
+
+	return envelope.Arguments
 }
 
 // failMethod makes a method answer with an RPC error.
@@ -219,6 +279,12 @@ func (s *rpcStub) serve(w http.ResponseWriter, r *http.Request) {
 	s.bodies = append(s.bodies, string(body))
 	resp, ok := s.responses[method]
 	failing := s.fail[method]
+
+	for _, c := range s.when {
+		if c.method == method && c.match(argsOf(string(body))) {
+			resp, ok = c.body, true
+		}
+	}
 	s.mu.Unlock()
 
 	switch {
@@ -263,3 +329,38 @@ func (s *rpcStub) settingSetArgs(t *testing.T) map[string]any {
 
 	return merged
 }
+
+// detailResponse is a torrent-get detail reply on the bespoke scheme for torrent
+// 2, the polled model's cursor row: two files, one peer, one tracker, a 16-piece
+// bitfield with every piece complete, and the overview's scalars.
+const detailResponse = `{"arguments": {"torrents": [{
+	"id": 2, "hashString": "bbb222", "name": "debian.iso", "status": 6,
+	"percentDone": 1.0, "totalSize": 1073741824, "sizeWhenDone": 1073741824,
+	"leftUntilDone": 0, "rateUpload": 131072, "uploadRatio": 2.5, "eta": -1,
+	"queuePosition": 0, "labels": [],
+	"files": [
+		{"name": "debian/debian.iso", "length": 1073741824, "bytesCompleted": 1073741824},
+		{"name": "debian/SHA256SUMS", "length": 1024, "bytesCompleted": 1024}
+	],
+	"fileStats": [
+		{"bytesCompleted": 1073741824, "wanted": true, "priority": 0},
+		{"bytesCompleted": 1024, "wanted": true, "priority": 0}
+	],
+	"wanted": [1, 1],
+	"priorities": [0, 0],
+	"peers": [
+		{"address": "203.0.113.7", "port": 51413, "clientName": "Transmission 4.0.6", "progress": 1,
+		 "rateToClient": 0, "rateToPeer": 131072, "flagStr": "UEI", "isEncrypted": true}
+	],
+	"trackerStats": [
+		{"announce": "https://tracker.debian.org/announce", "host": "https://tracker.debian.org:443",
+		 "sitename": "debian", "tier": 0, "announceState": 1, "seederCount": 40, "leecherCount": 2,
+		 "downloadCount": 900, "lastAnnounceResult": "Success", "nextAnnounceTime": 0}
+	],
+	"pieces": "//8=", "pieceCount": 16, "pieceSize": 67108864,
+	"magnetLink": "magnet:?xt=urn:btih:bbb222&dn=debian.iso",
+	"downloadedEver": 1073741824, "uploadedEver": 2684354560, "corruptEver": 0,
+	"haveValid": 1073741824, "comment": "Debian CD", "creator": "mktorrent",
+	"dateCreated": 0, "isPrivate": false, "secondsDownloading": 600,
+	"secondsSeeding": 86400, "recheckProgress": 0, "metadataPercentComplete": 1
+}]}, "result": "success", "tag": 1}`

@@ -24,17 +24,17 @@
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Overview  Files  Trackers  Peers  Pieces                                                                             ┃
 ┃──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┃
-┃Name       ubuntu-24.04.1-desktop-amd64.iso                                                                           ┃
-┃Hash       0123456789abcdef0123456789abcdef01234567                                                                   ┃
-┃Status     Downloading                                                                                                ┃
-┃Done       42% of 5.8 GiB                                                                                             ┃
-┃Rate       4.0 MiB/s down / 128.0 KiB/s up                                                                            ┃
-┃Ratio      0.12                                                                                                       ┃
-┃ETA        14m 18s                                                                                                    ┃
-┃Peers      24 connected                                                                                               ┃
-┃Location   /data/downloads                                                                                            ┃
-┃Labels     linux                                                                                                      ┃
-┃                                                                                                                      ┃
+┃ID:                1                                                                                                  ┃
+┃Hash:              0123456789abcdef0123456789abcdef01234567                                                           ┃
+┃Name:              ubuntu-24.04.1-desktop-amd64.iso                                                                   ┃
+┃Status:            Downloading                                                                                        ┃
+┃Done:              42%                                                                                                ┃
+┃Size:              5.8 GiB                                                                                            ┃
+┃Down:              4.0 MiB/s                                                                                          ┃
+┃Up:                128.0 KiB/s                                                                                        ┃
+┃Ratio:             0.12                                                                                               ┃
+┃ETA:               14m 18s                                                                                            ┃
+┃Peers:             24                                                                                                 ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 [/h previous tab • ]/l next tab • ? help • q quit                                                                       
 snatcher v1.2.3 │ no server                                                                                             
