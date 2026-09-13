@@ -63,6 +63,7 @@ func init() {
 	register(mutationHandlers())
 	register(promptHandlers())
 	register(addHandlers())
+	register(menuHandlers())
 	register(notYetHandlers())
 }
 

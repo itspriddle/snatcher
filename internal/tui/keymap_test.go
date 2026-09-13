@@ -275,6 +275,15 @@ func TestFormStackIsModal(t *testing.T) {
 	}
 }
 
+// TestMenuStackIsModal pins the action menu's keys and its swallow-everything
+// rule: no torrent verb reaches the list while the menu is open.
+func TestMenuStackIsModal(t *testing.T) {
+	assertModalStack(t, menuOverlay{}, map[string]Action{
+		"up": actionMenuUp, "k": actionMenuUp, "down": actionMenuDown, "j": actionMenuDown,
+		"enter": actionMenuSelect, "m": actionMenuOpen,
+	})
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.

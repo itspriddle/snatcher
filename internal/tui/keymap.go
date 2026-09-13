@@ -75,6 +75,10 @@ const (
 	// rows is being edited.
 	ctxForm
 
+	// ctxMenu is the whole stack while the m action menu, or one of its
+	// submenus, is open.
+	ctxMenu
+
 	// ctxChordYank is the second key of the y chord.
 	ctxChordYank
 
@@ -115,6 +119,8 @@ func (c Context) String() string {
 		return "filter picker"
 	case ctxForm:
 		return "form"
+	case ctxMenu:
+		return "action menu"
 	case ctxChordYank:
 		return "yank"
 	case ctxChordWindow:
@@ -236,6 +242,10 @@ const (
 	actionFormEnter  Action = "form.enter"
 	actionFormToggle Action = "form.toggle"
 
+	actionMenuUp     Action = "menu.up"
+	actionMenuDown   Action = "menu.down"
+	actionMenuSelect Action = "menu.select"
+
 	actionHelpScrollUp   Action = "help.scroll-up"
 	actionHelpScrollDown Action = "help.scroll-down"
 	actionHelpPageUp     Action = "help.page-up"
@@ -252,14 +262,20 @@ const (
 	actionFocusRight Action = "focus.right"
 )
 
-// actionTorrentRename is the one action T5 leaves without a key: rename is
-// single-torrent and rare enough to live in the action menu, and T7's palette.
-const actionTorrentRename Action = "torrent.rename"
+// The actions T5 leaves without a key: rename, which is single-torrent and rare,
+// and force start and the queue's two ends, the long tail of s, J, and K. They
+// live in the action menu now, and T7's palette later.
+const (
+	actionTorrentRename     Action = "torrent.rename"
+	actionTorrentForceStart Action = "torrent.force-start"
+	actionQueueTop          Action = "torrent.queue-top"
+	actionQueueBottom       Action = "torrent.queue-bottom"
+)
 
 // menuOnlyActions are the actions no key is bound to, reachable by name from the
 // action menu now and the command palette later. The handler-coverage test
 // accepts an unbound handler only when it is listed here.
-var menuOnlyActions = []Action{actionTorrentRename}
+var menuOnlyActions = []Action{actionTorrentRename, actionTorrentForceStart, actionQueueTop, actionQueueBottom}
 
 // Binding is one row of the registry: a key, the context it is live in, and the
 // action it runs. Nothing else in the TUI declares a keybinding — components are
@@ -428,6 +444,14 @@ var registry = []Binding{
 	bind(ctxForm, actionFormToggle, "space", "toggle", "space"),
 	bind(ctxForm, actionEscape, "esc", "cancel", "esc"),
 
+	// Action menu — m closes it as it opened it, and esc goes back one level.
+	// Each leaf runs the same handler as its key.
+	bind(ctxMenu, actionMenuUp, "↑/k", "up", "up", "k"),
+	bind(ctxMenu, actionMenuDown, "↓/j", "down", "down", "j"),
+	bind(ctxMenu, actionMenuSelect, "enter", "select", "enter"),
+	bind(ctxMenu, actionMenuOpen, "m", "close", "m"),
+	bind(ctxMenu, actionEscape, "esc", "back", "esc"),
+
 	// Help overlay.
 	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
 	bind(ctxHelp, actionHelpScrollDown, "↓/j", "scroll down", "down", "j"),
@@ -585,6 +609,7 @@ var modalStacks = [][]Context{
 	{ctxColumns},
 	{ctxFilterPick},
 	{ctxForm},
+	{ctxMenu},
 	{ctxChordYank},
 	{ctxChordWindow},
 	{ctxTextInput},

@@ -312,8 +312,8 @@ func (m Model) groupAction(kind mutationKind) (Model, tea.Cmd) {
 	return m.confirmed(mutation{kind: kind, sel: sel}, item.label)
 }
 
-// mutationHandlers are the torrent verbs in the list pane and the group actions
-// in the filter pane.
+// mutationHandlers are the torrent verbs in the list pane and the action menu,
+// and the group actions in the filter pane.
 func mutationHandlers() map[Action]handler {
 	verb := func(kind mutationKind) handler {
 		return func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.verb(kind) }
@@ -324,13 +324,16 @@ func mutationHandlers() map[Action]handler {
 	}
 
 	return map[Action]handler{
-		actionTorrentStart:  verb(mutateStart),
-		actionTorrentStop:   verb(mutateStop),
-		actionTorrentVerify: verb(mutateVerify),
-		actionTorrentReann:  verb(mutateReannounce),
-		actionQueueDown:     verb(mutateQueueDown),
-		actionQueueUp:       verb(mutateQueueUp),
-		actionTorrentRemove: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.removeSelection() },
+		actionTorrentStart:      verb(mutateStart),
+		actionTorrentStop:       verb(mutateStop),
+		actionTorrentVerify:     verb(mutateVerify),
+		actionTorrentReann:      verb(mutateReannounce),
+		actionQueueDown:         verb(mutateQueueDown),
+		actionQueueUp:           verb(mutateQueueUp),
+		actionQueueTop:          verb(mutateQueueTop),
+		actionQueueBottom:       verb(mutateQueueBottom),
+		actionTorrentForceStart: verb(mutateForceStart),
+		actionTorrentRemove:     func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.removeSelection() },
 
 		actionGroupStart:  group(mutateStart),
 		actionGroupStop:   group(mutateStop),

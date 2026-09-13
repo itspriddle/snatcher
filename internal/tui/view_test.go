@@ -66,6 +66,8 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"prompt", press(live, "L")},
 		{"add form", press(live, "A")},
 		{"add form editing", press(live, "A", "tab", "enter")},
+		{"menu", press(live, "m")},
+		{"menu queue", openQueueMenu(live)},
 		{"loading", liveModel(t, srv, w, h)},
 		{"error", pollOnce(t, liveModel(t, failingSrv, w, h))},
 		{"default", base},
