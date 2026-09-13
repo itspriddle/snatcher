@@ -131,9 +131,20 @@ func (w torrentsWindow) reset(icons Icons) torrentsWindow {
 	return w
 }
 
+// footer is the list pane's footer line: the filter in force, or empty when
+// there is nothing to say. Whoever changes whether there is a footer resizes, so
+// the table gives up or takes back the row.
+func (w torrentsWindow) footer() string {
+	if w.listView.filter.set() {
+		return "filter: " + w.listView.filter.text()
+	}
+
+	return ""
+}
+
 // resize lays the panes out for a frame.
 func (w torrentsWindow) resize(l layout) torrentsWindow {
-	w.list = w.list.resize(l.list)
+	w.list = w.list.resize(l.list, w.footer() != "")
 
 	if w.detailOpen {
 		w.detail = w.detail.resize(l.detail)
@@ -209,7 +220,7 @@ func (w torrentsWindow) neighborFromList(dir Action) Pane {
 // view renders the window: the sidebar and table side by side, with the detail
 // pane, when open, beneath both. placeholder stands in for an empty table.
 func (w torrentsWindow) view(st Styles, l layout, ph placeholder) string {
-	top := w.list.view(st, l.list, w.focus == paneList, ph)
+	top := w.list.view(st, l.list, w.focus == paneList, ph, w.footer())
 
 	if w.filterOpen {
 		top = lipgloss.JoinHorizontal(

@@ -1,0 +1,40 @@
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
+│  All               12│┃  ^    2 debian-12.7.0-amd… Seeding     100% 631.0 MiB       0 B/s 512.0 KiB/s   3.41       - ┃
+│  Downloading        4│┃  ~    7 freebsd-14.1-rele… Queued to … 100%   4.2 GiB       0 B/s       0 B/s   0.88       - ┃
+│> Seeding            3│┃  ^   10 gentoo-admincd-am… Seeding     100% 560.0 MiB       0 B/s  64.0 KiB/s   1.04       - ┃
+│  Active             7│┃                                                                                              ┃
+│  Stopped            2│┃                                                                                              ┃
+│  Verifying          1│┃                                                                                              ┃
+│  Queued to download 1│┃                                                                                              ┃
+│  Queued to seed     1│┃                                                                                              ┃
+│  Queued to verify   1│┃                                                                                              ┃
+│  Error              1│┃                                                                                              ┃
+│Labels                │┃                                                                                              ┃
+│  linux              3│┃                                                                                              ┃
+│  seed               3│┃                                                                                              ┃
+│  No label           7│┃                                                                                              ┃
+│Trackers              │┃                                                                                              ┃
+│  (none yet)          │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃filter: Seeding                                                                               ┃
+╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+space mark • enter open detail • y yank… • s start • p pause • v verify • r reannounce • d delete • J queue down …      
+snatcher v1.2.3 │ no server                                                                              filter: Seeding

@@ -253,6 +253,15 @@ func TestColumnsStackIsModal(t *testing.T) {
 	})
 }
 
+// TestFilterPickStackIsModal pins the filter modal's keys and its
+// swallow-everything rule.
+func TestFilterPickStackIsModal(t *testing.T) {
+	assertModalStack(t, filterPickOverlay{}, map[string]Action{
+		"up": actionFilterPickUp, "k": actionFilterPickUp, "down": actionFilterPickDown, "j": actionFilterPickDown,
+		"enter": actionFilterPickSelect, "f": actionTorrentFilter,
+	})
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.

@@ -154,7 +154,7 @@ func (m Model) persistPref(key string, value any) Model {
 	return m
 }
 
-// listHandlers are the list-view modals: o sort and c columns.
+// listHandlers are the list-view modals: o sort, c columns, and f filter.
 func listHandlers() map[Action]handler {
 	return map[Action]handler{
 		actionTorrentSort: plain(Model.toggleSort),
@@ -170,6 +170,11 @@ func listHandlers() map[Action]handler {
 		actionColumnsMoveUp:   stepTop(func(o columnsOverlay) columnsOverlay { return o.swap(-1) }),
 		actionColumnsMoveDown: stepTop(func(o columnsOverlay) columnsOverlay { return o.swap(1) }),
 		actionColumnsApply:    plain(Model.applyColumns),
+
+		actionTorrentFilter:    plain(Model.toggleFilterPick),
+		actionFilterPickUp:     stepTop(func(o filterPickOverlay) filterPickOverlay { return o.move(-1) }),
+		actionFilterPickDown:   stepTop(func(o filterPickOverlay) filterPickOverlay { return o.move(1) }),
+		actionFilterPickSelect: plain(Model.applyFilterPick),
 	}
 }
 

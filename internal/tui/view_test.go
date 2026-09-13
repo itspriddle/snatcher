@@ -79,6 +79,9 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"sort", press(base, "o")},
 		{"columns", press(base, "c")},
 		{"columns bottom", press(base, "c", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j")},
+		{"filter", press(base, "f")},
+		{"filtered", seedingFiltered(t, base)},
+		{"filtered detail", seedingFiltered(t, press(base, "}"))},
 		{"toast", press(base, "s")},
 		{"chord", press(base, "y")},
 	}

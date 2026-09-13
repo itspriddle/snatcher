@@ -350,7 +350,9 @@ func (m Model) dialed(msg dialedMsg) (Model, tea.Cmd) {
 	m.live = liveData{gen: msg.gen}
 	m.torrents = m.torrents.reset(m.icons)
 	m.settings = newSettingsWindow(m.styles, m.deps)
-	m = m.syncSettings()
+
+	// The reset cleared the filter, so the list pane may have lost its footer.
+	m = m.resize(m.width, m.height)
 
 	var settingsCmd tea.Cmd
 	if m.window == windowSettings {

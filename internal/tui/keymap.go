@@ -68,6 +68,9 @@ const (
 	// ctxColumns is the whole stack while the c columns modal is open.
 	ctxColumns
 
+	// ctxFilterPick is the whole stack while the f filter modal is open.
+	ctxFilterPick
+
 	// ctxChordYank is the second key of the y chord.
 	ctxChordYank
 
@@ -104,6 +107,8 @@ func (c Context) String() string {
 		return "sort"
 	case ctxColumns:
 		return "columns"
+	case ctxFilterPick:
+		return "filter picker"
 	case ctxChordYank:
 		return "yank"
 	case ctxChordWindow:
@@ -215,6 +220,10 @@ const (
 	actionColumnsMoveUp   Action = "columns.move-up"
 	actionColumnsMoveDown Action = "columns.move-down"
 	actionColumnsApply    Action = "columns.apply"
+
+	actionFilterPickUp     Action = "filter.pick-up"
+	actionFilterPickDown   Action = "filter.pick-down"
+	actionFilterPickSelect Action = "filter.pick-select"
 
 	actionHelpScrollUp   Action = "help.scroll-up"
 	actionHelpScrollDown Action = "help.scroll-down"
@@ -373,14 +382,23 @@ var registry = []Binding{
 	bind(ctxSort, actionEscape, "esc", "cancel", "esc"),
 
 	// Columns modal — J/K reorder, because client.list_columns is ordered.
-	bind(ctxColumns, actionColumnsUp, "↑/k", "up", "up", "k"),
-	bind(ctxColumns, actionColumnsDown, "↓/j", "down", "down", "j"),
+	// Its help line is the longest of the modals, so the keys that change
+	// something lead it and the navigation keys everyone guesses come last.
 	bind(ctxColumns, actionColumnsToggle, "space", "show/hide", "space"),
+	bind(ctxColumns, actionColumnsApply, "enter", "apply", "enter"),
 	bind(ctxColumns, actionColumnsMoveUp, "K", "move up", "K"),
 	bind(ctxColumns, actionColumnsMoveDown, "J", "move down", "J"),
-	bind(ctxColumns, actionColumnsApply, "enter", "apply", "enter"),
+	bind(ctxColumns, actionColumnsUp, "↑/k", "up", "up", "k"),
+	bind(ctxColumns, actionColumnsDown, "↓/j", "down", "down", "j"),
 	bind(ctxColumns, actionTorrentColumns, "c", "close", "c"),
 	bind(ctxColumns, actionEscape, "esc", "cancel", "esc"),
+
+	// Filter modal — the sidebar's rows, for when the sidebar is closed.
+	bind(ctxFilterPick, actionFilterPickUp, "↑/k", "up", "up", "k"),
+	bind(ctxFilterPick, actionFilterPickDown, "↓/j", "down", "down", "j"),
+	bind(ctxFilterPick, actionFilterPickSelect, "enter", "apply", "enter"),
+	bind(ctxFilterPick, actionTorrentFilter, "f", "close", "f"),
+	bind(ctxFilterPick, actionEscape, "esc", "cancel", "esc"),
 
 	// Help overlay.
 	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
@@ -537,6 +555,7 @@ var modalStacks = [][]Context{
 	{ctxPicker},
 	{ctxSort},
 	{ctxColumns},
+	{ctxFilterPick},
 	{ctxChordYank},
 	{ctxChordWindow},
 	{ctxTextInput},

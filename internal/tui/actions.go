@@ -117,7 +117,7 @@ func torrentsHandlers() map[Action]handler {
 		actionToggleFilter: plain(Model.toggleFilterPane),
 		actionToggleMark:   plain(Model.toggleMark),
 		actionDetailOpen:   plain(Model.openDetail),
-		actionFilterApply:  plain(Model.applyFilter),
+		actionFilterApply:  plain(func(m Model) Model { return m.applyFilterItem(m.torrents.filter.current()) }),
 		actionYankChord:    plain(func(m Model) Model { m.chord = chordYank; return m }),
 	}
 }
@@ -400,17 +400,29 @@ func (m Model) toggleMark() Model {
 	return m.syncTorrents()
 }
 
-// applyFilter applies the sidebar's cursor row.
+// applyFilterItem applies a sidebar row as the list's filter: the sidebar's
+// enter and the f modal's enter both land here.
 //
 // It clears marks, per vision.md's selection rule: a mark hidden by a filter
 // would be acted on invisibly, and with exactly one hidden mark an action would
-// skip the cursor row with nothing to say so.
-func (m Model) applyFilter() Model {
-	filter, item := m.torrents.filter.apply()
+// skip the cursor row with nothing to say so. It resizes because the filter
+// decides whether the list pane has a footer.
+func (m Model) applyFilterItem(item filterItem) Model {
+	if !item.selectable() {
+		return m
+	}
 
-	m.torrents.filter = filter
+	v := m.torrents.listView
+	v.filter = item.view()
+
 	m.torrents.sel = m.torrents.sel.clearMarks()
-	m.toast = "filter: " + item.label
+	m.torrents = m.torrents.setView(v, m.icons)
+	m.torrents.filter = m.torrents.filter.applyItem(item)
 
-	return m.syncTorrents()
+	m.toast = "filter cleared"
+	if v.filter.set() {
+		m.toast = "filter: " + v.filter.text()
+	}
+
+	return m.resize(m.width, m.height)
 }

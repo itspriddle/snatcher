@@ -26,7 +26,7 @@
 │                      │┃   │   [ ] error         Error                                    │                           ┃
 │                      │┃   │   [ ] labels        Labels                                   │                           ┃
 │                      │┃   │                                                              │                           ┃
-│                      │┃   │ ↑/k up • ↓/j down • space show/hide • K move up • J move do… │                           ┃
+│                      │┃   │ space show/hide • enter apply • K move up • J move down • ↑… │                           ┃
 │                      │┃   ╰──────────────────────────────────────────────────────────────╯                           ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
@@ -36,5 +36,5 @@
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 ╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-↑/k up • ↓/j down • space show/hide • K move up • J move down • enter apply • c close • esc cancel                      
+space show/hide • enter apply • K move up • J move down • ↑/k up • ↓/j down • c close • esc cancel                      
 snatcher v1.2.3 │ no server                                                                                             

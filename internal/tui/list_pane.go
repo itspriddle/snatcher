@@ -99,16 +99,22 @@ func (p listPane) setRows(rows []transmission.Torrent, sel selection, icons Icon
 }
 
 // resize fits the table to r, giving the name column whatever width the fixed
-// columns do not claim.
-func (p listPane) resize(r rect) listPane {
+// columns do not claim. footer reserves the pane's last row for the footer line.
+func (p listPane) resize(r rect, footer bool) listPane {
 	inner := r.inner()
 
 	p.width = inner.w
 	p.table.SetColumns(fitColumns(p.cols, inner.w))
 	p.table.SetWidth(inner.w)
 
-	// One row of the pane goes to the table's own header.
-	p.table.SetHeight(inner.h - 1)
+	// One row of the pane goes to the table's own header, and one to the
+	// footer while there is one.
+	height := inner.h - 1
+	if footer {
+		height--
+	}
+
+	p.table.SetHeight(max(1, height))
 
 	return p
 }
@@ -152,7 +158,11 @@ type placeholder struct {
 // listPlaceholder is what the torrent table says while it has no rows.
 func (m Model) listPlaceholder() placeholder {
 	switch {
-	case len(m.torrents.rows) > 0 || m.deps.Torrents != nil:
+	case len(m.torrents.rows) > 0:
+		return placeholder{}
+	case len(m.torrents.all) > 0:
+		return placeholder{lines: []string{"no torrents match", "filter: " + m.torrents.listView.filter.text()}}
+	case m.deps.Torrents != nil:
 		return placeholder{}
 	case m.client == nil:
 		return placeholder{lines: []string{noServerLabel}}
@@ -166,12 +176,17 @@ func (m Model) listPlaceholder() placeholder {
 }
 
 // view renders the table into r, with the placeholder under its header when the
-// table has no rows.
-func (p listPane) view(st Styles, r rect, focused bool, ph placeholder) string {
+// table has no rows, and the footer on the pane's last row when there is one.
+func (p listPane) view(st Styles, r rect, focused bool, ph placeholder, footer string) string {
+	inner := r.inner()
 	lines := strings.Split(p.table.View(), "\n")
 
 	if len(ph.lines) > 0 && len(p.table.Rows()) == 0 {
-		lines = placeholderLines(st, lines[0], ph, r.inner())
+		lines = placeholderLines(st, lines[0], ph, inner)
+	}
+
+	if footer != "" {
+		lines = append(clipLines(lines, inner.h-1), st.Muted.Render(truncate(footer, inner.w)))
 	}
 
 	return paneBox(st, paneList, focused).

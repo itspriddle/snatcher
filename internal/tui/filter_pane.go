@@ -27,7 +27,8 @@ type filterPane struct {
 	cursor int
 
 	// applied is the index of the item whose filter is in force, or -1 for
-	// none. T1 records and marks it; T5 makes it filter the table.
+	// none. It is marked in the sidebar; the filter itself lives on the
+	// window's listView.
 	applied int
 }
 
@@ -57,9 +58,16 @@ type filterItem struct {
 	// kind decides whether the row is selectable and how it is styled.
 	kind itemKind
 
-	// filter is the domain filter this row applies. Label rows have none: a
-	// label is not a transmission.Filter, and T5 gives them their own path.
+	// filter is the domain filter a status row applies. Label rows have none:
+	// a label is not a transmission.Filter.
 	filter transmission.Filter
+
+	// labelRow marks a row of the label section, and raw is the unsanitized
+	// label it names — empty for the "No label" row. label is the display
+	// spelling; raw is what the filter matches against a torrent's own labels,
+	// since two labels can sanitize to the same text.
+	labelRow bool
+	raw      string
 }
 
 // selectable reports whether the cursor may rest on this row.
@@ -155,7 +163,8 @@ func (p filterPane) rebuild(rows []transmission.Torrent) filterPane {
 // sameAs reports whether two rows name the same filter. The label alone is not
 // enough: a torrent label could be spelled like a status row.
 func (i filterItem) sameAs(other filterItem) bool {
-	return i.kind == other.kind && i.label == other.label && i.filter == other.filter
+	return i.kind == other.kind && i.label == other.label && i.filter == other.filter &&
+		i.labelRow == other.labelRow && i.raw == other.raw
 }
 
 // filterLabel is how a domain filter is spelled in the sidebar: its own name,
@@ -168,7 +177,8 @@ func filterLabel(f transmission.Filter) string {
 
 // labelItems builds the label section from the torrents themselves, sorted, with
 // a catch-all row for torrents carrying no label. Labels are server-derived, so
-// they are sanitized here rather than wherever they are eventually drawn.
+// the displayed label is sanitized here rather than wherever it is eventually
+// drawn; the raw label is kept alongside for matching.
 func labelItems(rows []transmission.Torrent) []filterItem {
 	counts := map[string]int{}
 	unlabeled := 0
@@ -181,7 +191,7 @@ func labelItems(rows []transmission.Torrent) []filterItem {
 		}
 
 		for _, l := range t.Labels {
-			counts[output.SanitizeTerminal(l)]++
+			counts[l]++
 		}
 	}
 
@@ -194,10 +204,12 @@ func labelItems(rows []transmission.Torrent) []filterItem {
 
 	items := make([]filterItem, 0, len(names)+1)
 	for _, name := range names {
-		items = append(items, filterItem{label: name, count: counts[name], kind: itemFilter})
+		items = append(items, filterItem{
+			label: output.SanitizeTerminal(name), count: counts[name], kind: itemFilter, labelRow: true, raw: name,
+		})
 	}
 
-	return append(items, filterItem{label: noLabel, count: unlabeled, kind: itemFilter})
+	return append(items, filterItem{label: noLabel, count: unlabeled, kind: itemFilter, labelRow: true})
 }
 
 // move steps the cursor by delta rows, skipping unselectable rows and stopping
@@ -258,13 +270,32 @@ func (p filterPane) current() filterItem {
 	return p.items[p.cursor]
 }
 
-// apply records the cursor row as the filter in force and reports it. The caller
-// clears marks: applying a filter can hide a marked torrent, and a mark acted on
-// invisibly is exactly what the mark model exists to prevent.
-func (p filterPane) apply() (filterPane, filterItem) {
-	p.applied = p.cursor
+// applyItem marks the row naming item as the filter in force, or no row when
+// none does. It takes the item rather than the cursor because the f modal
+// applies a row without moving the sidebar's cursor.
+func (p filterPane) applyItem(item filterItem) filterPane {
+	p.applied = -1
 
-	return p, p.current()
+	for i, it := range p.items {
+		if it.selectable() && it.sameAs(item) {
+			p.applied = i
+		}
+	}
+
+	return p
+}
+
+// view is the list filter a row applies: a status, a label, or — for the All
+// row — none.
+func (i filterItem) view() viewFilter {
+	switch {
+	case i.labelRow:
+		return viewFilter{kind: filterByLabel, label: i.raw}
+	case i.filter == transmission.FilterAll:
+		return viewFilter{}
+	}
+
+	return viewFilter{kind: filterByStatus, status: i.filter}
 }
 
 // view renders the sidebar into r, focused or not.
