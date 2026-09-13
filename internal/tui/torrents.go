@@ -2,7 +2,9 @@ package tui
 
 import (
 	"slices"
+	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 
 	"github.com/itspriddle/snatcher/internal/transmission"
@@ -36,6 +38,11 @@ type torrentsWindow struct {
 
 	// sel is the marked set and cursor every action in this window consumes.
 	sel selection
+
+	// searchInput is the `/` field, drawn in the list pane's footer while
+	// searching. Its text is the search, so blurring it keeps the text.
+	searchInput textinput.Model
+	searching   bool
 }
 
 // newTorrentsWindow builds the window around a set of torrents and a view.
@@ -54,6 +61,8 @@ func newTorrentsWindow(st Styles, icons Icons, all []transmission.Torrent, view 
 		filterOpen: true,
 		focus:      paneList,
 		sel:        newSelection(),
+
+		searchInput: newSearchInput(st),
 	}
 
 	return w.sync(icons)
@@ -125,21 +134,31 @@ func (w torrentsWindow) reset(icons Icons) torrentsWindow {
 	w.filter = newFilterPane(nil)
 	w.listView.filter = viewFilter{}
 	w.listView.search = ""
+	w.searchInput.SetValue("")
+	w.searchInput.Blur()
+	w.searching = false
 	w = w.sync(icons)
 	w.list.table.SetCursor(0)
 
 	return w
 }
 
-// footer is the list pane's footer line: the filter in force, or empty when
-// there is nothing to say. Whoever changes whether there is a footer resizes, so
-// the table gives up or takes back the row.
+// footer is the list pane's footer line as plain text: the filter in force and
+// the search, or empty when there is neither. Whoever changes whether there is a
+// footer resizes, so the table gives up or takes back the row. footerView draws
+// it.
 func (w torrentsWindow) footer() string {
+	var parts []string
+
 	if w.listView.filter.set() {
-		return "filter: " + w.listView.filter.text()
+		parts = append(parts, "filter: "+w.listView.filter.text())
 	}
 
-	return ""
+	if w.searching || w.listView.search != "" {
+		parts = append(parts, w.searchStatus())
+	}
+
+	return strings.Join(parts, footerGap)
 }
 
 // resize lays the panes out for a frame.
@@ -220,7 +239,7 @@ func (w torrentsWindow) neighborFromList(dir Action) Pane {
 // view renders the window: the sidebar and table side by side, with the detail
 // pane, when open, beneath both. placeholder stands in for an empty table.
 func (w torrentsWindow) view(st Styles, l layout, ph placeholder) string {
-	top := w.list.view(st, l.list, w.focus == paneList, ph, w.footer())
+	top := w.list.view(st, l.list, w.focus == paneList, ph, w.footerView(st))
 
 	if w.filterOpen {
 		top = lipgloss.JoinHorizontal(

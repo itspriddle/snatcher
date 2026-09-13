@@ -47,7 +47,7 @@ var ladder = []rung{
 		// vision.md says blurring keeps the input's contents, and for a search
 		// field — whose text is its state — it does. A settings row's state is its
 		// last committed value, so there the contents are a draft and blurring
-		// discards it; see Model.blurInput.
+		// discards it; see Model.settingsBlur and Model.searchBlur.
 		name:    "blur input",
 		applies: func(m Model) bool { return m.inputFocused },
 		apply:   Model.blurInput,
@@ -60,7 +60,7 @@ var ladder = []rung{
 	{
 		name:    "clear search",
 		applies: func(m Model) bool { return m.window == windowTorrents && m.torrents.listView.search != "" },
-		apply:   func(m Model) Model { m.torrents.listView.search = ""; return m.syncTorrents() },
+		apply:   Model.clearSearch,
 	},
 	{
 		name:    "clear marks",

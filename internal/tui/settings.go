@@ -888,16 +888,30 @@ func (m Model) beginEdit() (Model, tea.Cmd) {
 	f.err = ""
 	m.settings = w.setField(f)
 	m.inputFocused = true
+	m.owner = ownerSettings
 
 	return m, cmd
 }
 
-// blurInput is the ladder's "blur input" rung. In the settings window the
-// input's contents are a draft rather than the row's state, so blurring
-// discards them: the row keeps its last committed value.
+// blurInput is the ladder's "blur input" rung, and how a submitted input is
+// left. It runs the owning input's own blur, then releases the keyboard.
 func (m Model) blurInput() Model {
-	m.inputFocused = false
+	if m.owner == ownerSearch {
+		m = m.searchBlur()
+	} else {
+		m = m.settingsBlur()
+	}
 
+	m.inputFocused = false
+	m.owner = ownerNone
+
+	return m
+}
+
+// settingsBlur blurs the settings input. Its contents are a draft rather than
+// the row's state, so blurring discards them: the row keeps its last committed
+// value.
+func (m Model) settingsBlur() Model {
 	if m.settings.mode != modeEdit {
 		return m
 	}
@@ -914,9 +928,19 @@ func (m Model) blurInput() Model {
 	return m
 }
 
-// submitInput is enter in the text input: parse and validate the draft, and
-// either commit it and leave the input, or report why not and stay.
+// submitInput is enter in a focused text input. The search field's text is
+// already its state, so submitting it is blurring it.
 func (m Model) submitInput() Model {
+	if m.owner == ownerSearch {
+		return m.blurInput()
+	}
+
+	return m.settingsSubmit()
+}
+
+// settingsSubmit is enter in the settings input: parse and validate the draft,
+// and either commit it and leave the input, or report why not and stay.
+func (m Model) settingsSubmit() Model {
 	if m.window != windowSettings || m.settings.mode != modeEdit {
 		return m.blurInput()
 	}
@@ -938,10 +962,20 @@ func (m Model) submitInput() Model {
 	return m.blurInput()
 }
 
-// forwardToInput hands a message the router does not claim to the settings
-// input while it is being edited: keystrokes, a bracketed paste, and the
-// cursor's blink ticks. Anywhere else it is a no-op.
+// forwardToInput hands a message the router does not claim — keystrokes, a
+// bracketed paste, the cursor's blink ticks — to the input that owns the
+// keyboard.
 func (m Model) forwardToInput(msg tea.Msg) (Model, tea.Cmd) {
+	if m.owner == ownerSearch {
+		return m.searchForward(msg)
+	}
+
+	return m.settingsForward(msg)
+}
+
+// settingsForward hands a message to the settings input while it is being
+// edited. Anywhere else it is a no-op.
+func (m Model) settingsForward(msg tea.Msg) (Model, tea.Cmd) {
 	if m.window != windowSettings || m.settings.mode != modeEdit {
 		return m, nil
 	}

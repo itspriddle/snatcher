@@ -26,6 +26,23 @@ const (
 	windowSettings
 )
 
+// inputOwner names the text input that owns the keyboard while
+// Model.inputFocused is set, so a keystroke, a paste, or a cursor blink reaches
+// the input that is actually focused, and a blur runs that input's own rule.
+type inputOwner int
+
+const (
+	// ownerNone is no input, or one the owner was never recorded for.
+	ownerNone inputOwner = iota
+
+	// ownerSettings is the settings window's row editor, whose blur discards
+	// its draft.
+	ownerSettings
+
+	// ownerSearch is the `/` field, whose blur keeps its text.
+	ownerSearch
+)
+
 // Model is the root model. It owns focus, the overlay stack, the pending chord,
 // the styles, and the windows; the windows own their panes.
 //
@@ -90,10 +107,10 @@ type Model struct {
 	// chord is the pending multi-key sequence, if any.
 	chord chord
 
-	// inputFocused reports whether a text input owns the keyboard. The settings
-	// window's input is the first to set it (alongside settings.mode ==
-	// modeEdit); `/` and the search fields follow in T5.
+	// inputFocused reports whether a text input owns the keyboard; it is the
+	// router's flag. owner says which input it is.
 	inputFocused bool
+	owner        inputOwner
 
 	// toast is a transient status-bar message, cleared by the next key press.
 	toast string
@@ -147,6 +164,7 @@ func (m Model) applyTheme(isDark bool) Model {
 	m.icons = newIcons(m.deps.NerdFont)
 	m.help.Styles = m.styles.Help
 	m.torrents.list = m.torrents.list.setStyles(m.styles)
+	m.torrents.searchInput.SetStyles(m.styles.Input)
 	m.settings = m.settings.setStyles(m.styles)
 
 	return m
@@ -170,9 +188,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // update handles the message kinds the model names. Anything else goes to the
-// settings text input while it is being edited — a bracketed paste, the
-// cursor's blink ticks — and is dropped otherwise: a message nothing on screen
-// asked for has nowhere to go.
+// focused text input — a bracketed paste, the cursor's blink ticks — and is
+// dropped otherwise: a message nothing on screen asked for has nowhere to go.
 func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

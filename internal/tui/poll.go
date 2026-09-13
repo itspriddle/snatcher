@@ -349,6 +349,11 @@ func (m Model) dialed(msg dialedMsg) (Model, tea.Cmd) {
 	m.client, m.serverURL, m.serverName = msg.result.Client, msg.result.URL, msg.result.Name
 	m.live = liveData{gen: msg.gen}
 	m.torrents = m.torrents.reset(m.icons)
+
+	// The reset blurred the search field; the keyboard is released with it.
+	if m.owner == ownerSearch {
+		m.inputFocused, m.owner = false, ownerNone
+	}
 	m.settings = newSettingsWindow(m.styles, m.deps)
 
 	// The reset cleared the filter, so the list pane may have lost its footer.

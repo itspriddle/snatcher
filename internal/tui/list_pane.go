@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/table"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
@@ -176,7 +177,9 @@ func (m Model) listPlaceholder() placeholder {
 }
 
 // view renders the table into r, with the placeholder under its header when the
-// table has no rows, and the footer on the pane's last row when there is one.
+// table has no rows, and the footer on the pane's last row when there is one. The
+// footer arrives styled — it can hold the search input — so it is truncated
+// escape-aware.
 func (p listPane) view(st Styles, r rect, focused bool, ph placeholder, footer string) string {
 	inner := r.inner()
 	lines := strings.Split(p.table.View(), "\n")
@@ -186,7 +189,7 @@ func (p listPane) view(st Styles, r rect, focused bool, ph placeholder, footer s
 	}
 
 	if footer != "" {
-		lines = append(clipLines(lines, inner.h-1), st.Muted.Render(truncate(footer, inner.w)))
+		lines = append(clipLines(lines, inner.h-1), ansi.Truncate(footer, inner.w, "…"))
 	}
 
 	return paneBox(st, paneList, focused).

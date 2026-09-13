@@ -82,6 +82,8 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"filter", press(base, "f")},
 		{"filtered", seedingFiltered(t, base)},
 		{"filtered detail", seedingFiltered(t, press(base, "}"))},
+		{"search", searchFor(base, "x86")},
+		{"search blurred", press(searchFor(seedingFiltered(t, base), "x86"), "enter")},
 		{"toast", press(base, "s")},
 		{"chord", press(base, "y")},
 	}

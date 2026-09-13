@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -154,7 +156,8 @@ func (m Model) persistPref(key string, value any) Model {
 	return m
 }
 
-// listHandlers are the list-view modals: o sort, c columns, and f filter.
+// listHandlers are the list-view keys: o sort, c columns, f filter, and the
+// `/` search with n and N.
 func listHandlers() map[Action]handler {
 	return map[Action]handler{
 		actionTorrentSort: plain(Model.toggleSort),
@@ -175,6 +178,10 @@ func listHandlers() map[Action]handler {
 		actionFilterPickUp:     stepTop(func(o filterPickOverlay) filterPickOverlay { return o.move(-1) }),
 		actionFilterPickDown:   stepTop(func(o filterPickOverlay) filterPickOverlay { return o.move(1) }),
 		actionFilterPickSelect: plain(Model.applyFilterPick),
+
+		actionTorrentSearch: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.beginSearch() },
+		actionSearchNext:    plain(func(m Model) Model { return m.searchStep(1) }),
+		actionSearchPrev:    plain(func(m Model) Model { return m.searchStep(-1) }),
 	}
 }
 
