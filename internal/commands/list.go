@@ -102,7 +102,8 @@ var defaultFieldKeys = []string{
 // page, and the show command's default (which shows the complete set rather
 // than list's smaller defaultFieldKeys). TestListFieldKeysCoverRegistry pins it
 // to listFields, since the help string is built from this slice while
-// parseFields validates against the registry map.
+// parseFields validates against the registry map. internal/tui/columns.go
+// mirrors it and defaultFieldKeys, pinned by TestColumnKeysMirrorTheCLI.
 var allFieldKeys = []string{
 	"id", "hash", "name", "status", "done", "size", "down", "up", "ratio",
 	"eta", "peers", "added", "download_dir", "error", "labels",

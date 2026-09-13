@@ -88,11 +88,16 @@ Layers, outermost to innermost:
   refresh spine (`poll.go`): a tick-driven poll whose superseded ticks and
   replies are dropped by sequence and generation rather than canceled. Mock
   torrents exist only in tests, where a non-nil `Deps.Torrents` disables
-  polling. The keymap registry in `keymap.go` is this package's `.surface`:
-  every key the UI responds to is one row of it, components are constructed from
-  those rows rather than from their own defaults, and the collision test asserts
-  no key resolves twice in any focus context a user can be in. Adding a binding
-  means adding a registry row, not a `switch` case.
+  polling. Mutations ride the same spine: a verb's RPC runs as a `Cmd`, and its
+  reply refetches at once (queued behind a poll already in flight) rather than
+  editing rows optimistically. The list's sort, direction, and columns are read
+  from and written to `client.list_*` through `Deps.Config`, and `columns.go`
+  mirrors `internal/commands/list.go`'s field keys under a pinning test rather
+  than importing them. The keymap registry in `keymap.go` is this package's
+  `.surface`: every key the UI responds to is one row of it, components are
+  constructed from those rows rather than from their own defaults, and the
+  collision test asserts no key resolves twice in any focus context a user can
+  be in. Adding a binding means adding a registry row, not a `switch` case.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list

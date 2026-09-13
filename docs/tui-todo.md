@@ -354,22 +354,24 @@ columns. **Met.**
   bar's version is `v` + `version.Version`; `FullVersion()` had printed
   "snatcher" twice.
 
-## T5. Torrent list, live
+## T5. Torrent list, live — **done**
 
 The main event. Reuses everything above.
 
-- `bubbles/v2/table` driven by the existing `internal/transmission`
+- ~~`bubbles/v2/table` driven by the existing `internal/transmission`
   filter/search/sort transforms (neither table sorts itself - sort the data,
-  rebuild rows)
-- Filter sidebar (`bubbles/v2/list`) with live counts; `enter` applies
-- Marks (`space`), `/` search with `n`/`N`, `f` filter modal, `o` sort,
-  `c` columns
-- Actions on marks-or-cursor: `s p v r d`, `J`/`K` queue, `L` labels, `M` move,
-  `R` refresh, `y` yank chords, `a`/`A` add (`t` alt-speed shipped in T4)
-- `m` action menu with the full vision.md list
-- Filter-pane group actions with counted confirmation and loud focus styling
-- Optimistic update or immediate refetch after each mutation - pick one and
-  apply it uniformly
+  rebuild rows)~~
+- ~~Filter sidebar with live counts; `enter` applies~~ — the sidebar is
+  hand-rolled (T1), not `bubbles/v2/list`
+- ~~Marks (`space`), `/` search with `n`/`N`, `f` filter modal, `o` sort,
+  `c` columns~~
+- ~~Actions on marks-or-cursor: `s p v r d`, `J`/`K` queue, `L` labels, `M` move,
+  `R` refresh, `y` yank chords, `a`/`A` add (`t` alt-speed shipped in T4)~~
+- ~~`m` action menu with the full vision.md list~~ — trackers and per-torrent
+  limits are listed greyed, for T6 and T7
+- ~~Filter-pane group actions with counted confirmation and loud focus styling~~
+- ~~Optimistic update or immediate refetch after each mutation - pick one and
+  apply it uniformly~~ — immediate refetch
 
 **Label discovery is client-side.** The sidebar's `Labels (dynamic)` group needs
 the distinct labels in use on the server. CLI M6 (`torrent label`) shipped
@@ -388,6 +390,68 @@ the model the list pane already holds, with no extra round-trip.
 
 **Done when:** every list-pane binding in vision.md works against a real
 server, and no action can hit more torrents than the confirmation stated.
+**Met.**
+
+### Decisions
+
+- **Refetch, never optimistic.** A mutation's reply toasts the CLI's own verb
+  ("Started 3 torrents") and polls at once; rows are never edited locally,
+  because Transmission's transitions pass through queued states a guess would
+  get wrong. A refetch asked for while a poll is in flight is queued
+  (`pollAgain`) rather than dropped by the tick guard. There is no single-flight
+  for mutations: they are independent RPCs.
+- **`o` and `c` persist through `Deps.Config`** as `client.list_sort`,
+  `client.list_reverse`, and `client.list_columns`, validated by the CLI's own
+  validators, so the TUI cannot store what `snatcher list` rejects. They are
+  read once at launch; only a key that changed is written; a failed write is
+  toasted and the session value still applies. Without a store they are
+  session-only.
+- **The TUI's defaults are `list`'s defaults,** so `ID` and `Ratio` joined the
+  table. `columns.go` mirrors `listFields`' keys, headings, and renderers under
+  `TestColumnKeysMirrorTheCLI` rather than importing them. Right alignment is
+  padding in the cell, and columns drop right to left over the user's own set,
+  never the prefix cells or the name.
+- **`/` jumps, never hides.** Typing jumps to the first match; `enter` and `esc`
+  both blur keeping the text; `n`/`N` wrap; a second esc clears. The search and
+  the filter share a one-line footer inside the list pane, with a `(k/n)` match
+  count. Marks survive a search.
+- **One filter at a time, and it clears marks.** A status or a label (including
+  "No label"), from the sidebar or the `f` modal, which is the sidebar's own pane
+  in a box. Counts and used space come from the unfiltered set, and a label row
+  matches the raw label while displaying the sanitized one.
+- **Confirmation scales with blast radius.** `s p v r J K` and the menu's verbs
+  confirm with the count above one torrent; group actions always confirm and
+  name the group; their selector is explicit IDs, never All. A selector naming
+  no torrents is refused before any RPC: an empty `ids` argument means every
+  torrent on the wire.
+- **Remove is two questions, in the CLI's words** ("Remove 3 torrents?", then
+  "Also delete downloaded data?"). The second is strict: only `y` deletes data,
+  and `enter` is refused, so answering through a remove by momentum cannot
+  delete files.
+- **Prompts and the add form are hand-rolled;** `huh` is declined again. `L`,
+  `M`, `a`, and rename are one prompt overlay whose count-titled question is the
+  confirmation; one esc cancels it. `A` is a minimal five-row form: esc blurs an
+  edited row (discarding the draft) and the next esc closes it. Every
+  server-derived prefill is sanitized, and the form sends no download directory
+  while the row still holds the session's. Both add paused unless told
+  otherwise, as `torrent add` does.
+- **Input ownership is explicit.** `Model.owner` names which input
+  `inputFocused` refers to (settings, search, prompt, form); popping an overlay
+  releases the input it held; an overlay that words its own keys drives the help
+  line under it too.
+- **The action menu dispatches by `Action`,** so every leaf runs its key's
+  handler, confirms included; a leaf closes every menu level first so its
+  confirm sits over the list. Force start, queue top/bottom, and rename have no
+  key and are listed in `menuOnlyActions`, which seeds T7's palette. Trackers and
+  "other" are greyed with the milestone that owns them.
+- **`y m` fetches `TorrentDetail`** for exactly one torrent: the poll carries no
+  magnet link.
+- **Three wording helpers are duplicated, not promoted:** the mutation verbs,
+  the torrent-count noun, and the counted prompt. `internal/tui` does not import
+  `internal/commands`.
+- **Still deferred:** list-pane `h`/`l` horizontal scroll (T1), and the
+  sidebar's Trackers group, which needs a projected field that would change
+  `list --json` — T6's call.
 
 ## T6. Detail pane
 
@@ -461,8 +525,9 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
   The CLI contract supports either, so this is a TUI cost decision.~~
   **Decided** in T4: rates from `Stats` every tick, limits from `Session` on
   the slow refresh.
-- Does the torrent action menu's "trackers" entry edit trackers in place, or
-  defer to the trackers tab?
+- ~~Does the torrent action menu's "trackers" entry edit trackers in place, or
+  defer to the trackers tab?~~ **Decided** in T5: it defers to T6's trackers
+  tab, and is listed greyed until then.
 - Does the `Labels (dynamic)` filter group derive its labels client-side from
   the polled torrent list (see T5), or does CLI M6 grow a server-side discovery
   verb first? Leaning client-side: the union is already in the poll payload once

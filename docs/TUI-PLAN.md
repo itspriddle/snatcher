@@ -205,6 +205,26 @@ the man page.
   back has to flatten a `BatchMsg` itself, or it silently tests nothing.
 - **Every backend `Cmd` derives from the program context** (`tea.WithContext`)
   with its own timeout, so quitting cancels a round trip in flight.
+- **`bubbles/v2/table` columns have no alignment.** `table.Column` is
+  `{Title, Width}`. Right alignment is padding in the cell when rows are built,
+  and it holds only while every non-flex width is fixed at that point:
+  `fitColumns` changes only the flex (name) width and zeroes dropped columns, so
+  cell counts and padded widths never shift under a resize.
+- **A tick issued while a poll is in flight is dropped** by the spine's own
+  single-flight guard. A refetch requested then — after a mutation — must be
+  queued (`pollAgain`, honored when the in-flight reply lands), or it waits a
+  whole interval.
+- **A `textinput` held by an overlay is a value in the overlay stack.** Its
+  `Update` returns a new model; write the overlay back with
+  `replaceTopOverlay`, or keystrokes land on a copy nothing draws.
+- **The router has to know which input owns the keyboard.** `inputFocused`
+  says one does; `Model.owner` says which, so a key, a paste, or a blink tick
+  reaches the right input, and a blur runs that input's own rule: a search keeps
+  its text, a settings or form row discards its draft, a prompt closes.
+- **`help.ShortHelpView` does not reliably truncate** (bubbles v2.2.1). Once an
+  item overflows and the ellipsis no longer fits either, it appends every
+  remaining item. A help line inside a fixed-width box is truncated by the
+  caller with `ansi.Truncate`.
 
 ## Build sequence
 
