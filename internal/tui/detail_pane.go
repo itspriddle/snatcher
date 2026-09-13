@@ -203,6 +203,12 @@ func (p detailPane) body(st Styles) []string {
 		return nil
 	}
 
+	if p.tab == tabPieces {
+		d := p.detail
+
+		return pieceLines(d.Pieces, d.PieceCount, d.PieceSize, d.MetadataPercentComplete, p.vp.Width(), p.vp.Height())
+	}
+
 	return []string{detailTabs[p.tab] + ": not implemented yet"}
 }
 
