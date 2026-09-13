@@ -38,10 +38,9 @@ type menuOverlay struct {
 	cursor int
 }
 
-// torrentMenu is the action menu over n torrents, in vision.md's order.
-// Trackers wait on T6's trackers tab and the per-torrent limits on T7's palette,
-// so both are listed greyed rather than left out: a menu that silently lacked
-// them would read as the whole list.
+// torrentMenu is the action menu over n torrents, in vision.md's order. The
+// per-torrent limits wait on T7's palette, so they are listed greyed rather than
+// left out: a menu that silently lacked them would read as the whole list.
 func torrentMenu(n int) menuOverlay {
 	return menuOverlay{
 		title: "Actions (" + pluralTorrents(n) + ")",
@@ -67,7 +66,11 @@ func torrentMenu(n int) menuOverlay {
 				{label: "download path", action: actionYankPath},
 			}},
 			{label: "delete", action: actionTorrentRemove},
-			{label: "trackers", disabled: true, note: "(T6)"},
+			{label: "trackers", sub: []menuItem{
+				{label: "add", action: actionTrackerAdd},
+				{label: "replace", action: actionTrackerReplace},
+				{label: "clear", action: actionTrackerClear},
+			}},
 			{label: "other", disabled: true, note: "(T7)"},
 		},
 	}

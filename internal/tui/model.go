@@ -242,6 +242,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.filesChanged(msg)
 	case fileRenamedMsg:
 		return m.fileRenamed(msg)
+	case trackerPrefillMsg:
+		return m.trackersFetched(msg)
 	}
 
 	return m.forwardToInput(msg)

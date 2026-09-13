@@ -293,6 +293,13 @@ const (
 	actionFileRename         Action = "file.rename"
 )
 
+// The action menu's trackers leaves, which edit a torrent's tracker list.
+const (
+	actionTrackerAdd     Action = "tracker.add"
+	actionTrackerReplace Action = "tracker.replace"
+	actionTrackerClear   Action = "tracker.clear"
+)
+
 // menuOnlyActions are the actions no key is bound to, reachable by name from the
 // action menu now and the command palette later. The handler-coverage test
 // accepts an unbound handler only when it is listed here.
@@ -300,6 +307,7 @@ var menuOnlyActions = []Action{
 	actionTorrentRename, actionTorrentForceStart, actionQueueTop, actionQueueBottom,
 	actionFilePriorityHigh, actionFilePriorityNormal, actionFilePriorityLow,
 	actionFileWanted, actionFileUnwanted, actionFileRename,
+	actionTrackerAdd, actionTrackerReplace, actionTrackerClear,
 }
 
 // Binding is one row of the registry: a key, the context it is live in, and the

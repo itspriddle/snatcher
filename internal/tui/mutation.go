@@ -28,6 +28,9 @@ const (
 	mutateLabels
 	mutateMove
 	mutateRename
+	mutateTrackerAdd
+	mutateTrackerReplace
+	mutateTrackerClear
 )
 
 // mutationVerb is how one verb is worded: asked in a confirm, announced while it
@@ -77,6 +80,12 @@ var mutationVerbs = map[mutationKind]mutationVerb{
 	mutateLabels: {ask: "Set labels on", doing: "Updating", done: "Updated"},
 	mutateMove:   {ask: "Move", doing: "Moving", done: "Moved"},
 	mutateRename: {ask: "Rename", doing: "Renaming", done: "Renamed"},
+
+	// The tracker edits all write tracker-list. Their done word is the CLI's
+	// `update`; each has its own ask so a failure names what was tried.
+	mutateTrackerAdd:     {ask: "Add tracker to", doing: "Updating", done: "Updated"},
+	mutateTrackerReplace: {ask: "Replace trackers on", doing: "Updating", done: "Updated"},
+	mutateTrackerClear:   {ask: "Clear trackers on", doing: "Updating", done: "Updated"},
 }
 
 // bySelector adapts a client method that takes only a selector — a method

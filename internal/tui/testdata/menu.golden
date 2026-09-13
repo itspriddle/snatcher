@@ -22,7 +22,7 @@
 │                      │┃   │   set labels                                                 │                           ┃
 │                      │┃   │   yank ▸                                                     │                           ┃
 │                      │┃   │   delete                                                     │                           ┃
-│                      │┃   │   trackers  (T6)                                             │                           ┃
+│                      │┃   │   trackers ▸                                                 │                           ┃
 │                      │┃   │   other  (T7)                                                │                           ┃
 │                      │┃   │                                                              │                           ┃
 │                      │┃   │ ↑/k up • ↓/j down • enter select • m close • esc back        │                           ┃

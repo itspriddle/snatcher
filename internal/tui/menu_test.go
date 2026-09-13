@@ -27,7 +27,7 @@ func openQueueMenu(m Model) Model {
 }
 
 // TestMenuListsVisionItems pins the menu's rows to vision.md's list, in order,
-// with trackers and other greyed until the milestones that implement them.
+// with other greyed until the milestone that implements it.
 func TestMenuListsVisionItems(t *testing.T) {
 	o := torrentMenu(3)
 
@@ -40,8 +40,8 @@ func TestMenuListsVisionItems(t *testing.T) {
 	assert.Equal(t, []string{"up", "down", "top", "bottom"}, menuLabels(o.items[6].sub))
 	assert.Equal(t, []string{"magnet link", "info hash", "name", "download path"}, menuLabels(o.items[9].sub))
 
-	assert.True(t, o.items[11].disabled)
-	assert.Equal(t, "(T6)", o.items[11].note)
+	assert.Equal(t, []string{"add", "replace", "clear"}, menuLabels(o.items[11].sub))
+	assert.False(t, o.items[11].disabled)
 	assert.True(t, o.items[12].disabled)
 	assert.Equal(t, "(T7)", o.items[12].note)
 }
@@ -77,10 +77,10 @@ func TestMenuSkipsDisabledRows(t *testing.T) {
 		o = o.move(1)
 	}
 
-	assert.Equal(t, 10, o.cursor, "the cursor stops on delete, the last enabled row")
+	assert.Equal(t, 11, o.cursor, "the cursor stops on trackers, the last enabled row")
 
 	_, m := polledModel(t)
-	assert.Contains(t, ansi.Strip(press(m, "m").render()), "trackers  (T6)")
+	assert.Contains(t, ansi.Strip(press(m, "m").render()), "other  (T7)")
 }
 
 // TestMenuRefusals checks m opens nothing over no server or no selection.

@@ -70,6 +70,8 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"menu", press(live, "m")},
 		{"menu queue", openQueueMenu(live)},
 		{"file menu", press(liveFiles, "space", "j", "space", "m")},
+		{"menu trackers", openTrackersMenu(live)},
+		{"prompt add tracker", press(openTrackersMenu(live), "enter")},
 		{"loading", liveModel(t, srv, w, h)},
 		{"detail loading", press(live, "enter")},
 		{"detail error", failedDetail(live)},
