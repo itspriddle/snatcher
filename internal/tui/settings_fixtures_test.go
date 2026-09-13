@@ -97,6 +97,17 @@ func (c *fakeConfig) setEntry(key string, value any) *fakeConfig {
 	return c
 }
 
+// value is the stored value for a key.
+func (c *fakeConfig) value(key string) any {
+	for _, e := range c.entries {
+		if e.Key == key {
+			return e.Value
+		}
+	}
+
+	return nil
+}
+
 // Entries implements ClientConfig.
 func (c *fakeConfig) Entries() ([]ClientEntry, error) {
 	if c.entriesErr != nil {

@@ -59,6 +59,7 @@ func init() {
 	register(confirmHandlers())
 	register(chordHandlers())
 	register(spineHandlers())
+	register(listHandlers())
 	register(notYetHandlers())
 }
 

@@ -135,6 +135,44 @@ func listPrefs(cfg ClientConfig) (listView, error) {
 	return v, nil
 }
 
+// persistPref writes one list preference through the config store. With no store
+// the change is for this session only. A write that fails is toasted, and the
+// session value still applies: the modal that asked has already closed, so
+// nothing is left half-applied.
+//
+// It is synchronous, like the Entries read in openSettings: the store is a
+// local file.
+func (m Model) persistPref(key string, value any) Model {
+	if m.deps.Config == nil {
+		return m
+	}
+
+	if err := m.deps.Config.Set(key, value); err != nil {
+		m.toast = "config: " + errorLine(err)
+	}
+
+	return m
+}
+
+// listHandlers are the list-view modals: o sort and c columns.
+func listHandlers() map[Action]handler {
+	return map[Action]handler{
+		actionTorrentSort: plain(Model.toggleSort),
+		actionSortUp:      stepTop(func(o sortOverlay) sortOverlay { return o.move(-1) }),
+		actionSortDown:    stepTop(func(o sortOverlay) sortOverlay { return o.move(1) }),
+		actionSortReverse: stepTop(sortOverlay.flipReverse),
+		actionSortSelect:  plain(Model.applySort),
+
+		actionTorrentColumns:  plain(Model.toggleColumns),
+		actionColumnsUp:       stepTop(func(o columnsOverlay) columnsOverlay { return o.move(-1) }),
+		actionColumnsDown:     stepTop(func(o columnsOverlay) columnsOverlay { return o.move(1) }),
+		actionColumnsToggle:   stepTop(columnsOverlay.toggle),
+		actionColumnsMoveUp:   stepTop(func(o columnsOverlay) columnsOverlay { return o.swap(-1) }),
+		actionColumnsMoveDown: stepTop(func(o columnsOverlay) columnsOverlay { return o.swap(1) }),
+		actionColumnsApply:    plain(Model.applyColumns),
+	}
+}
+
 // knownColumns normalizes a stored column list — lowercased and trimmed, as the
 // CLI matches --fields — keeping only keys the TUI can draw.
 func knownColumns(value any) []string {

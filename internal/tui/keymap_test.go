@@ -208,6 +208,51 @@ func TestPickerStackIsModal(t *testing.T) {
 	assert.NotContains(t, pickerOverlay{}.contexts(), ctxGlobal)
 }
 
+// assertModalStack checks an overlay's stack is modal: every key it lists
+// resolves to its action, and none of the global keys it does not list resolves
+// at all.
+func assertModalStack(t *testing.T, o overlay, want map[string]Action) {
+	t.Helper()
+
+	stack := o.contexts()
+
+	for k, action := range want {
+		got, ok := lookup(stack, stringKey(k))
+		require.Truef(t, ok, "%q must resolve in %s", k, o.kind())
+		assert.Equalf(t, action, got, "%q in %s", k, o.kind())
+	}
+
+	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "ctrl+p", "S", "R", "t", "s", "d", "f", "/"} {
+		if _, listed := want[k]; listed {
+			continue
+		}
+
+		_, ok := lookup(stack, stringKey(k))
+		assert.Falsef(t, ok, "%q must do nothing while %s is open", k, o.kind())
+	}
+
+	assert.NotContains(t, stack, ctxGlobal)
+}
+
+// TestSortStackIsModal pins the sort modal's keys and its swallow-everything
+// rule.
+func TestSortStackIsModal(t *testing.T) {
+	assertModalStack(t, sortOverlay{}, map[string]Action{
+		"up": actionSortUp, "k": actionSortUp, "down": actionSortDown, "j": actionSortDown,
+		"r": actionSortReverse, "enter": actionSortSelect, "o": actionTorrentSort,
+	})
+}
+
+// TestColumnsStackIsModal pins the columns modal's keys and its
+// swallow-everything rule.
+func TestColumnsStackIsModal(t *testing.T) {
+	assertModalStack(t, columnsOverlay{}, map[string]Action{
+		"up": actionColumnsUp, "k": actionColumnsUp, "down": actionColumnsDown, "j": actionColumnsDown,
+		"space": actionColumnsToggle, "K": actionColumnsMoveUp, "J": actionColumnsMoveDown,
+		"enter": actionColumnsApply, "c": actionTorrentColumns,
+	})
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.

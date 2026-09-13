@@ -62,6 +62,12 @@ const (
 	// and nothing global.
 	ctxPicker
 
+	// ctxSort is the whole stack while the o sort modal is open.
+	ctxSort
+
+	// ctxColumns is the whole stack while the c columns modal is open.
+	ctxColumns
+
 	// ctxChordYank is the second key of the y chord.
 	ctxChordYank
 
@@ -94,6 +100,10 @@ func (c Context) String() string {
 		return "confirm"
 	case ctxPicker:
 		return "server picker"
+	case ctxSort:
+		return "sort"
+	case ctxColumns:
+		return "columns"
 	case ctxChordYank:
 		return "yank"
 	case ctxChordWindow:
@@ -193,6 +203,18 @@ const (
 	actionPickerUp     Action = "picker.up"
 	actionPickerDown   Action = "picker.down"
 	actionPickerSelect Action = "picker.select"
+
+	actionSortUp      Action = "sort.up"
+	actionSortDown    Action = "sort.down"
+	actionSortReverse Action = "sort.reverse"
+	actionSortSelect  Action = "sort.select"
+
+	actionColumnsUp       Action = "columns.up"
+	actionColumnsDown     Action = "columns.down"
+	actionColumnsToggle   Action = "columns.toggle"
+	actionColumnsMoveUp   Action = "columns.move-up"
+	actionColumnsMoveDown Action = "columns.move-down"
+	actionColumnsApply    Action = "columns.apply"
 
 	actionHelpScrollUp   Action = "help.scroll-up"
 	actionHelpScrollDown Action = "help.scroll-down"
@@ -341,6 +363,24 @@ var registry = []Binding{
 	bind(ctxPicker, actionPickerSelect, "enter", "switch", "enter"),
 	bind(ctxPicker, actionServerPicker, "S", "close", "S"),
 	bind(ctxPicker, actionEscape, "esc", "cancel", "esc"),
+
+	// Sort modal — o closes it as it opened it, like S and the picker.
+	bind(ctxSort, actionSortUp, "↑/k", "up", "up", "k"),
+	bind(ctxSort, actionSortDown, "↓/j", "down", "down", "j"),
+	bind(ctxSort, actionSortReverse, "r", "reverse", "r"),
+	bind(ctxSort, actionSortSelect, "enter", "apply", "enter"),
+	bind(ctxSort, actionTorrentSort, "o", "close", "o"),
+	bind(ctxSort, actionEscape, "esc", "cancel", "esc"),
+
+	// Columns modal — J/K reorder, because client.list_columns is ordered.
+	bind(ctxColumns, actionColumnsUp, "↑/k", "up", "up", "k"),
+	bind(ctxColumns, actionColumnsDown, "↓/j", "down", "down", "j"),
+	bind(ctxColumns, actionColumnsToggle, "space", "show/hide", "space"),
+	bind(ctxColumns, actionColumnsMoveUp, "K", "move up", "K"),
+	bind(ctxColumns, actionColumnsMoveDown, "J", "move down", "J"),
+	bind(ctxColumns, actionColumnsApply, "enter", "apply", "enter"),
+	bind(ctxColumns, actionTorrentColumns, "c", "close", "c"),
+	bind(ctxColumns, actionEscape, "esc", "cancel", "esc"),
 
 	// Help overlay.
 	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
@@ -495,6 +535,8 @@ var modalStacks = [][]Context{
 	{ctxHelp, ctxGlobal},
 	{ctxConfirm},
 	{ctxPicker},
+	{ctxSort},
+	{ctxColumns},
 	{ctxChordYank},
 	{ctxChordWindow},
 	{ctxTextInput},

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -230,4 +231,161 @@ func tableColumns(cols []listColumn) []table.Column {
 	}
 
 	return out
+}
+
+// columnsOverlayKind names the columns modal.
+const columnsOverlayKind = "columns"
+
+// columnsMaxWidth caps the columns modal, wide enough for its help line.
+const columnsMaxWidth = 60
+
+// columnRow is one row of the columns modal: a column key and whether it is
+// shown.
+type columnRow struct {
+	key string
+	on  bool
+}
+
+// columnsOverlay is c: choose which columns the list shows, and in what order.
+// Applying it writes client.list_columns, so `snatcher list` shows the same set.
+//
+// The rows are the shown columns first, in their order, then the rest in
+// registry order. Reordering is part of the modal rather than left out, because
+// client.list_columns is ordered: a checklist that wrote registry order would
+// silently rewrite a user's "name,id".
+type columnsOverlay struct {
+	rows   []columnRow
+	cursor int
+}
+
+// newColumnsOverlay builds the modal for the columns currently shown.
+func newColumnsOverlay(keys []string) columnsOverlay {
+	rows := make([]columnRow, 0, len(allColumnKeys))
+
+	for _, k := range keys {
+		rows = append(rows, columnRow{key: k, on: true})
+	}
+
+	for _, k := range allColumnKeys {
+		if !slices.Contains(keys, k) {
+			rows = append(rows, columnRow{key: k})
+		}
+	}
+
+	return columnsOverlay{rows: rows}
+}
+
+// kind implements overlay.
+func (columnsOverlay) kind() string { return columnsOverlayKind }
+
+// contexts implements overlay.
+func (columnsOverlay) contexts() []Context { return []Context{ctxColumns} }
+
+// move steps the cursor, stopping at the ends.
+func (o columnsOverlay) move(delta int) columnsOverlay {
+	o.cursor = clamp(o.cursor+delta, 0, len(o.rows)-1)
+
+	return o
+}
+
+// toggle shows or hides the cursor row's column.
+func (o columnsOverlay) toggle() columnsOverlay {
+	o.rows = slices.Clone(o.rows)
+	o.rows[o.cursor].on = !o.rows[o.cursor].on
+
+	return o
+}
+
+// swap moves the cursor row delta places, carrying the cursor with it and
+// stopping at the ends.
+func (o columnsOverlay) swap(delta int) columnsOverlay {
+	next := o.cursor + delta
+	if next < 0 || next >= len(o.rows) {
+		return o
+	}
+
+	o.rows = slices.Clone(o.rows)
+	o.rows[o.cursor], o.rows[next] = o.rows[next], o.rows[o.cursor]
+	o.cursor = next
+
+	return o
+}
+
+// selected is the shown column keys, in order.
+func (o columnsOverlay) selected() []string {
+	keys := make([]string, 0, len(o.rows))
+
+	for _, r := range o.rows {
+		if r.on {
+			keys = append(keys, r.key)
+		}
+	}
+
+	return keys
+}
+
+// view implements overlay. A row reads "[x] name  Name": the key as
+// client.list_columns spells it, and the heading the table draws.
+func (o columnsOverlay) view(m Model, w, h int) string {
+	width := min(overlayContentWidth(w), columnsMaxWidth)
+
+	keyW := 0
+	for _, r := range o.rows {
+		keyW = max(keyW, len(r.key))
+	}
+
+	rows := make([]string, 0, len(o.rows))
+
+	for i, r := range o.rows {
+		box := "[ ] "
+		if r.on {
+			box = "[x] "
+		}
+
+		def, _ := columnDef(r.key)
+		rows = append(rows, cursorRow(m.styles, i == o.cursor, box+padLine(r.key, keyW)+"  "+def.title, width))
+	}
+
+	return m.modalBox(modal{title: "Columns", rows: rows, focus: o.cursor, ctx: ctxColumns, width: width}, h)
+}
+
+// toggleColumns is c: open the modal, or close it when it is the overlay on top.
+func (m Model) toggleColumns() Model {
+	if top, ok := m.topOverlay(); ok && top.kind() == columnsOverlayKind {
+		return m.pop()
+	}
+
+	return m.push(newColumnsOverlay(m.torrents.listView.columns))
+}
+
+// applyColumns is enter in the modal. An empty selection is refused and the
+// modal stays open: the CLI rejects an empty client.list_columns, and a table of
+// nothing is not a choice worth persisting.
+func (m Model) applyColumns() Model {
+	o, ok := topAs[columnsOverlay](m)
+	if !ok {
+		return m
+	}
+
+	keys := o.selected()
+	if len(keys) == 0 {
+		m.toast = "pick at least one column"
+
+		return m
+	}
+
+	m = m.pop()
+
+	prev := m.torrents.listView
+	v := prev
+	v.columns = keys
+
+	m.torrents = m.torrents.setView(v, m.icons)
+	m.toast = "columns: " + strings.Join(keys, ", ")
+
+	if !slices.Equal(keys, prev.columns) {
+		m = m.persistPref(clientKeyListColumns, keys)
+	}
+
+	return m
 }

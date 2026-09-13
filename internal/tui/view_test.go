@@ -76,6 +76,9 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"settings editing", press(networkTab(settingsModel(w, h)), "enter")},
 		{"settings select", press(networkTab(settingsModel(w, h)), "tab", "tab", "tab", "enter")},
 		{"settings confirm", press(networkTab(settingsModel(w, h)), "tab", "enter", "esc")},
+		{"sort", press(base, "o")},
+		{"columns", press(base, "c")},
+		{"columns bottom", press(base, "c", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j", "j")},
 		{"toast", press(base, "s")},
 		{"chord", press(base, "y")},
 	}
