@@ -62,12 +62,12 @@ func TestTrackerListGroupsByTier(t *testing.T) {
 func TestParseAnnounce(t *testing.T) {
 	for _, ok := range []string{"https://t.example/announce", "http://t.example:80/a", "udp://t.example:6969", "wss://t.example/ws", " udp://t.example:1 "} {
 		_, err := parseAnnounce(ok)
-		assert.NoErrorf(t, err, "%q", ok)
+		require.NoErrorf(t, err, "%q", ok)
 	}
 
 	for _, bad := range []string{"", "ftp://t.example/", "http://", "not a url", "t.example/announce", "http://a/b c", "http://a/\nb"} {
 		_, err := parseAnnounce(bad)
-		assert.Errorf(t, err, "%q", bad)
+		require.Errorf(t, err, "%q", bad)
 	}
 }
 

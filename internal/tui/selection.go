@@ -64,7 +64,9 @@ func newSelection[T any, K cmp.Ordered, R rowKey[T, K]]() selection[T, K, R] {
 }
 
 // newTorrentSelection and newFileSelection are the two selections the TUI keeps.
-func newTorrentSelection() torrentSelection { return newSelection[transmission.Torrent, int64, torrentID]() }
+func newTorrentSelection() torrentSelection {
+	return newSelection[transmission.Torrent, int64, torrentID]()
+}
 
 func newFileSelection() fileSelection { return newSelection[transmission.File, int, fileIndex]() }
 
