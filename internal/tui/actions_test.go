@@ -40,9 +40,9 @@ func TestEveryHandlerHasABinding(t *testing.T) {
 // the status bar. A registered key that silently did nothing would be
 // indistinguishable from a broken one.
 func TestNotYetHandlersReportThemselves(t *testing.T) {
-	m := press(newTestModel(120, 40), "s")
+	m := press(newTestModel(120, 40), ":")
 
-	assert.Contains(t, m.toast, actionTorrentStart)
+	assert.Contains(t, m.toast, actionPalette)
 	assert.Contains(t, m.toast, "not implemented yet")
 }
 

@@ -216,6 +216,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.dialed(msg)
 	case altSpeedMsg:
 		return m.altSpeedSet(msg)
+	case mutationMsg:
+		return m.mutated(msg)
 	}
 
 	return m.forwardToInput(msg)

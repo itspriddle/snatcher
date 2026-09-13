@@ -167,6 +167,83 @@ func TestFilteredEmptyPlaceholder(t *testing.T) {
 	assert.Contains(t, frame, "filter: Downloading")
 }
 
+// filterFocusedOn is a polled live model with the sidebar focused on a row.
+func filterFocusedOn(t *testing.T, label string) (*rpcStub, Model) {
+	t.Helper()
+
+	stub, m := polledModel(t)
+	m = m.setFocus(paneFilter)
+
+	for m.torrents.filter.current().label != label {
+		before := m.torrents.filter.cursor
+		m = press(m, "j")
+
+		require.NotEqual(t, before, m.torrents.filter.cursor, "no sidebar row %q", label)
+	}
+
+	return stub, m
+}
+
+// TestGroupActionAlwaysConfirms checks a group action asks even for a group of
+// one, naming the group, and then acts on its members.
+func TestGroupActionAlwaysConfirms(t *testing.T) {
+	stub, m := filterFocusedOn(t, "Downloading")
+
+	m, cmd := pressCmd(m, "s")
+
+	assert.Nil(t, cmd)
+	require.True(t, m.hasOverlay(confirmOverlayKind))
+	assert.Contains(t, ansi.Strip(m.render()), "Start 1 torrent in Downloading?")
+
+	m, cmd = pressCmd(m, "y")
+	runCmd(t, m, cmd)
+
+	assert.Equal(t, []any{float64(1)}, ids(stub.args(t, "torrent-start")[0]))
+}
+
+// TestGroupSelectorNeverUsesAll checks the All row becomes explicit IDs, and an
+// empty group sends nothing.
+func TestGroupSelectorNeverUsesAll(t *testing.T) {
+	m := newTestModel(120, 40)
+
+	sel := groupSelector(filterItemNamed(t, m, "All"), m.torrents.all)
+	assert.False(t, sel.All)
+	assert.Len(t, sel.IDs, 12)
+
+	// Every torrent torrentsBody builds is stopped, so after this poll the
+	// Downloading group is empty and its row stays under the cursor.
+	stub, live := filterFocusedOn(t, "Downloading")
+	stub.respond("torrent-get", torrentsBody(stubTorrent{1, "a", 0}))
+	live = pollOnce(t, live)
+	require.Equal(t, "Downloading", live.torrents.filter.current().label)
+
+	got, cmd := pressCmd(live, "p")
+	assert.Nil(t, cmd)
+	assert.Empty(t, got.overlays)
+	assert.Equal(t, "no torrents in Downloading", got.toast)
+	assert.Zero(t, stub.calls("torrent-stop"))
+}
+
+// TestGroupDeleteAsksAboutData checks d in the sidebar removes the group through
+// the same two questions as the list pane.
+func TestGroupDeleteAsksAboutData(t *testing.T) {
+	stub, m := filterFocusedOn(t, "Downloading")
+
+	m = press(m, "d")
+	assert.Contains(t, ansi.Strip(m.render()), "Remove 1 torrent in Downloading?")
+
+	m = press(m, "y")
+	assert.Contains(t, ansi.Strip(m.render()), "Also delete downloaded data?")
+
+	m, cmd := pressCmd(m, "n")
+	runCmd(t, m, cmd)
+
+	args := stub.args(t, "torrent-remove")
+	require.Len(t, args, 1)
+	assert.Equal(t, false, args[0]["delete-local-data"])
+	assert.Equal(t, []any{float64(1)}, ids(args[0]))
+}
+
 // TestTorrentsFilteredGolden pins a filtered list: the narrowed rows, the
 // sidebar's applied marker, the counts still taken from every torrent, and the
 // footer.

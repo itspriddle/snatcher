@@ -60,6 +60,7 @@ func init() {
 	register(chordHandlers())
 	register(spineHandlers())
 	register(listHandlers())
+	register(mutationHandlers())
 	register(notYetHandlers())
 }
 

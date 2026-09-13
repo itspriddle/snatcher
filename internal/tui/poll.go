@@ -71,6 +71,11 @@ type liveData struct {
 	// inFlight is set while a fast poll is running, so polls never overlap.
 	inFlight bool
 
+	// pollAgain is a refetch asked for while a poll was in flight. A tick that
+	// arrives in flight is dropped, so without it the refetch after a mutation
+	// would wait a whole interval; the reply polls again at once instead.
+	pollAgain bool
+
 	// polls counts fast polls started; the first, and every slowRefreshEvery
 	// after it, carries a slow refresh along.
 	polls int
@@ -232,7 +237,7 @@ func (m Model) polled(msg pollMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
 		m.live.err = msg.err
 
-		return m.scheduleTick()
+		return m.afterPoll()
 	}
 
 	m.live.err = nil
@@ -242,7 +247,34 @@ func (m Model) polled(msg pollMsg) (Model, tea.Cmd) {
 	m.live.up = m.live.up.push(msg.stats.UploadSpeed)
 	m = m.refreshTorrents(msg.torrents)
 
+	return m.afterPoll()
+}
+
+// afterPoll is what a poll's reply schedules: the queued refetch, when one was
+// asked for while it ran, and the next tick otherwise.
+func (m Model) afterPoll() (Model, tea.Cmd) {
+	if m.live.pollAgain {
+		m.live.pollAgain = false
+
+		return m.pollNow()
+	}
+
 	return m.scheduleTick()
+}
+
+// requestPoll is the refetch after a mutation: poll now, or once the poll in
+// flight answers.
+func (m Model) requestPoll() (Model, tea.Cmd) {
+	switch {
+	case !m.polling() || m.live.switching:
+		return m, nil
+	case m.live.inFlight:
+		m.live.pollAgain = true
+
+		return m, nil
+	}
+
+	return m.pollNow()
 }
 
 // sessionPolled installs a slow refresh's answer. Its error never replaces one
@@ -320,6 +352,7 @@ func (m Model) switchServer(name string) (Model, tea.Cmd) {
 	m.live.gen++
 	m.live.switching = true
 	m.live.inFlight = false
+	m.live.pollAgain = false
 	m.toast = "connecting to " + name + "…"
 
 	return m, dialServer(m.deps.Dial, name, m.live.gen)

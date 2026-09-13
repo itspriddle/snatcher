@@ -62,6 +62,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"live", live},
 		{"live toast", liveToast},
 		{"picker", press(withServers(live, pickerServers()), "S")},
+		{"delete data", press(live, "d", "y")},
 		{"loading", liveModel(t, srv, w, h)},
 		{"error", pollOnce(t, liveModel(t, failingSrv, w, h))},
 		{"default", base},

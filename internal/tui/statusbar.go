@@ -318,9 +318,15 @@ func (m Model) shortBindings() []key.Binding {
 
 	var out []key.Binding
 
-	for _, b := range registry {
-		if len(stack) > 0 && b.Context == stack[0] {
-			out = append(out, b.Key)
+	if o, ok := topAs[confirmOverlay](m); ok && len(stack) > 0 && stack[0] == ctxConfirm {
+		// A strict confirm narrows its yes to one key, and its box says so; the
+		// line under it must not offer the key the box refuses.
+		out = o.bindings()
+	} else {
+		for _, b := range registry {
+			if len(stack) > 0 && b.Context == stack[0] {
+				out = append(out, b.Key)
+			}
 		}
 	}
 

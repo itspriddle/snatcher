@@ -158,6 +158,33 @@ func (s *rpcStub) calls(method string) int {
 	return n
 }
 
+// args decodes the arguments of every request for a method, in order. JSON
+// numbers arrive as float64.
+func (s *rpcStub) args(t *testing.T, method string) []map[string]any {
+	t.Helper()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var out []map[string]any
+
+	for _, body := range s.bodies {
+		if methodOf(body) != method {
+			continue
+		}
+
+		var envelope struct {
+			Arguments map[string]any `json:"arguments"`
+		}
+
+		require.NoError(t, json.Unmarshal([]byte(body), &envelope))
+
+		out = append(out, envelope.Arguments)
+	}
+
+	return out
+}
+
 // methodOf reads the method out of a request body.
 func methodOf(body string) string {
 	var envelope struct {

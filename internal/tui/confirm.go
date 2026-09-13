@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -36,6 +37,12 @@ type confirmOverlay struct {
 
 	// yes and no run on the matching answer. A nil action just closes.
 	yes, no confirmAction
+
+	// strict questions are answered yes by y alone. enter is the confirm's
+	// usual yes, which is right for a question whose yes can be undone and wrong
+	// for one whose yes deletes files: a user hammering enter through a remove
+	// must not delete data by momentum.
+	strict bool
 }
 
 // newConfirm builds a confirm overlay.
@@ -65,10 +72,32 @@ func (o confirmOverlay) view(m Model, w, _ int) string {
 		lines = append(lines, m.styles.Muted.Render(truncate(o.secondary, width)))
 	}
 
-	lines = append(lines, "", m.help.ShortHelpView(contextBindings(ctxConfirm)))
+	lines = append(lines, "", m.help.ShortHelpView(o.bindings()))
 
 	return m.styles.Overlay.Render(strings.Join(lines, "\n"))
 }
+
+// bindings are the keys the help line lists: the confirm's own, with a strict
+// question's yes narrowed to the one key that answers it.
+func (o confirmOverlay) bindings() []key.Binding {
+	bindings := contextBindings(ctxConfirm)
+	if !o.strict {
+		return bindings
+	}
+
+	yes := bindingFor(ctxConfirm, actionConfirmYes)
+
+	for i, b := range bindings {
+		if b.Help() == yes.Help() {
+			bindings[i] = key.NewBinding(key.WithKeys(strictYesKey), key.WithHelp(strictYesKey, yes.Help().Desc))
+		}
+	}
+
+	return bindings
+}
+
+// strictYesKey is the only key that answers a strict question yes.
+const strictYesKey = "y"
 
 // confirmHandler answers the topmost confirm overlay: pop it, then run the
 // chosen action. The overlay is popped first so the action sees the model the
@@ -95,10 +124,23 @@ func confirmHandler(pick func(confirmOverlay) confirmAction) handler {
 	}
 }
 
+// strictYes refuses any yes key but y on a strict question, and says so.
+func strictYes(next handler) handler {
+	return func(m Model, msg tea.KeyPressMsg) (Model, tea.Cmd) {
+		if o, ok := topAs[confirmOverlay](m); ok && o.strict && msg.String() != strictYesKey {
+			m.toast = "press y to confirm, or n or esc"
+
+			return m, nil
+		}
+
+		return next(m, msg)
+	}
+}
+
 // confirmHandlers are the confirm overlay's answers.
 func confirmHandlers() map[Action]handler {
 	return map[Action]handler{
-		actionConfirmYes: confirmHandler(func(o confirmOverlay) confirmAction { return o.yes }),
+		actionConfirmYes: strictYes(confirmHandler(func(o confirmOverlay) confirmAction { return o.yes })),
 		actionConfirmNo:  confirmHandler(func(o confirmOverlay) confirmAction { return o.no }),
 	}
 }
