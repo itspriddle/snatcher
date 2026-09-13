@@ -171,6 +171,7 @@ func (m Model) applyTheme(isDark bool) Model {
 	m.icons = newIcons(m.deps.NerdFont)
 	m.help.Styles = m.styles.Help
 	m.torrents.list = m.torrents.list.setStyles(m.styles)
+	m.torrents.detail = m.torrents.detail.setStyles(m.styles)
 	m.torrents.searchInput.SetStyles(m.styles.Input)
 	m.settings = m.settings.setStyles(m.styles)
 

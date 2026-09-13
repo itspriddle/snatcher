@@ -6,31 +6,19 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/table"
-	"charm.land/lipgloss/v2"
 
 	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // listColumn describes one column of the torrent table: the CLI field key that
-// names it, its heading, its width, its alignment, and how a torrent renders
-// into it.
+// names it, its shape, and how a torrent renders into it.
 type listColumn struct {
 	// key is the CLI --fields key, or empty for the two fixed prefix cells.
 	key string
 
-	// title is the column heading.
-	title string
-
-	// width is the column's width in cells, excluding the table's own cell
-	// padding. Zero means flex: the column takes whatever the others leave. Only
-	// name flexes.
-	width int
-
-	// right right-aligns the cell. bubbles/v2/table has no alignment, so the
-	// cell is left-padded to width when the row is built — which is safe only
-	// because every non-flex width is fixed before rows are built.
-	right bool
+	// colSpec is the heading, width, and alignment. Only name flexes.
+	colSpec
 
 	// render turns a torrent into the cell's text. Every server-derived string
 	// it returns must already be sanitized.
@@ -44,8 +32,8 @@ const nameKey = "name"
 // whatever columns the user chose. Both are one cell wide, so the ASCII and Nerd
 // Font glyph sets cannot move any column to their right.
 var prefixColumns = []listColumn{
-	{title: " ", width: 1, render: func(_ transmission.Torrent, _ Icons) string { return "" }},
-	{title: " ", width: 1, render: func(t transmission.Torrent, i Icons) string { return i.status(t.Status) }},
+	{colSpec: colSpec{title: " ", width: 1}, render: func(_ transmission.Torrent, _ Icons) string { return "" }},
+	{colSpec: colSpec{title: " ", width: 1}, render: func(t transmission.Torrent, i Icons) string { return i.status(t.Status) }},
 }
 
 // The prefix cells' indices. The mark cell is filled from the selection rather
@@ -61,47 +49,47 @@ const (
 // internal/commands, so it is a copy pinned by TestColumnKeysMirrorTheCLI rather
 // than a shared registry.
 var columnDefs = []listColumn{
-	{key: "id", title: "ID", width: 4, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "id", colSpec: colSpec{title: "ID", width: 4, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return strconv.FormatInt(t.ID, 10)
 	}},
-	{key: "hash", title: "Hash", width: 40, render: func(t transmission.Torrent, _ Icons) string { return t.Hash }},
-	{key: nameKey, title: "Name", render: func(t transmission.Torrent, _ Icons) string {
+	{key: "hash", colSpec: colSpec{title: "Hash", width: 40}, render: func(t transmission.Torrent, _ Icons) string { return t.Hash }},
+	{key: nameKey, colSpec: colSpec{title: "Name"}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.SanitizeTerminal(t.Name)
 	}},
-	{key: "status", title: "Status", width: 11, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "status", colSpec: colSpec{title: "Status", width: 11}, render: func(t transmission.Torrent, _ Icons) string {
 		return t.Status.String()
 	}},
-	{key: "done", title: "Done", width: 4, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "done", colSpec: colSpec{title: "Done", width: 4, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.Percent(t.PercentDone)
 	}},
-	{key: "size", title: "Size", width: 9, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "size", colSpec: colSpec{title: "Size", width: 9, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.Bytes(t.TotalSize)
 	}},
-	{key: "down", title: "Down", width: 11, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "down", colSpec: colSpec{title: "Down", width: 11, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.Speed(t.RateDownload)
 	}},
-	{key: "up", title: "Up", width: 11, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "up", colSpec: colSpec{title: "Up", width: 11, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.Speed(t.RateUpload)
 	}},
-	{key: "ratio", title: "Ratio", width: 6, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "ratio", colSpec: colSpec{title: "Ratio", width: 6, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.Ratio(t.UploadRatio)
 	}},
-	{key: "eta", title: "ETA", width: 7, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "eta", colSpec: colSpec{title: "ETA", width: 7, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.ETA(t.ETA)
 	}},
-	{key: "peers", title: "Peers", width: 5, right: true, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "peers", colSpec: colSpec{title: "Peers", width: 5, right: true}, render: func(t transmission.Torrent, _ Icons) string {
 		return strconv.FormatInt(t.PeersConnected, 10)
 	}},
-	{key: "added", title: "Added", width: 10, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "added", colSpec: colSpec{title: "Added", width: 10}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.Date(t.AddedDate)
 	}},
-	{key: "download_dir", title: "Download Dir", width: 24, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "download_dir", colSpec: colSpec{title: "Download Dir", width: 24}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.SanitizeTerminal(t.DownloadDir)
 	}},
-	{key: "error", title: "Error", width: 24, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "error", colSpec: colSpec{title: "Error", width: 24}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.SanitizeTerminal(t.Error)
 	}},
-	{key: "labels", title: "Labels", width: 16, render: func(t transmission.Torrent, _ Icons) string {
+	{key: "labels", colSpec: colSpec{title: "Labels", width: 16}, render: func(t transmission.Torrent, _ Icons) string {
 		return output.SanitizeTerminal(strings.Join(t.Labels, ","))
 	}},
 }
@@ -146,91 +134,25 @@ func (c listColumn) cellText(t transmission.Torrent, icons Icons) string {
 	return c.align(c.render(t, icons))
 }
 
-// align left-pads s to the column's width when the column is right-aligned. A
-// value wider than the column is left for the table to truncate.
-func (c listColumn) align(s string) string {
-	if !c.right {
-		return s
-	}
-
-	if gap := c.width - lipgloss.Width(s); gap > 0 {
-		return strings.Repeat(" ", gap) + s
-	}
-
-	return s
-}
-
-// minNameWidth is the narrowest the name column is allowed to get before a
-// column is dropped to feed it.
-const minNameWidth = 16
-
-// cellPadding is the trailing padding every table cell carries (Styles.Cell in
-// newStyles). It is one rather than the component default's two because nine
-// columns of padding on both sides costs eighteen cells, which is most of a
-// torrent name.
-const cellPadding = 1
-
-// fitColumns sizes the columns for a pane of the given inner width: the name
-// column takes whatever the others leave, and when that would squeeze it below
-// minNameWidth — or, with no name column, when the columns overflow — the
-// rightmost droppable column is dropped and the sum recomputed. The prefix cells
-// and the name are never dropped.
-//
-// A dropped column is given a width of zero rather than removed. The component
-// skips a zero-width column when rendering both headers and rows, so the rows
-// built by setRows stay one cell per column however narrow the pane gets, and
-// nothing has to rebuild them on a resize.
+// fitColumns sizes the torrent table's columns for a pane of the given inner
+// width, never dropping the two prefix cells. See fitSpecs.
 func fitColumns(cols []listColumn, width int) []table.Column {
-	out := tableColumns(cols)
-	name := -1
-
-	for i, c := range cols {
-		if c.key == nameKey {
-			name = i
-		}
-	}
-
-	for next := len(out) - 1; ; next-- {
-		spent := 0
-
-		for i, c := range out {
-			if i != name && c.Width > 0 {
-				spent += c.Width + cellPadding
-			}
-		}
-
-		remaining := width - spent - cellPadding
-		fits := remaining >= minNameWidth
-		if name < 0 {
-			fits = spent <= width
-		}
-
-		for next >= len(prefixColumns) && next == name {
-			next--
-		}
-
-		if fits || next < len(prefixColumns) {
-			if name >= 0 {
-				out[name].Width = max(1, remaining)
-			}
-
-			return out
-		}
-
-		out[next].Width = 0
-	}
+	return fitSpecs(specsOf(cols), len(prefixColumns), width)
 }
 
-// tableColumns converts the column descriptions into the component's own type. A
-// right-aligned heading is padded like its cells, so it sits over them.
+// tableColumns converts the column descriptions into the component's own type.
 func tableColumns(cols []listColumn) []table.Column {
-	out := make([]table.Column, 0, len(cols))
+	return specColumns(specsOf(cols))
+}
 
+// specsOf is the shapes of the torrent table's columns.
+func specsOf(cols []listColumn) []colSpec {
+	specs := make([]colSpec, 0, len(cols))
 	for _, c := range cols {
-		out = append(out, table.Column{Title: c.align(c.title), Width: c.width})
+		specs = append(specs, c.colSpec)
 	}
 
-	return out
+	return specs
 }
 
 // columnsOverlayKind names the columns modal.

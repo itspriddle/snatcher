@@ -40,6 +40,7 @@ func (m Model) setFocus(p Pane) Model {
 
 	m.torrents.focus = p
 	m.torrents.list = m.torrents.list.focus(p == paneList)
+	m.torrents.detail = m.torrents.detail.focus(p == paneDetail)
 
 	return m
 }

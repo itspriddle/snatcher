@@ -26,6 +26,18 @@ type componentKeyMap struct {
 	wired   map[string]Action
 }
 
+// tableWired is the fields every table's keymap fills from the registry.
+var tableWired = map[string]Action{
+	"LineUp":       actionNavUp,
+	"LineDown":     actionNavDown,
+	"PageUp":       actionNavPageUp,
+	"PageDown":     actionNavPageDown,
+	"HalfPageUp":   actionNavHalfPageUp,
+	"HalfPageDown": actionNavHalfPageDown,
+	"GotoTop":      actionNavTop,
+	"GotoBottom":   actionNavBottom,
+}
+
 // componentKeyMaps is every component keymap the TUI installs.
 func componentKeyMaps() []componentKeyMap {
 	return []componentKeyMap{
@@ -33,16 +45,19 @@ func componentKeyMaps() []componentKeyMap {
 			name:    "torrent table",
 			context: ctxNav,
 			keyMap:  tableKeyMap(),
-			wired: map[string]Action{
-				"LineUp":       actionNavUp,
-				"LineDown":     actionNavDown,
-				"PageUp":       actionNavPageUp,
-				"PageDown":     actionNavPageDown,
-				"HalfPageUp":   actionNavHalfPageUp,
-				"HalfPageDown": actionNavHalfPageDown,
-				"GotoTop":      actionNavTop,
-				"GotoBottom":   actionNavBottom,
-			},
+			wired:   tableWired,
+		},
+		{
+			name:    "detail peers table",
+			context: ctxNav,
+			keyMap:  newDetailPane(Styles{}, true).peers.table.KeyMap,
+			wired:   tableWired,
+		},
+		{
+			name:    "detail trackers table",
+			context: ctxNav,
+			keyMap:  newDetailPane(Styles{}, true).trackers.table.KeyMap,
+			wired:   tableWired,
 		},
 		{
 			name:    "detail viewport",

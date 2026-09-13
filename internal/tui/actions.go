@@ -317,8 +317,9 @@ func forwardToFocusedPane(m Model, msg tea.KeyPressMsg) (Model, tea.Cmd) {
 
 		return m.syncTorrents(), cmd
 	case paneDetail:
-		vp, cmd := m.torrents.detail.vp.Update(msg)
-		m.torrents.detail.vp = vp
+		var cmd tea.Cmd
+
+		m.torrents.detail, cmd = m.torrents.detail.forward(msg)
 
 		return m, cmd
 	case paneFilter:

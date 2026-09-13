@@ -78,6 +78,8 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"detail only", press(base, "{", "}")},
 		{"detail focused", press(base, "enter")},
 		{"detail loaded", withMockDetail(press(base, "enter"))},
+		{"detail trackers", withMockDetail(press(base, "enter", "3"))},
+		{"detail peers", withMockDetail(press(base, "enter", "4"))},
 		{"marked", press(base, "space", "down", "space")},
 		{"help", press(base, "?")},
 		{"settings", press(base, ",")},
