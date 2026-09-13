@@ -116,7 +116,15 @@ func New(deps Deps) Model {
 	}
 
 	m = m.applyTheme(true)
-	m.torrents = newTorrentsWindow(m.styles, m.icons, deps.Torrents)
+
+	// The list preferences are read once, here. The settings window does not
+	// edit them, so the only writers in this process are o and c themselves.
+	view, err := listPrefs(deps.Config)
+	if err != nil {
+		m.toast = "config: " + errorLine(err)
+	}
+
+	m.torrents = newTorrentsWindow(m.styles, m.icons, deps.Torrents, view)
 	m.settings = newSettingsWindow(m.styles, deps)
 
 	return m

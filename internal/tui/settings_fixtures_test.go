@@ -69,25 +69,59 @@ type fakeConfig struct {
 
 	// failKey makes Set fail for that key, after validation.
 	failKey string
+
+	// entriesErr, when set, is what Entries fails with.
+	entriesErr error
 }
 
 // newFakeConfig reports every key at its default.
 func newFakeConfig() *fakeConfig {
 	return &fakeConfig{entries: []ClientEntry{
+		{Key: clientKeyListColumns, Value: slices.Clone(defaultColumnKeys), Source: "default"},
+		{Key: clientKeyListReverse, Value: false, Source: "default"},
+		{Key: clientKeyListSort, Value: "queue", Source: "default"},
 		{Key: clientKeyNerdFont, Value: true, Source: "default"},
 		{Key: clientKeyPollInterval, Value: "5s", Source: "default"},
 		{Key: clientKeyTheme, Value: "default", Source: "default", Allowed: slices.Clone(builtinThemes)},
 	}}
 }
 
+// setEntry stores a value for a key as though it had been read from the file.
+func (c *fakeConfig) setEntry(key string, value any) *fakeConfig {
+	for i := range c.entries {
+		if c.entries[i].Key == key {
+			c.entries[i].Value, c.entries[i].Source = value, "config"
+		}
+	}
+
+	return c
+}
+
 // Entries implements ClientConfig.
 func (c *fakeConfig) Entries() ([]ClientEntry, error) {
+	if c.entriesErr != nil {
+		return nil, c.entriesErr
+	}
+
 	return slices.Clone(c.entries), nil
 }
 
 // Validate implements ClientConfig.
 func (c *fakeConfig) Validate(key string, value any) error {
 	switch key {
+	case clientKeyListColumns:
+		return validateFakeColumns(value)
+	case clientKeyListSort:
+		raw, _ := value.(string)
+		_, err := transmission.ParseSortField(raw)
+
+		return err
+	case clientKeyListReverse:
+		if _, ok := value.(bool); ok {
+			return nil
+		}
+
+		return errors.New("expected a bool")
 	case clientKeyTheme:
 		if name, _ := value.(string); slices.Contains(builtinThemes, name) {
 			return nil
@@ -136,6 +170,27 @@ func (c *fakeConfig) Set(key string, value any) error {
 	}
 
 	c.sets = append(c.sets, key)
+
+	return nil
+}
+
+// validateFakeColumns is validateListColumns' rule: a non-empty list of distinct
+// known columns.
+func validateFakeColumns(value any) error {
+	keys, ok := value.([]string)
+	if !ok || len(keys) == 0 {
+		return errors.New("no columns selected")
+	}
+
+	seen := map[string]bool{}
+
+	for _, k := range keys {
+		if _, known := columnDef(k); !known || seen[k] {
+			return fmt.Errorf("%q is not a column, or is listed twice", k)
+		}
+
+		seen[k] = true
+	}
 
 	return nil
 }

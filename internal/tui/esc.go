@@ -59,8 +59,8 @@ var ladder = []rung{
 	},
 	{
 		name:    "clear search",
-		applies: func(m Model) bool { return m.window == windowTorrents && m.torrents.search != "" },
-		apply:   func(m Model) Model { m.torrents.search = ""; return m.syncTorrents() },
+		applies: func(m Model) bool { return m.window == windowTorrents && m.torrents.listView.search != "" },
+		apply:   func(m Model) Model { m.torrents.listView.search = ""; return m.syncTorrents() },
 	},
 	{
 		name:    "clear marks",

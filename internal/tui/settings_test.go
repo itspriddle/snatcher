@@ -60,7 +60,12 @@ func TestSettingsFieldCyclingSkipsReadOnly(t *testing.T) {
 // for this run is skipped, and says why.
 func TestSettingsFlagOverriddenThemeIsReadOnly(t *testing.T) {
 	cfg := newFakeConfig()
-	cfg.entries[2] = ClientEntry{Key: clientKeyTheme, Value: "nord", Source: "flag", SetBy: "--theme", Allowed: builtinThemes}
+
+	for i := range cfg.entries {
+		if cfg.entries[i].Key == clientKeyTheme {
+			cfg.entries[i] = ClientEntry{Key: clientKeyTheme, Value: "nord", Source: "flag", SetBy: "--theme", Allowed: builtinThemes}
+		}
+	}
 
 	deps := testDeps()
 	deps.Config = cfg

@@ -139,8 +139,13 @@ func Run(ctx context.Context, deps Deps) error {
 	m.client = res.Client
 	m.serverURL = res.URL
 	m.serverName = res.Name
-	m.toast = res.Warning
 	m.ctx = ctx
+
+	// A dial warning outranks a config toast New may have left; with no
+	// warning, the config toast stays.
+	if res.Warning != "" {
+		m.toast = res.Warning
+	}
 
 	// ctrl+c and SIGINT are how a TUI is meant to be left, so the sentinel
 	// bubbletea reports them with is not an error to show the user.

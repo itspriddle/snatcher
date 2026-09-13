@@ -1,17 +1,17 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│Status                │┃    Name                           Status      Done Size      Down        Up          ETA     ┃
-│  All               12│┃  v ubuntu-24.04.1-desktop-amd64.… Downloading 42%  5.8 GiB   4.0 MiB/s   128.0 KiB/s 14m 18s ┃
-│  Downloading        4│┃  ^ debian-12.7.0-amd64-netinst.i… Seeding     100% 631.0 MiB 0 B/s       512.0 KiB/s -       ┃
-│  Seeding            3│┃  x archlinux-2026.09.01-x86_64.i… Stopped     87%  1.1 GiB   0 B/s       0 B/s       -       ┃
-│  Active             7│┃  % fedora-workstation-41.iso      Verifying   99%  2.1 GiB   0 B/s       0 B/s       -       ┃
-│  Stopped            2│┃  ~ nixos-minimal-25.05-x86_64.iso Queued to … 100% 1.0 GiB   0 B/s       0 B/s       -       ┃
-│  Verifying          1│┃  ~ openbsd-7.6-amd64-install.iso  Queued to … 0%   769.0 MiB 0 B/s       0 B/s       -       ┃
-│  Queued to download 1│┃  ~ freebsd-14.1-release-amd64-dv… Queued to … 100% 4.2 GiB   0 B/s       0 B/s       -       ┃
-│  Queued to seed     1│┃  ! alpine-standard-3.21.0-x86_64… Error       31%  200.0 MiB 0 B/s       0 B/s       -       ┃
-│  Queued to verify   1│┃  v void-live-x86_64-20260901.iso  Downloading 5%   695.0 MiB 768.0 KiB/s 0 B/s       14m 40s ┃
-│  Error              1│┃  ^ gentoo-admincd-amd64-20260815… Seeding     100% 560.0 MiB 0 B/s       64.0 KiB/s  -       ┃
-│Labels                │┃  x slackware64-15.0-install-dvd.… Stopped     50%  3.6 GiB   0 B/s       0 B/s       -       ┃
-│  linux              3│┃  v hostile[31mname[0m-with-escap… Downloading 17%  1000.0 M… 256.0 KiB/s 0 B/s       55m 19s ┃
+│Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
+│  All               12│┃  v    1 ubuntu-24.04.1-de… Downloading  42%   5.8 GiB   4.0 MiB/s 128.0 KiB/s   0.12 14m 18s ┃
+│  Downloading        4│┃  ^    2 debian-12.7.0-amd… Seeding     100% 631.0 MiB       0 B/s 512.0 KiB/s   3.41       - ┃
+│  Seeding            3│┃  x    3 archlinux-2026.09… Stopped      87%   1.1 GiB       0 B/s       0 B/s   0.00       - ┃
+│  Active             7│┃  %    4 fedora-workstatio… Verifying    99%   2.1 GiB       0 B/s       0 B/s   0.00       - ┃
+│  Stopped            2│┃  ~    5 nixos-minimal-25.… Queued to … 100%   1.0 GiB       0 B/s       0 B/s   0.00       - ┃
+│  Verifying          1│┃  ~    6 openbsd-7.6-amd64… Queued to …   0% 769.0 MiB       0 B/s       0 B/s   0.00       - ┃
+│  Queued to download 1│┃  ~    7 freebsd-14.1-rele… Queued to … 100%   4.2 GiB       0 B/s       0 B/s   0.88       - ┃
+│  Queued to seed     1│┃  !    8 alpine-standard-3… Error        31% 200.0 MiB       0 B/s       0 B/s   0.00       - ┃
+│  Queued to verify   1│┃  v    9 void-live-x86_64-… Downloading   5% 695.0 MiB 768.0 KiB/s       0 B/s   0.00 14m 40s ┃
+│  Error              1│┃  ^   10 gentoo-admincd-am… Seeding     100% 560.0 MiB       0 B/s  64.0 KiB/s   1.04       - ┃
+│Labels                │┃  x   11 slackware64-15.0-… Stopped      50%   3.6 GiB       0 B/s       0 B/s   0.00       - ┃
+│  linux              3│┃  v   12 hostile[31mname[0… Downloading  17% 1000.0 M… 256.0 KiB/s       0 B/s   0.00 55m 19s ┃
 │  seed               3│┃                                                                                              ┃
 │  No label           7│┃                                                                                              ┃
 │Trackers              │┃                                                                                              ┃

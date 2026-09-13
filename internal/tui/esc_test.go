@@ -88,7 +88,7 @@ func TestEscLadderRungs(t *testing.T) {
 				t.Helper()
 
 				assert.Equal(t, paneList, m.focusedPane())
-				assert.Equal(t, "kernel", m.torrents.search, "the search below must survive")
+				assert.Equal(t, "kernel", m.torrents.listView.search, "the search below must survive")
 			},
 		},
 		{
@@ -97,7 +97,7 @@ func TestEscLadderRungs(t *testing.T) {
 			check: func(t *testing.T, m Model) {
 				t.Helper()
 
-				assert.Empty(t, m.torrents.search)
+				assert.Empty(t, m.torrents.listView.search)
 				assert.Equal(t, 1, m.torrents.sel.markCount(), "the mark below must survive")
 			},
 		},
@@ -191,7 +191,7 @@ func loadedModel(t *testing.T) Model {
 
 	require.Equal(t, 1, m.torrents.sel.markCount())
 
-	m.torrents.search = "kernel"
+	m.torrents.listView.search = "kernel"
 	m = m.setFocus(paneFilter)
 	m.inputFocused = true
 

@@ -266,10 +266,10 @@ func (m Model) sessionPolled(msg sessionMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// refreshTorrents installs polled rows in queue order, the CLI's default
-// list_sort.
+// refreshTorrents installs polled torrents; the window's view filters and sorts
+// them into rows.
 func (m Model) refreshTorrents(rows []transmission.Torrent) Model {
-	m.torrents = m.torrents.setRows(transmission.SortTorrents(rows, transmission.SortQueue, false), m.icons)
+	m.torrents = m.torrents.setAll(rows, m.icons)
 
 	return m
 }

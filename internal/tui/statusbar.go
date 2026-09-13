@@ -217,13 +217,12 @@ func serverVersion(long string) string {
 	return fields[0]
 }
 
-// usedBytes is the bytes the polled torrents have on disk. It sums the rows
-// the spine installed; when T5 filters the table, it must keep summing the
-// unfiltered set.
+// usedBytes is the bytes the polled torrents have on disk. It sums the
+// unfiltered set: a filter narrows the table, not the disk.
 func (m Model) usedBytes() int64 {
 	var n int64
 
-	for _, t := range m.torrents.rows {
+	for _, t := range m.torrents.all {
 		n += t.SizeWhenDone - t.LeftUntilDone
 	}
 

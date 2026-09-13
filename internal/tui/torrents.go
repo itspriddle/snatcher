@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"slices"
+
 	"charm.land/lipgloss/v2"
 
 	"github.com/itspriddle/snatcher/internal/transmission"
@@ -9,9 +11,16 @@ import (
 // torrentsWindow is the default window: a filter sidebar, a torrent table, and a
 // detail pane, with one selection shared between them.
 type torrentsWindow struct {
-	// rows are the torrents currently rendered, after any filter, search, and
-	// sort. T4 renders the polled set in queue order.
+	// all is every torrent the spine last polled, before any filter. The
+	// sidebar counts and the status bar's used space are computed from it, so a
+	// filter never changes the numbers it was chosen from.
+	all []transmission.Torrent
+
+	// rows are the torrents the table shows: all, filtered and sorted.
 	rows []transmission.Torrent
+
+	// listView is the filter, sort, columns, and search behind rows.
+	listView listView
 
 	// filter, list, and detail are the window's panes.
 	filter filterPane
@@ -27,23 +36,20 @@ type torrentsWindow struct {
 
 	// sel is the marked set and cursor every action in this window consumes.
 	sel selection
-
-	// search is the active `/` query. It is always empty in T1 — `/` is
-	// registered but not implemented — and exists so the esc ladder's
-	// clear-search rung is a real rung with a real test rather than a hole.
-	search string
 }
 
-// newTorrentsWindow builds the window around a set of torrents.
+// newTorrentsWindow builds the window around a set of torrents and a view.
 //
 // The filter sidebar starts open and the detail pane starts closed: the sidebar
 // is how a user narrows a list they are looking at, and the detail pane
 // describes a row they have chosen, which they have not yet done.
-func newTorrentsWindow(st Styles, icons Icons, rows []transmission.Torrent) torrentsWindow {
+func newTorrentsWindow(st Styles, icons Icons, all []transmission.Torrent, view listView) torrentsWindow {
 	w := torrentsWindow{
-		rows:       rows,
-		filter:     newFilterPane(rows),
-		list:       newListPane(st),
+		all:        all,
+		rows:       view.apply(all),
+		listView:   view,
+		filter:     newFilterPane(all),
+		list:       newListPane(st, view.columns),
 		detail:     newDetailPane(),
 		filterOpen: true,
 		focus:      paneList,
@@ -76,29 +82,49 @@ func (w torrentsWindow) applyDetail(t *transmission.Torrent) torrentsWindow {
 	return w
 }
 
-// setRows installs a new set of rows, keeping the user's place in them: the
-// cursor follows its torrent by ID, marks on torrents that are gone are dropped,
-// and the sidebar's counts are rebuilt.
-func (w torrentsWindow) setRows(rows []transmission.Torrent, icons Icons) torrentsWindow {
+// setAll installs a newly polled set of torrents.
+func (w torrentsWindow) setAll(all []transmission.Torrent, icons Icons) torrentsWindow {
+	w.all = all
+
+	return w.reapply(icons)
+}
+
+// setView installs a new view: a filter, a sort, or a column set.
+func (w torrentsWindow) setView(v listView, icons Icons) torrentsWindow {
+	if !slices.Equal(v.columns, w.listView.columns) {
+		w.list = w.list.setColumns(v.columns)
+	}
+
+	w.listView = v
+
+	return w.reapply(icons)
+}
+
+// reapply rederives the rows from all and the view, keeping the user's place in
+// them: the cursor follows its torrent by ID, marks on torrents no longer shown
+// are dropped, and the sidebar's counts are rebuilt from the unfiltered set.
+func (w torrentsWindow) reapply(icons Icons) torrentsWindow {
 	prev, had := w.sel.row(w.rows)
 
-	w.rows = rows
-	w.sel = w.sel.track(prev.ID, had, rows)
-	w.filter = w.filter.rebuild(rows)
+	w.rows = w.listView.apply(w.all)
+	w.sel = w.sel.track(prev.ID, had, w.rows)
+	w.filter = w.filter.rebuild(w.all)
 	w = w.sync(icons)
 	w.list.table.SetCursor(w.sel.cursor)
 
 	return w
 }
 
-// reset empties the window for a different server: no rows, no marks, the
-// cursor at the top. The pane toggles and focus are the user's layout, not the
-// server's, so they stay.
+// reset empties the window for a different server: no rows, no marks, no filter
+// or search, the cursor at the top. The pane toggles, focus, sort, and columns
+// are the user's preferences, not the server's, so they stay.
 func (w torrentsWindow) reset(icons Icons) torrentsWindow {
+	w.all = nil
 	w.rows = nil
 	w.sel = newSelection()
 	w.filter = newFilterPane(nil)
-	w.search = ""
+	w.listView.filter = viewFilter{}
+	w.listView.search = ""
 	w = w.sync(icons)
 	w.list.table.SetCursor(0)
 
