@@ -204,6 +204,7 @@ func chordHandlers() map[Action]handler {
 	}
 
 	out := map[Action]handler{
+		actionYankMagnet: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.yankMagnet() },
 		actionFocusLeft:  plain(func(m Model) Model { return m.focusDirection(actionFocusLeft) }),
 		actionFocusRight: plain(func(m Model) Model { return m.focusDirection(actionFocusRight) }),
 		actionFocusUp:    plain(func(m Model) Model { return m.focusDirection(actionFocusUp) }),

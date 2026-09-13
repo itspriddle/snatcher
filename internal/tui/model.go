@@ -227,6 +227,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.mutated(msg)
 	case addedMsg:
 		return m.added(msg)
+	case magnetMsg:
+		return m.magnetFetched(msg)
 	}
 
 	return m.forwardToInput(msg)
