@@ -62,6 +62,7 @@ func init() {
 	register(listHandlers())
 	register(mutationHandlers())
 	register(promptHandlers())
+	register(addHandlers())
 	register(notYetHandlers())
 }
 
@@ -169,6 +170,10 @@ func settingsHandlers() map[Action]handler {
 			// inputs' submits are plain transitions.
 			if m.owner == ownerPrompt {
 				return m.promptSubmit()
+			}
+
+			if m.owner == ownerForm {
+				return m.formSubmitInput(), nil
 			}
 
 			return m.submitInput().syncSettings(), nil

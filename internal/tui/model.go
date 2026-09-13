@@ -44,6 +44,10 @@ const (
 
 	// ownerPrompt is a prompt overlay's input, released when the prompt closes.
 	ownerPrompt
+
+	// ownerForm is a form overlay's row editor, whose blur discards the row's
+	// draft and leaves the form open.
+	ownerForm
 )
 
 // Model is the root model. It owns focus, the overlay stack, the pending chord,
@@ -221,6 +225,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.altSpeedSet(msg)
 	case mutationMsg:
 		return m.mutated(msg)
+	case addedMsg:
+		return m.added(msg)
 	}
 
 	return m.forwardToInput(msg)

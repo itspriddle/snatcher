@@ -71,6 +71,10 @@ const (
 	// ctxFilterPick is the whole stack while the f filter modal is open.
 	ctxFilterPick
 
+	// ctxForm is the whole stack while a form overlay is open and none of its
+	// rows is being edited.
+	ctxForm
+
 	// ctxChordYank is the second key of the y chord.
 	ctxChordYank
 
@@ -109,6 +113,8 @@ func (c Context) String() string {
 		return "columns"
 	case ctxFilterPick:
 		return "filter picker"
+	case ctxForm:
+		return "form"
 	case ctxChordYank:
 		return "yank"
 	case ctxChordWindow:
@@ -224,6 +230,11 @@ const (
 	actionFilterPickUp     Action = "filter.pick-up"
 	actionFilterPickDown   Action = "filter.pick-down"
 	actionFilterPickSelect Action = "filter.pick-select"
+
+	actionFormNext   Action = "form.next"
+	actionFormPrev   Action = "form.prev"
+	actionFormEnter  Action = "form.enter"
+	actionFormToggle Action = "form.toggle"
 
 	actionHelpScrollUp   Action = "help.scroll-up"
 	actionHelpScrollDown Action = "help.scroll-down"
@@ -409,6 +420,14 @@ var registry = []Binding{
 	bind(ctxFilterPick, actionTorrentFilter, "f", "close", "f"),
 	bind(ctxFilterPick, actionEscape, "esc", "cancel", "esc"),
 
+	// Form — tab moves rows and up/down stay unbound, the settings window's rule:
+	// a row's widget owns its own keys.
+	bind(ctxForm, actionFormNext, "tab", "next row", "tab"),
+	bind(ctxForm, actionFormPrev, "shift+tab", "previous row", "shift+tab"),
+	bind(ctxForm, actionFormEnter, "enter", "edit/press", "enter"),
+	bind(ctxForm, actionFormToggle, "space", "toggle", "space"),
+	bind(ctxForm, actionEscape, "esc", "cancel", "esc"),
+
 	// Help overlay.
 	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
 	bind(ctxHelp, actionHelpScrollDown, "↓/j", "scroll down", "down", "j"),
@@ -565,6 +584,7 @@ var modalStacks = [][]Context{
 	{ctxSort},
 	{ctxColumns},
 	{ctxFilterPick},
+	{ctxForm},
 	{ctxChordYank},
 	{ctxChordWindow},
 	{ctxTextInput},

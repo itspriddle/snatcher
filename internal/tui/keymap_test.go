@@ -262,6 +262,19 @@ func TestFilterPickStackIsModal(t *testing.T) {
 	})
 }
 
+// TestFormStackIsModal pins the form's keys and its swallow-everything rule,
+// including that up and down are left to the row, as in the settings window.
+func TestFormStackIsModal(t *testing.T) {
+	assertModalStack(t, formOverlay{}, map[string]Action{
+		"tab": actionFormNext, "shift+tab": actionFormPrev, "enter": actionFormEnter, "space": actionFormToggle,
+	})
+
+	for _, k := range []string{"up", "down", "j", "k", "A", "a"} {
+		_, ok := lookup(formOverlay{}.contexts(), stringKey(k))
+		assert.Falsef(t, ok, "%q must do nothing in a form", k)
+	}
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.

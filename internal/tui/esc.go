@@ -27,8 +27,11 @@ var ladder = []rung{
 		apply:   func(m Model) Model { m.chord = chordNone; return m },
 	},
 	{
+		// A form row being edited sits above its form, so its esc belongs to the
+		// "blur input" rung below; a prompt's draft is the overlay itself, so its
+		// esc closes it here.
 		name:    "close overlay",
-		applies: func(m Model) bool { return len(m.overlays) > 0 },
+		applies: func(m Model) bool { return len(m.overlays) > 0 && (!m.inputFocused || m.owner != ownerForm) },
 		apply:   Model.pop,
 	},
 	{

@@ -902,6 +902,8 @@ func (m Model) blurInput() Model {
 	case ownerPrompt:
 		// A prompt's draft is the overlay, so it is closed rather than blurred,
 		// and closing it is what releases the input. Nothing to blur here.
+	case ownerForm:
+		m = m.formBlur()
 	case ownerNone, ownerSettings:
 		m = m.settingsBlur()
 	}
@@ -975,6 +977,8 @@ func (m Model) forwardToInput(msg tea.Msg) (Model, tea.Cmd) {
 		return m.searchForward(msg)
 	case ownerPrompt:
 		return m.promptForward(msg)
+	case ownerForm:
+		return m.formForward(msg)
 	case ownerNone, ownerSettings:
 	}
 
