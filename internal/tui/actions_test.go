@@ -127,15 +127,26 @@ func TestDetailTabsCycleInBothDirections(t *testing.T) {
 
 // TestDetailPaneCarriesNoTorrentVerbs pins vision.md's rule that action verbs
 // live in a window's main pane: s must not start a torrent from the detail pane,
-// where the files tab has a cursor and marks of its own.
+// where the files tab has a cursor and marks of its own. space is the files
+// tab's file mark, and free on every other tab.
 func TestDetailPaneCarriesNoTorrentVerbs(t *testing.T) {
 	m := press(newTestModel(120, 40), "enter")
 	require.Equal(t, paneDetail, m.focusedPane())
 
-	for _, key := range []string{"s", "p", "v", "d", "y", "space"} {
-		_, ok := lookup(m.contextStack(), keyMsg(key))
+	for tab, number := range []string{"1", "2", "3", "4", "5"} {
+		on := press(m, number)
+		require.Equal(t, tab, on.torrents.detail.tab)
 
-		assert.Falsef(t, ok, "%q is bound in the detail pane", key)
+		keys := []string{"s", "p", "v", "d", "y"}
+		if tab != tabFiles {
+			keys = append(keys, "space")
+		}
+
+		for _, key := range keys {
+			_, ok := lookup(on.contextStack(), keyMsg(key))
+
+			assert.Falsef(t, ok, "%q is bound on the %s tab", key, detailTabs[tab])
+		}
 	}
 }
 

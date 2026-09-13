@@ -140,6 +140,12 @@ func (m Model) stateSegments() []barSegment {
 		segs = append(segs, fixed(fmt.Sprintf("marks: %d", n)))
 	}
 
+	// File marks are counted apart from torrent marks: they are a different
+	// selection, and a file menu acts on them from whichever tab it opens on.
+	if n := m.torrents.detail.fileSel.markCount(); n > 0 && m.window == windowTorrents {
+		segs = append(segs, fixed(fmt.Sprintf("file marks: %d", n)))
+	}
+
 	// Unsaved settings are shown from every window: leaving the settings window
 	// does not save them, and the count is the reminder that they exist.
 	if n := m.settings.dirtyCount(); n > 0 {

@@ -82,6 +82,21 @@ func TestEscLadderRungs(t *testing.T) {
 			},
 		},
 		{
+			name: "clear file marks",
+			from: "blur input",
+			setup: func(m Model) Model {
+				m = withMockDetail(press(m.setFocus(paneDetail), "2"))
+
+				return press(m, "space")
+			},
+			check: func(t *testing.T, m Model) {
+				t.Helper()
+
+				assert.Zero(t, m.torrents.detail.fileSel.markCount())
+				assert.Equal(t, paneDetail, m.focusedPane(), "focus below must not move")
+			},
+		},
+		{
 			name: "focus main pane",
 			from: "blur input",
 			check: func(t *testing.T, m Model) {
@@ -254,5 +269,5 @@ func TestLadderRungNamesAreUnique(t *testing.T) {
 		names[r.name] = true
 	}
 
-	assert.Len(t, ladder, 11)
+	assert.Len(t, ladder, 12)
 }

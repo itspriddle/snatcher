@@ -23,7 +23,7 @@ func TestOverviewMirrorsShow(t *testing.T) {
 	}
 
 	rows := mockTorrents()
-	lines := newDetailPane(Styles{}, true).setTorrent(&rows[0]).setDetail(mockDetail()).overviewLines(Styles{})
+	lines := newDetailPane(Styles{}, Icons{}, true).setTorrent(&rows[0]).setDetail(mockDetail()).overviewLines(Styles{})
 
 	require.Len(t, lines, len(want))
 
@@ -44,13 +44,13 @@ func TestOverviewMirrorsShow(t *testing.T) {
 func TestOverviewDrawsListFieldsBeforeTheDetailLands(t *testing.T) {
 	rows := mockTorrents()
 
-	loading := newDetailPane(Styles{}, true).setTorrent(&rows[0]).overviewLines(Styles{})
+	loading := newDetailPane(Styles{}, Icons{}, true).setTorrent(&rows[0]).overviewLines(Styles{})
 
 	require.Len(t, loading, len(allColumnKeys)+len(overviewDetailRows))
 	assert.Contains(t, loading[2], "ubuntu-24.04.1-desktop-amd64.iso")
 	assert.Contains(t, loading[len(allColumnKeys)], "loading…")
 
-	static := newDetailPane(Styles{}, false).setTorrent(&rows[0]).overviewLines(Styles{})
+	static := newDetailPane(Styles{}, Icons{}, false).setTorrent(&rows[0]).overviewLines(Styles{})
 	assert.Len(t, static, len(allColumnKeys))
 }
 
@@ -65,7 +65,7 @@ func TestOverviewSanitizesServerStrings(t *testing.T) {
 	detail.Comment = "evil\x1b]0;title\x07comment"
 	detail.Creator = "creator\x1b[2J"
 
-	text := strings.Join(newDetailPane(Styles{}, true).setTorrent(&hostile).setDetail(detail).overviewLines(Styles{}), "\n")
+	text := strings.Join(newDetailPane(Styles{}, Icons{}, true).setTorrent(&hostile).setDetail(detail).overviewLines(Styles{}), "\n")
 
 	assert.Contains(t, text, "hostile")
 	assert.NotContains(t, text, "\x1b")

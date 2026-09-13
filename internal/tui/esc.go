@@ -56,6 +56,20 @@ var ladder = []rung{
 		apply:   Model.blurInput,
 	},
 	{
+		// File marks belong to the pane, not the window: they unwind before
+		// focus leaves it, so esc never strands a mark nobody can see.
+		name: "clear file marks",
+		applies: func(m Model) bool {
+			return m.focusedPane() == paneDetail && m.torrents.detail.tab == tabFiles &&
+				m.torrents.detail.fileSel.markCount() > 0
+		},
+		apply: func(m Model) Model {
+			m.torrents.detail = m.torrents.detail.clearFileMarks()
+
+			return m
+		},
+	},
+	{
 		name:    "focus main pane",
 		applies: func(m Model) bool { return m.focusedPane() != m.mainPane() },
 		apply:   func(m Model) Model { return m.setFocus(m.mainPane()) },

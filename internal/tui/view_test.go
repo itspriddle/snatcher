@@ -55,6 +55,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 	failing.status.Store(http.StatusInternalServerError)
 
 	live := pollOnce(t, pollOnce(t, liveModel(t, srv, w, h)))
+	_, liveFiles := liveFilesModel(t, w, h)
 	liveToast := live
 	liveToast.toast = "saved 3 settings"
 
@@ -68,6 +69,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"add form editing", press(live, "A", "tab", "enter")},
 		{"menu", press(live, "m")},
 		{"menu queue", openQueueMenu(live)},
+		{"file menu", press(liveFiles, "space", "j", "space", "m")},
 		{"loading", liveModel(t, srv, w, h)},
 		{"detail loading", press(live, "enter")},
 		{"detail error", failedDetail(live)},
@@ -81,6 +83,8 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"detail trackers", withMockDetail(press(base, "enter", "3"))},
 		{"detail peers", withMockDetail(press(base, "enter", "4"))},
 		{"detail pieces", withMockDetail(press(base, "enter", "5"))},
+		{"detail files", withMockDetail(press(base, "enter", "2"))},
+		{"detail files marked", press(withMockDetail(press(base, "enter", "2")), "space", "j", "space")},
 		{"marked", press(base, "space", "down", "space")},
 		{"help", press(base, "?")},
 		{"settings", press(base, ",")},

@@ -168,3 +168,19 @@ func TestHelpForAFocusedInputDescribesTheInput(t *testing.T) {
 	assert.Contains(t, text, "submit")
 	assert.NotContains(t, text, "reannounce")
 }
+
+// TestHelpNamesTheFilesContextOnTheFilesTab checks the files tab's own keys are
+// listed on the files tab — in the overlay and on the help line — and nowhere
+// else in the pane.
+func TestHelpNamesTheFilesContextOnTheFilesTab(t *testing.T) {
+	files := helpText(t, press(newTestModel(200, 80), "enter", "2", "?"))
+	assert.Contains(t, files, "mark file")
+	assert.Contains(t, files, "file menu")
+
+	overview := helpText(t, press(newTestModel(200, 80), "enter", "?"))
+	assert.NotContains(t, overview, "mark file")
+
+	line := ansi.Strip(press(newTestModel(200, 40), "enter", "2").helpLineView(200))
+	assert.Contains(t, line, "mark file")
+	assert.Contains(t, line, "file menu")
+}

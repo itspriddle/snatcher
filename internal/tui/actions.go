@@ -64,6 +64,7 @@ func init() {
 	register(promptHandlers())
 	register(addHandlers())
 	register(menuHandlers())
+	register(fileHandlers())
 	register(notYetHandlers())
 }
 

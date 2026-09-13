@@ -53,8 +53,15 @@ type detailPane struct {
 	// rather than a static set, so an empty tab is "loading", not "nothing".
 	fetches bool
 
-	// peers and trackers are the two read-only tables.
-	peers, trackers detailTable
+	// files, peers, and trackers are the tabs' tables.
+	files, peers, trackers detailTable
+
+	// fileSel is the files tab's selection: the same model as the torrent
+	// list's, keyed by file index. Its cursor follows the files table's.
+	fileSel fileSelection
+
+	// icons draws the files table's mark cell.
+	icons Icons
 
 	// focused is whether the pane has focus, kept so a tab switch can hand
 	// the table focus to the tab being shown.
@@ -66,13 +73,16 @@ type detailPane struct {
 // viewport.New installs DefaultKeyMap and offers no option to override it, so
 // the keymap is assigned after construction. Its defaults bind space, f, b, u,
 // d, h, and l — every one of which means something else in vision.md.
-func newDetailPane(st Styles, fetches bool) detailPane {
+func newDetailPane(st Styles, icons Icons, fetches bool) detailPane {
 	vp := viewport.New()
 	vp.KeyMap = viewportKeyMap()
 
 	return detailPane{
 		vp:       vp,
 		fetches:  fetches,
+		icons:    icons,
+		fileSel:  newFileSelection(),
+		files:    newDetailTable(st, fileSpecs, 1, "no files"),
 		peers:    newDetailTable(st, peerSpecs, 0, "no peers"),
 		trackers: newDetailTable(st, trackerSpecs, 0, "no trackers"),
 	}
@@ -105,6 +115,10 @@ func (p detailPane) setTorrent(t *transmission.Torrent) detailPane {
 	if !same {
 		p.detail, p.hasDetail, p.err = transmission.TorrentDetail{}, false, nil
 		p.peers, p.trackers = p.peers.clear(), p.trackers.clear()
+
+		// Another torrent's files are another index space: a mark on index 3
+		// would name an unrelated file.
+		p.files, p.fileSel = p.files.clear(), newFileSelection()
 		p = p.refresh()
 		p.vp.SetYOffset(0)
 
@@ -128,7 +142,38 @@ func (p detailPane) setDetail(d transmission.TorrentDetail) detailPane {
 	trackers, trackerKeys := trackerRows(d.Trackers, time.Now().Unix())
 	p.trackers = p.trackers.setRows(trackers, trackerKeys)
 
-	return p.refresh()
+	p.fileSel = p.fileSel.track(p.files.cursor(), true, d.Files)
+
+	return p.rebuildFiles().refresh()
+}
+
+// rebuildFiles redraws the files table from the detail and the file marks, and
+// pulls the table's cursor back into the selection.
+func (p detailPane) rebuildFiles() detailPane {
+	rows, keys := fileRows(p.detail.Files, p.fileSel, p.icons)
+	p.files = p.files.setRows(rows, keys)
+	p.fileSel = p.fileSel.setCursor(p.files.cursor())
+
+	return p
+}
+
+// toggleFileMark marks or unmarks the file under the cursor, leaving the cursor
+// where it is.
+func (p detailPane) toggleFileMark() detailPane {
+	if !p.hasDetail {
+		return p
+	}
+
+	p.fileSel = p.fileSel.setCursor(p.files.cursor()).toggleMark(p.detail.Files)
+
+	return p.rebuildFiles()
+}
+
+// clearFileMarks drops every file mark.
+func (p detailPane) clearFileMarks() detailPane {
+	p.fileSel = p.fileSel.clearMarks()
+
+	return p.rebuildFiles()
 }
 
 // setErr records a failed fetch for a torrent, when it is the pane's torrent.
@@ -209,12 +254,14 @@ func (p detailPane) body(st Styles) []string {
 		return pieceLines(d.Pieces, d.PieceCount, d.PieceSize, d.MetadataPercentComplete, p.vp.Width(), p.vp.Height())
 	}
 
-	return []string{detailTabs[p.tab] + ": not implemented yet"}
+	return nil
 }
 
 // currentTable is the current tab's table, when the tab is one.
 func (p detailPane) currentTable() (detailTable, bool) {
 	switch p.tab {
+	case tabFiles:
+		return p.files, true
 	case tabPeers:
 		return p.peers, true
 	case tabTrackers:
@@ -228,6 +275,7 @@ func (p detailPane) currentTable() (detailTable, bool) {
 // every other: a table focused on a hidden tab would eat the nav keys.
 func (p detailPane) focus(on bool) detailPane {
 	p.focused = on
+	p.files = p.files.focus(on && p.tab == tabFiles)
 	p.peers = p.peers.focus(on && p.tab == tabPeers)
 	p.trackers = p.trackers.focus(on && p.tab == tabTrackers)
 
@@ -240,6 +288,9 @@ func (p detailPane) forward(msg tea.Msg) (detailPane, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch p.tab {
+	case tabFiles:
+		p.files, cmd = p.files.update(msg)
+		p.fileSel = p.fileSel.setCursor(p.files.cursor())
 	case tabPeers:
 		p.peers, cmd = p.peers.update(msg)
 	case tabTrackers:
@@ -254,6 +305,7 @@ func (p detailPane) forward(msg tea.Msg) (detailPane, tea.Cmd) {
 // setStyles re-themes the tables, which render their rows with styles of
 // their own.
 func (p detailPane) setStyles(st Styles) detailPane {
+	p.files = p.files.setStyles(st)
 	p.peers = p.peers.setStyles(st)
 	p.trackers = p.trackers.setStyles(st)
 
@@ -283,6 +335,7 @@ func (p detailPane) resize(r rect) detailPane {
 
 	p.vp.SetWidth(inner.w)
 	p.vp.SetHeight(max(1, inner.h-2))
+	p.files = p.files.resize(inner)
 	p.peers = p.peers.resize(inner)
 	p.trackers = p.trackers.resize(inner)
 

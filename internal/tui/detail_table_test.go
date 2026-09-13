@@ -21,10 +21,12 @@ func specTitles(specs []colSpec) []string {
 }
 
 // TestDetailColumnsMirrorTheCLI pins the detail tables to the CLI's registries:
-// peerFieldKeys' headers (internal/commands/peers.go) and trackerFieldKeys'
+// fileFieldKeys' headers (internal/commands/files.go) after a mark cell,
+// peerFieldKeys' (internal/commands/peers.go), and trackerFieldKeys'
 // (internal/commands/trackers.go), in order. "Next" stands in for "Next
 // Announce" because the pane draws a countdown rather than a date.
 func TestDetailColumnsMirrorTheCLI(t *testing.T) {
+	assert.Equal(t, []string{" ", "Index", "Name", "Size", "Done", "%", "Priority", "Wanted"}, specTitles(fileSpecs))
 	assert.Equal(t, []string{"Address", "Port", "Client", "Progress", "Down", "Up", "Encrypted", "Status"}, specTitles(peerSpecs))
 	assert.Equal(t, []string{"Announce", "Tier", "State", "Next", "Seeders", "Leechers", "Downloads"}, specTitles(trackerSpecs))
 }
@@ -58,6 +60,29 @@ func TestDetailTablesDropColumnsFromTheRight(t *testing.T) {
 
 		assert.Truef(t, dropped, "%s dropped nothing at 56 columns", specTitles(specs))
 	}
+
+	files := fitSpecs(fileSpecs, 1, 30)
+	assert.Equal(t, 1, files[0].Width, "the mark cell is never dropped")
+	assert.Zero(t, files[len(files)-1].Width)
+}
+
+// TestFilesRowsRenderTheCLIsWords checks the files table draws priority, wanted,
+// and completion as `torrent files` does, and sanitizes a file's name.
+func TestFilesRowsRenderTheCLIsWords(t *testing.T) {
+	rows, keys := fileRows(mockDetail().Files, newFileSelection(), newIcons(false))
+
+	require.Len(t, rows, 3)
+	assert.Equal(t, []string{"0", "1", "2"}, keys)
+
+	for i, want := range []string{"high", "normal", "low"} {
+		assert.Equal(t, want, rows[i][6])
+	}
+
+	assert.Equal(t, "yes", rows[0][7])
+	assert.Equal(t, "no", rows[2][7])
+	assert.Equal(t, "42%", strings.TrimSpace(rows[0][5]))
+	assert.Equal(t, "100%", rows[2][5], "a zero-length file is complete")
+	assert.NotContains(t, rows[2][2], "\x1b")
 }
 
 // TestTrackerCountsRenderDashForUnknown checks a -1 scrape count draws as the
@@ -136,6 +161,10 @@ func TestTableCursorFollowsItsKeyAcrossARefresh(t *testing.T) {
 func focusedTables(m Model) []string {
 	var out []string
 
+	if m.torrents.detail.files.table.Focused() {
+		out = append(out, "files")
+	}
+
 	if m.torrents.detail.peers.table.Focused() {
 		out = append(out, "peers")
 	}
@@ -163,13 +192,14 @@ func TestOnlyTheCurrentTabsTableIsFocused(t *testing.T) {
 		{[]string{"l"}, nil},
 		{[]string{"h"}, []string{"peers"}},
 		{[]string{"["}, []string{"trackers"}},
-		{[]string{"left"}, nil},
+		{[]string{"left"}, []string{"files"}},
 		{[]string{"right"}, []string{"trackers"}},
 		{[]string{"tab"}, nil},
 		{[]string{"shift+tab"}, []string{"trackers"}},
 		{[]string{"ctrl+w", "k"}, nil},
 		{[]string{"ctrl+w", "j"}, []string{"trackers"}},
 		{[]string{"4"}, []string{"peers"}},
+		{[]string{"[", "["}, []string{"files"}},
 		{[]string{"}"}, nil},
 	}
 

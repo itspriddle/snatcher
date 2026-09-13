@@ -117,9 +117,10 @@ func fitSpecs(specs []colSpec, keep, width int) []table.Column {
 	}
 }
 
-// The detail pane's table columns mirror the CLI's registries — peerFieldKeys
-// (internal/commands/peers.go) and trackerFieldKeys
-// (internal/commands/trackers.go) — with their headings and renderers.
+// The detail pane's table columns mirror the CLI's registries — fileFieldKeys
+// (internal/commands/files.go), peerFieldKeys (internal/commands/peers.go), and
+// trackerFieldKeys (internal/commands/trackers.go) — with their headings and
+// renderers. The files table leads with a mark cell, as the torrent table does.
 // internal/tui does not import internal/commands, so they are copies pinned by
 // TestDetailColumnsMirrorTheCLI.
 //
@@ -127,6 +128,17 @@ func fitSpecs(specs []colSpec, keep, width int) []table.Column {
 // where the CLI's "Next Announce" prints a date. A pane that refreshes every
 // tick would otherwise show the same string all day.
 var (
+	fileSpecs = []colSpec{
+		{title: " ", width: 1},
+		{title: "Index", width: 5, right: true},
+		{title: "Name"},
+		{title: "Size", width: 9, right: true},
+		{title: "Done", width: 9, right: true},
+		{title: "%", width: 4, right: true},
+		{title: "Priority", width: 8},
+		{title: "Wanted", width: 6},
+	}
+
 	peerSpecs = []colSpec{
 		{title: "Address", width: 21},
 		{title: "Port", width: 5, right: true},
@@ -158,6 +170,53 @@ func alignRow(specs []colSpec, cells ...string) table.Row {
 	}
 
 	return row
+}
+
+// fileRows renders a torrent's files as table rows, keyed by index, with each
+// file's mark from the files tab's selection.
+func fileRows(files []transmission.File, sel fileSelection, icons Icons) ([]table.Row, []string) {
+	rows := make([]table.Row, 0, len(files))
+	keys := make([]string, 0, len(files))
+
+	for i, f := range files {
+		rows = append(rows, alignRow(fileSpecs,
+			icons.mark(sel.isMarked(i)),
+			strconv.Itoa(i),
+			output.SanitizeTerminal(f.Name),
+			output.Bytes(f.Length),
+			output.Bytes(f.BytesCompleted),
+			output.Percent(fileFraction(f)),
+			filePriority(f.Priority),
+			yesNo(f.Wanted),
+		))
+		keys = append(keys, strconv.Itoa(i))
+	}
+
+	return rows, keys
+}
+
+// fileFraction is a file's completion, the CLI's fileFraction: a zero-length
+// file has nothing to fetch, so it is complete.
+func fileFraction(f transmission.File) float64 {
+	if f.Length <= 0 {
+		return 1
+	}
+
+	return float64(f.BytesCompleted) / float64(f.Length)
+}
+
+// filePriority names Transmission's per-file priority, the CLI's filePriority.
+func filePriority(priority int) string {
+	switch priority {
+	case -1:
+		return "low"
+	case 0:
+		return "normal"
+	case 1:
+		return "high"
+	}
+
+	return strconv.Itoa(priority)
 }
 
 // peerRows renders peers as table rows, keyed by address and port. Every string

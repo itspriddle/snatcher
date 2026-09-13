@@ -43,6 +43,11 @@ const (
 	// carries no torrent verbs.
 	ctxTorrentDetail
 
+	// ctxTorrentFiles holds the files tab's own keys: marks and the file menu.
+	// It is live only while the detail pane is focused on the files tab, so its
+	// stack comes from the pane and the tab (see detailContexts).
+	ctxTorrentFiles
+
 	// ctxSettings holds the settings window's keys. Settings owns tab and
 	// up/down itself, so it does not sit on top of ctxNav.
 	ctxSettings
@@ -101,6 +106,8 @@ func (c Context) String() string {
 		return "filter"
 	case ctxTorrentDetail:
 		return "detail"
+	case ctxTorrentFiles:
+		return "files"
 	case ctxSettings:
 		return "settings"
 	case ctxTextInput:
@@ -203,6 +210,9 @@ const (
 	actionDetailPrevTab Action = "detail.prev-tab"
 	actionDetailNextTab Action = "detail.next-tab"
 
+	actionFileMark Action = "file.mark"
+	actionFileMenu Action = "file.menu"
+
 	actionSettingsPrevTab   Action = "settings.prev-tab"
 	actionSettingsNextTab   Action = "settings.next-tab"
 	actionSettingsNextField Action = "settings.next-field"
@@ -272,10 +282,25 @@ const (
 	actionQueueBottom       Action = "torrent.queue-bottom"
 )
 
+// The files tab's menu leaves. A file change has no key of its own: the menu is
+// how a priority or wanted change is chosen, over the marks or the cursor file.
+const (
+	actionFilePriorityHigh   Action = "file.priority-high"
+	actionFilePriorityNormal Action = "file.priority-normal"
+	actionFilePriorityLow    Action = "file.priority-low"
+	actionFileWanted         Action = "file.wanted"
+	actionFileUnwanted       Action = "file.unwanted"
+	actionFileRename         Action = "file.rename"
+)
+
 // menuOnlyActions are the actions no key is bound to, reachable by name from the
 // action menu now and the command palette later. The handler-coverage test
 // accepts an unbound handler only when it is listed here.
-var menuOnlyActions = []Action{actionTorrentRename, actionTorrentForceStart, actionQueueTop, actionQueueBottom}
+var menuOnlyActions = []Action{
+	actionTorrentRename, actionTorrentForceStart, actionQueueTop, actionQueueBottom,
+	actionFilePriorityHigh, actionFilePriorityNormal, actionFilePriorityLow,
+	actionFileWanted, actionFileUnwanted, actionFileRename,
+}
 
 // Binding is one row of the registry: a key, the context it is live in, and the
 // action it runs. Nothing else in the TUI declares a keybinding — components are
@@ -380,6 +405,10 @@ var registry = []Binding{
 	// Detail pane — tabs only.
 	bind(ctxTorrentDetail, actionDetailPrevTab, "[/h", "previous tab", "[", "h", "left"),
 	bind(ctxTorrentDetail, actionDetailNextTab, "]/l", "next tab", "]", "l", "right"),
+
+	// Files tab — its own marks and menu, over files rather than torrents.
+	bind(ctxTorrentFiles, actionFileMark, "space", "mark file", "space"),
+	bind(ctxTorrentFiles, actionFileMenu, "m", "file menu", "m"),
 
 	// Settings window — owns tab and up/down itself, per vision.md.
 	bind(ctxSettings, actionSettingsPrevTab, "[", "previous tab", "["),
@@ -614,3 +643,17 @@ var modalStacks = [][]Context{
 	{ctxChordWindow},
 	{ctxTextInput},
 }
+
+// detailContexts is the detail pane's stack for a tab. The files tab puts its own
+// context on top; every other tab is the pane's static stack.
+func detailContexts(tab int) []Context {
+	if tab == tabFiles {
+		return append([]Context{ctxTorrentFiles}, paneContexts(paneDetail)...)
+	}
+
+	return paneContexts(paneDetail)
+}
+
+// tabStacks are the stacks a pane's tab adds to paneContexts, listed so the
+// collision test iterates them too.
+var tabStacks = [][]Context{detailContexts(tabFiles)}

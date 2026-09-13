@@ -238,6 +238,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.detailFetched(msg)
 	case detailTickMsg:
 		return m.detailTick(msg)
+	case fileMutationMsg:
+		return m.filesChanged(msg)
+	case fileRenamedMsg:
+		return m.fileRenamed(msg)
 	}
 
 	return m.forwardToInput(msg)

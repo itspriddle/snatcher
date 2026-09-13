@@ -19,6 +19,8 @@ func allStacks() [][]Context {
 		stacks = append(stacks, paneContexts(p))
 	}
 
+	stacks = append(stacks, tabStacks...)
+
 	return append(stacks, modalStacks...)
 }
 
@@ -294,4 +296,11 @@ func TestPaneContextsCoversEveryPane(t *testing.T) {
 		require.NotEmptyf(t, stack, "%s has no context stack", p)
 		assert.Equalf(t, ctxGlobal, stack[len(stack)-1], "%s does not end at the global context", p)
 	}
+
+	for _, stack := range tabStacks {
+		assert.Equalf(t, ctxGlobal, stack[len(stack)-1], "%v does not end at the global context", stack)
+	}
+
+	assert.Equal(t, paneContexts(paneDetail), detailContexts(tabOverview), "a tab without keys of its own is the pane's stack")
+	assert.Equal(t, ctxTorrentFiles, detailContexts(tabFiles)[0])
 }

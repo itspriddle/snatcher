@@ -57,7 +57,7 @@ func newTorrentsWindow(st Styles, icons Icons, all []transmission.Torrent, view 
 		listView:   view,
 		filter:     newFilterPane(all),
 		list:       newListPane(st, view.columns),
-		detail:     newDetailPane(st, all == nil),
+		detail:     newDetailPane(st, icons, all == nil),
 		filterOpen: true,
 		focus:      paneList,
 		sel:        newTorrentSelection(),

@@ -48,15 +48,21 @@ func componentKeyMaps() []componentKeyMap {
 			wired:   tableWired,
 		},
 		{
+			name:    "detail files table",
+			context: ctxNav,
+			keyMap:  newDetailPane(Styles{}, Icons{}, true).files.table.KeyMap,
+			wired:   tableWired,
+		},
+		{
 			name:    "detail peers table",
 			context: ctxNav,
-			keyMap:  newDetailPane(Styles{}, true).peers.table.KeyMap,
+			keyMap:  newDetailPane(Styles{}, Icons{}, true).peers.table.KeyMap,
 			wired:   tableWired,
 		},
 		{
 			name:    "detail trackers table",
 			context: ctxNav,
-			keyMap:  newDetailPane(Styles{}, true).trackers.table.KeyMap,
+			keyMap:  newDetailPane(Styles{}, Icons{}, true).trackers.table.KeyMap,
 			wired:   tableWired,
 		},
 		{

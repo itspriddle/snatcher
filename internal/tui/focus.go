@@ -125,5 +125,16 @@ func (m Model) contextStack() []Context {
 		return o.contexts()
 	}
 
+	return m.paneStack()
+}
+
+// paneStack is the focused pane's stack. The detail pane's depends on its tab:
+// the files tab has keys the other tabs do not, so the router, the help overlay,
+// and the help line all read the pane and the tab through here.
+func (m Model) paneStack() []Context {
+	if m.focusedPane() == paneDetail {
+		return detailContexts(m.torrents.detail.tab)
+	}
+
 	return paneContexts(m.focusedPane())
 }

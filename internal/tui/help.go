@@ -163,7 +163,7 @@ func (m Model) stackBeneathHelp() []Context {
 		return []Context{ctxTextInput}
 	}
 
-	return paneContexts(m.focusedPane())
+	return m.paneStack()
 }
 
 // contextBindings returns every binding registered in one context, in registry
