@@ -90,14 +90,20 @@ Layers, outermost to innermost:
   torrents exist only in tests, where a non-nil `Deps.Torrents` disables
   polling. Mutations ride the same spine: a verb's RPC runs as a `Cmd`, and its
   reply refetches at once (queued behind a poll already in flight) rather than
-  editing rows optimistically. The list's sort, direction, and columns are read
-  from and written to `client.list_*` through `Deps.Config`, and `columns.go`
-  mirrors `internal/commands/list.go`'s field keys under a pinning test rather
-  than importing them. The keymap registry in `keymap.go` is this package's
-  `.surface`: every key the UI responds to is one row of it, components are
-  constructed from those rows rather than from their own defaults, and the
-  collision test asserts no key resolves twice in any focus context a user can
-  be in. Adding a binding means adding a registry row, not a `switch` case.
+  editing rows optimistically. The detail pane's `TorrentDetail` rides the same
+  spine while the pane is open (`detail_fetch.go`): debounced on cursor moves,
+  and dropped by torrent ID when the cursor has moved on. The list's sort,
+  direction, and columns are read from and written to `client.list_*` through
+  `Deps.Config`, and `columns.go` mirrors `internal/commands/list.go`'s field
+  keys under a pinning test rather than importing them. `detail_overview.go` and
+  `detail_table.go` mirror `torrent show`'s fields and the
+  `files`/`peers`/`trackers` registries the same way, and the files tab consumes
+  the same generic selection model (`selection.go`) as the torrent list. The
+  keymap registry in `keymap.go` is this package's `.surface`: every key the UI
+  responds to is one row of it, components are constructed from those rows
+  rather than from their own defaults, and the collision test asserts no key
+  resolves twice in any focus context a user can be in. Adding a binding means
+  adding a registry row, not a `switch` case.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list

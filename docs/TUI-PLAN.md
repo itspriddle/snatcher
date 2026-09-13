@@ -226,6 +226,24 @@ the man page.
   remaining item. A help line inside a fixed-width box is truncated by the
   caller with `ansi.Truncate`.
 
+- **Repointing a viewport every poll must not reset its offset.**
+  `viewport.SetContent` leaves the offset alone, and a `SetYOffset(0)` after it
+  throws the user back to the top of a tab each tick. Clamp on a refresh
+  (`SetYOffset(YOffset())`) and reset only on a change of subject: another
+  torrent, another tab.
+- **A `table` in a pane with several is focused only while its tab is
+  current.** `table.Update` no-ops on an unfocused table, and a focused one on a
+  hidden tab eats the nav keys silently, so focus is pushed on a tab switch as
+  well as on a pane focus.
+- **`table.SetHeight` takes its own header out of the height it is given,** so
+  a pane passes the region the header and rows share.
+- **The test stub's `torrent-get` is both the poll and a detail read.** Tell
+  them apart by argument — only a detail read names `files` in `fields` — with
+  `respondWhen`, which is checked before a method's plain answer.
+- **`reflect.DeepEqual` never equates two non-nil funcs,** so a func field on a
+  value the tests compare with `assert.Equal` breaks the comparison. Carry
+  behavior on a zero-size type parameter instead.
+
 ## Build sequence
 
 Each step states its goal and what it de-risks. Steps 1–2 establish the shell;

@@ -30,6 +30,10 @@ type fileRow struct {
 // --fields key to the column that renders it, for both the TTY aligned table and
 // the piped tab-separated rows. Only name is truncatable, per the one-truncatable-
 // column-per-registry invariant nameColumnLimit relies on.
+//
+// internal/tui/detail_table.go mirrors its default columns' headers and
+// renderers for the TUI detail pane's files tab, under a pinning test; a change
+// here fails that test until the mirror follows.
 var fileFields = map[string]column[fileRow]{
 	"index": {header: "Index", rightAlign: true, value: func(f fileRow) string {
 		return strconv.Itoa(f.Index)

@@ -455,13 +455,76 @@ server, and no action can hit more torrents than the confirmation stated.
 
 ## T6. Detail pane
 
-- Tabs: overview, files, trackers, peers, pieces, in a `viewport`, reusing the
-  T3 tab strip
-- `[`/`]`, `h`/`l`, `1`-`5`; `tab` leaves the pane rather than cycling tabs
-- Files tab: marks, priority high/normal/low, wanted/unwanted, rename - over
-  CLI M2/M3
-- Pieces tab: filled/unfilled block rendering from the decoded bitfield
-- Peers and trackers read-only tables
+- ~~Tabs: overview, files, trackers, peers, pieces, in a `viewport`, reusing the
+  T3 tab strip~~ — the overview and pieces scroll a `viewport`; files, peers,
+  and trackers are `bubbles/v2/table`s under the same strip
+- ~~`[`/`]`, `h`/`l`, `1`-`5`; `tab` leaves the pane rather than cycling tabs~~
+- ~~Files tab: marks, priority high/normal/low, wanted/unwanted, rename - over
+  CLI M2/M3~~
+- ~~Pieces tab: filled/unfilled block rendering from the decoded bitfield~~
+- ~~Peers and trackers read-only tables~~
+- ~~The action menu's greyed trackers entry~~ — add / replace / clear over
+  `tracker-list`
+
+**Met.**
+
+### Decisions
+
+- **The detail rides the poll while the pane is open.** `startPoll` batches one
+  `TorrentDetail` for the cursor torrent when the pane is open and none is in
+  flight, so the detail refreshes at the poll's cadence, under its single-flight,
+  and on `R`, for free. Every key and every poll funnels through `ensureDetail`:
+  a change of torrent starts a 150ms debounce whose superseded timers are dropped
+  by sequence, so a held `j` costs one fetch. A reply for a torrent the cursor
+  has left is dropped by ID and the new one debounced; a server switch clears it
+  all. A failed fetch leads the tab with the error and `press R to retry`, over
+  the last detail.
+- **Same torrent, same place.** Every poll repoints the pane, so the same
+  torrent keeps its detail, scroll offset, table cursors (by key), and file
+  marks; only a different torrent resets them. The offset is clamped on a
+  refresh, never reset to 0.
+- **The overview is `torrent show` in a pane:** `show`'s 29 default fields, its
+  headers and order and renderers, pinned by `TestOverviewMirrorsShow`. The list
+  fields draw from the polled row at once; the detail-only rows say `loading…`
+  until the detail lands. The magnet link is left out, as `show` leaves it out;
+  `y m` yanks it.
+- **Three `bubbles/v2/table`s mirror the CLI registries** (`files`, `peers`,
+  `trackers`) under `TestDetailColumnsMirrorTheCLI`, sharing the list's
+  `colSpec`/`fitSpecs` so columns drop right to left by one rule. One deviation:
+  the trackers table's `Next` is a countdown (`12m`, `1h 3m`, `now`) where the
+  CLI prints a date that would read the same all day. A table is focused only
+  while the pane is focused and its tab is current.
+- **Pieces are sized to fit, never scrolled:** a summary line, then a grid of
+  exactly the pane's cells, each an equal run of pieces shaded by its own run's
+  completeness in plain block elements (`· ░ ▒ ▓ █`), which survive `NO_COLOR`.
+  A magnet with no bitfield yet says so.
+- **One generic selection model.** `selection` serves the torrent list (keyed
+  by ID) and the files tab (keyed by index, the space `FileChanges` addresses).
+  The key comes from a zero-size type parameter rather than the plan's func
+  field: a func never compares equal under `reflect.DeepEqual`, and tests
+  compare selections.
+- **`ctxTorrentFiles` comes from the pane and its tab.** `paneStack()` is what
+  the router, the help overlay, and the help line all read; `tabStacks` puts the
+  files stack in the collision test. `space` marks a file and `m` opens the file
+  menu there, and nowhere else in the pane.
+- **File changes do not confirm:** one torrent, undone from the same menu, and
+  `files update` does not ask either. The report wording is the TUI's own. Rename
+  is one file, its last path component, reported in the CLI's line (`Renamed
+  <path> to <name> in torrent <torrent>`). Every file action refetches the detail
+  at once and polls.
+- **Tracker edits write `tracker-list` only,** as the CLI's `--tracker` and
+  `--clear-trackers` do. Add is one torrent and appends the URL as a new tier,
+  reading the list inside its `Cmd`; replace is one torrent, prefilled with the
+  current URLs (read first when the pane does not already have them), and joins
+  what is typed into one tier exactly as the CLI does; clear always confirms
+  with the count. Each edit is its own mutation kind, so a failure names what
+  was tried rather than borrowing clear's wording.
+- **File marks unwind first:** a `clear file marks` rung sits directly above
+  `focus main pane`, making twelve rungs, and the status bar shows
+  `file marks: N` apart from torrent marks.
+- **Still deferred:** the sidebar's Trackers group. It needs a tracker field
+  projected on `Torrent`, which changes `list --json`, so it gets its own
+  milestone.
 
 ## T7. Command palette
 
@@ -527,7 +590,9 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
   the slow refresh.
 - ~~Does the torrent action menu's "trackers" entry edit trackers in place, or
   defer to the trackers tab?~~ **Decided** in T5: it defers to T6's trackers
-  tab, and is listed greyed until then.
+  tab, and is listed greyed until then. **Revised** in T6: the menu edits in
+  place — add, replace, clear over `tracker-list` — and the trackers tab stays
+  read-only.
 - Does the `Labels (dynamic)` filter group derive its labels client-side from
   the polled torrent list (see T5), or does CLI M6 grow a server-side discovery
   verb first? Leaning client-side: the union is already in the poll payload once
