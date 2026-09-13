@@ -148,7 +148,7 @@ func (m Model) refuseMutation(sel transmission.Selector) (string, bool) {
 // selectionMutation is a verb over the list pane's selection: the marks, or the
 // cursor row.
 func (m Model) selectionMutation(kind mutationKind) (mutation, string, bool) {
-	sel := m.torrents.sel.Selector(m.torrents.rows)
+	sel := m.listSelector()
 
 	if why, refused := m.refuseMutation(sel); refused {
 		return mutation{}, why, false

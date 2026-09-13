@@ -37,7 +37,7 @@ func fetchMagnet(ctx context.Context, client *transmission.Client, gen int, id i
 // clipboard holds one link, and yanking an arbitrary one of several marks would
 // hide which.
 func (m Model) yankMagnet() (Model, tea.Cmd) {
-	sel := m.torrents.sel.Selector(m.torrents.rows)
+	sel := m.listSelector()
 
 	switch {
 	case m.client == nil:

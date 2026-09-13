@@ -75,7 +75,7 @@ func (p listPane) setColumns(keys []string) listPane {
 // internal/transmission's own helpers and the rows are rebuilt. That is also why
 // marks are keyed by torrent ID: the row index under a mark is not stable across
 // a rebuild.
-func (p listPane) setRows(rows []transmission.Torrent, sel selection, icons Icons) listPane {
+func (p listPane) setRows(rows []transmission.Torrent, sel torrentSelection, icons Icons) listPane {
 	out := make([]table.Row, 0, len(rows))
 
 	for _, t := range rows {

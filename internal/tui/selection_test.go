@@ -14,11 +14,11 @@ import (
 func TestSelectorPrefersMarks(t *testing.T) {
 	rows := mockTorrents()
 
-	sel := newSelection().setCursor(0)
-	assert.Equal(t, transmission.Selector{IDs: []int64{rows[0].ID}}, sel.Selector(rows))
+	sel := newTorrentSelection().setCursor(0)
+	assert.Equal(t, transmission.Selector{IDs: []int64{rows[0].ID}}, torrentSelector(sel, rows))
 
 	sel = sel.setCursor(2).toggleMark(rows).setCursor(5).toggleMark(rows)
-	assert.Equal(t, transmission.Selector{IDs: []int64{rows[2].ID, rows[5].ID}}, sel.Selector(rows))
+	assert.Equal(t, transmission.Selector{IDs: []int64{rows[2].ID, rows[5].ID}}, torrentSelector(sel, rows))
 }
 
 // TestSelectorIsSortedAndStable checks the IDs come out in a fixed order, since
@@ -27,12 +27,12 @@ func TestSelectorPrefersMarks(t *testing.T) {
 func TestSelectorIsSortedAndStable(t *testing.T) {
 	rows := mockTorrents()
 
-	sel := newSelection()
+	sel := newTorrentSelection()
 	for _, i := range []int{7, 1, 4} {
 		sel = sel.setCursor(i).toggleMark(rows)
 	}
 
-	assert.Equal(t, []int64{rows[1].ID, rows[4].ID, rows[7].ID}, sel.Selector(rows).IDs)
+	assert.Equal(t, []int64{rows[1].ID, rows[4].ID, rows[7].ID}, torrentSelector(sel, rows).IDs)
 }
 
 // TestSelectorWithNoCursorTargetsNothing checks the deselected state. It must
@@ -41,7 +41,7 @@ func TestSelectorIsSortedAndStable(t *testing.T) {
 func TestSelectorWithNoCursorTargetsNothing(t *testing.T) {
 	rows := mockTorrents()
 
-	sel := newSelection().deselect().Selector(rows)
+	sel := torrentSelector(newTorrentSelection().deselect(), rows)
 
 	assert.Equal(t, transmission.Selector{}, sel)
 	assert.False(t, sel.All)
@@ -50,7 +50,22 @@ func TestSelectorWithNoCursorTargetsNothing(t *testing.T) {
 // TestSelectorOutOfRangeCursorTargetsNothing checks a cursor past the end of a
 // shortened list, which is what a filter or a refresh produces.
 func TestSelectorOutOfRangeCursorTargetsNothing(t *testing.T) {
-	assert.Equal(t, transmission.Selector{}, newSelection().setCursor(99).Selector(mockTorrents()))
+	assert.Equal(t, transmission.Selector{}, torrentSelector(newTorrentSelection().setCursor(99), mockTorrents()))
+}
+
+// TestFileSelectionKeysByIndex checks the files tab's selection: the same model
+// over files, keyed by position, which is the index space FileChanges addresses.
+func TestFileSelectionKeysByIndex(t *testing.T) {
+	files := mockDetail().Files
+
+	sel := newFileSelection().setCursor(2)
+	assert.Equal(t, []int{2}, sel.keys(files), "the cursor file, with no marks")
+
+	sel = sel.toggleMark(files).setCursor(0).toggleMark(files)
+	assert.Equal(t, []int{0, 2}, sel.keys(files), "the marks, sorted, over the cursor")
+	assert.True(t, sel.isMarked(2))
+
+	assert.Nil(t, newFileSelection().setCursor(9).keys(files), "an out-of-range cursor names nothing")
 }
 
 // TestToggleMarkDoesNotMoveTheCursor pins the binding's wording: space toggles a
@@ -72,13 +87,13 @@ func TestToggleMarkDoesNotMoveTheCursor(t *testing.T) {
 func TestMarksSurviveAReorder(t *testing.T) {
 	rows := mockTorrents()
 
-	sel := newSelection().setCursor(0).toggleMark(rows)
+	sel := newTorrentSelection().setCursor(0).toggleMark(rows)
 	marked := rows[0].ID
 
 	reordered := transmission.SortTorrents(rows, transmission.SortName, true)
 
 	require.NotEqual(t, marked, reordered[0].ID, "the fixture must actually reorder")
-	assert.Equal(t, []int64{marked}, sel.Selector(reordered).IDs)
+	assert.Equal(t, []int64{marked}, torrentSelector(sel, reordered).IDs)
 }
 
 // TestApplyingAFilterClearsMarks pins the rule from vision.md: a mark hidden by a

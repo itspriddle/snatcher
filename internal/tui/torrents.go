@@ -37,7 +37,7 @@ type torrentsWindow struct {
 	focus Pane
 
 	// sel is the marked set and cursor every action in this window consumes.
-	sel selection
+	sel torrentSelection
 
 	// searchInput is the `/` field, drawn in the list pane's footer while
 	// searching. Its text is the search, so blurring it keeps the text.
@@ -60,7 +60,7 @@ func newTorrentsWindow(st Styles, icons Icons, all []transmission.Torrent, view 
 		detail:     newDetailPane(st, all == nil),
 		filterOpen: true,
 		focus:      paneList,
-		sel:        newSelection(),
+		sel:        newTorrentSelection(),
 
 		searchInput: newSearchInput(st),
 	}
@@ -130,7 +130,7 @@ func (w torrentsWindow) reapply(icons Icons) torrentsWindow {
 func (w torrentsWindow) reset(icons Icons) torrentsWindow {
 	w.all = nil
 	w.rows = nil
-	w.sel = newSelection()
+	w.sel = newTorrentSelection()
 	w.filter = newFilterPane(nil)
 	w.listView.filter = viewFilter{}
 	w.listView.search = ""

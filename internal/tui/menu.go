@@ -125,7 +125,7 @@ func (m Model) openMenu() Model {
 		return m.popMenus()
 	}
 
-	sel := m.torrents.sel.Selector(m.torrents.rows)
+	sel := m.listSelector()
 	if why, refused := m.refuseMutation(sel); refused {
 		m.toast = why
 
