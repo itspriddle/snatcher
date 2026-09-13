@@ -241,6 +241,15 @@ const (
 	actionFocusRight Action = "focus.right"
 )
 
+// actionTorrentRename is the one action T5 leaves without a key: rename is
+// single-torrent and rare enough to live in the action menu, and T7's palette.
+const actionTorrentRename Action = "torrent.rename"
+
+// menuOnlyActions are the actions no key is bound to, reachable by name from the
+// action menu now and the command palette later. The handler-coverage test
+// accepts an unbound handler only when it is listed here.
+var menuOnlyActions = []Action{actionTorrentRename}
+
 // Binding is one row of the registry: a key, the context it is live in, and the
 // action it runs. Nothing else in the TUI declares a keybinding — components are
 // constructed from these rows (see bindingFor), the help view reads them, and

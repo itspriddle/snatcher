@@ -229,6 +229,22 @@ func (m Model) usedBytes() int64 {
 	return n
 }
 
+// overlayHelp is the topmost overlay's own help bindings, when it words its keys
+// itself and its stack is the one live.
+func (m Model) overlayHelp(stack []Context) ([]key.Binding, bool) {
+	top, ok := m.topOverlay()
+	if !ok || !slices.Equal(stack, top.contexts()) {
+		return nil, false
+	}
+
+	own, ok := top.(interface{ helpBindings() []key.Binding })
+	if !ok {
+		return nil, false
+	}
+
+	return own.helpBindings(), true
+}
+
 // fitSegments joins the segments into at most width cells, degrading one step at
 // a time until the line fits or nothing is left to degrade. A line of rank-zero
 // segments that still does not fit is returned as is, for the caller to
@@ -318,10 +334,11 @@ func (m Model) shortBindings() []key.Binding {
 
 	var out []key.Binding
 
-	if o, ok := topAs[confirmOverlay](m); ok && len(stack) > 0 && stack[0] == ctxConfirm {
-		// A strict confirm narrows its yes to one key, and its box says so; the
-		// line under it must not offer the key the box refuses.
-		out = o.bindings()
+	if own, ok := m.overlayHelp(stack); ok {
+		// An overlay that words its own keys — a strict confirm, a prompt whose
+		// esc cancels rather than blurs — says the same on this line as in its
+		// box, so the line never offers a key the box refuses.
+		out = own
 	} else {
 		for _, b := range registry {
 			if len(stack) > 0 && b.Context == stack[0] {

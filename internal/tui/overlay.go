@@ -35,14 +35,28 @@ func (m Model) push(o overlay) Model {
 	return m
 }
 
+// inputHolder is an overlay that holds a text input, and names it.
+type inputHolder interface {
+	ownsInput() inputOwner
+}
+
 // pop removes the topmost overlay. Popping an empty stack is a no-op, so the
 // esc ladder can call it without first asking.
+//
+// An overlay that held the focused input takes the focus with it: a prompt
+// closed by esc, or by a submit that acted, must not leave the router sending
+// keys to an input nothing draws.
 func (m Model) pop() Model {
 	if len(m.overlays) == 0 {
 		return m
 	}
 
+	top := m.overlays[len(m.overlays)-1]
 	m.overlays = m.overlays[:len(m.overlays)-1]
+
+	if holder, ok := top.(inputHolder); ok && m.owner == holder.ownsInput() {
+		m.inputFocused, m.owner = false, ownerNone
+	}
 
 	return m
 }

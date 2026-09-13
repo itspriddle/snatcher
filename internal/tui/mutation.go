@@ -25,6 +25,9 @@ const (
 	mutateQueueBottom
 	mutateRemove
 	mutateRemoveData
+	mutateLabels
+	mutateMove
+	mutateRename
 )
 
 // mutationVerb is how one verb is worded: asked in a confirm, announced while it
@@ -68,6 +71,12 @@ var mutationVerbs = map[mutationKind]mutationVerb{
 	mutateRemoveData: {ask: "Remove", doing: "Removing", done: "Removed", tail: " and their data", run: func(ctx context.Context, c *transmission.Client, sel transmission.Selector) error {
 		return c.RemoveTorrents(ctx, sel, true)
 	}},
+
+	// The prompt verbs carry arguments a selector cannot, so they have no run of
+	// their own: each mutation brings one.
+	mutateLabels: {ask: "Set labels on", doing: "Updating", done: "Updated"},
+	mutateMove:   {ask: "Move", doing: "Moving", done: "Moved"},
+	mutateRename: {ask: "Rename", doing: "Renaming", done: "Renamed"},
 }
 
 // bySelector adapts a client method that takes only a selector — a method
@@ -111,6 +120,10 @@ type mutationMsg struct {
 type mutation struct {
 	kind mutationKind
 	sel  transmission.Selector
+
+	// run overrides the verb's own run, for a verb whose RPC needs more than the
+	// selector: the labels, the location, the new name.
+	run func(ctx context.Context, c *transmission.Client, sel transmission.Selector) error
 }
 
 // refuseMutation says why a mutation cannot run, or reports that it can.
@@ -184,13 +197,18 @@ func (m Model) runMutation(mu mutation) (Model, tea.Cmd) {
 	n := len(mu.sel.IDs)
 	ctx, client, gen := m.ctx, m.client, m.live.gen
 
+	run := verb.run
+	if mu.run != nil {
+		run = mu.run
+	}
+
 	m.toast = verb.doing + " " + pluralTorrents(n) + "…"
 
 	return m, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 		defer cancel()
 
-		return mutationMsg{gen: gen, kind: mu.kind, count: n, err: verb.run(ctx, client, mu.sel)}
+		return mutationMsg{gen: gen, kind: mu.kind, count: n, err: run(ctx, client, mu.sel)}
 	}
 }
 

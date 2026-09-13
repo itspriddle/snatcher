@@ -72,14 +72,14 @@ func (o confirmOverlay) view(m Model, w, _ int) string {
 		lines = append(lines, m.styles.Muted.Render(truncate(o.secondary, width)))
 	}
 
-	lines = append(lines, "", m.help.ShortHelpView(o.bindings()))
+	lines = append(lines, "", m.help.ShortHelpView(o.helpBindings()))
 
 	return m.styles.Overlay.Render(strings.Join(lines, "\n"))
 }
 
-// bindings are the keys the help line lists: the confirm's own, with a strict
+// helpBindings are the keys the help line lists: the confirm's own, with a strict
 // question's yes narrowed to the one key that answers it.
-func (o confirmOverlay) bindings() []key.Binding {
+func (o confirmOverlay) helpBindings() []key.Binding {
 	bindings := contextBindings(ctxConfirm)
 	if !o.strict {
 		return bindings

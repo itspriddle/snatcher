@@ -41,6 +41,9 @@ const (
 
 	// ownerSearch is the `/` field, whose blur keeps its text.
 	ownerSearch
+
+	// ownerPrompt is a prompt overlay's input, released when the prompt closes.
+	ownerPrompt
 )
 
 // Model is the root model. It owns focus, the overlay stack, the pending chord,

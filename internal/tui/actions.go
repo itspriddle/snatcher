@@ -61,6 +61,7 @@ func init() {
 	register(spineHandlers())
 	register(listHandlers())
 	register(mutationHandlers())
+	register(promptHandlers())
 	register(notYetHandlers())
 }
 
@@ -162,8 +163,16 @@ func settingsHandlers() map[Action]handler {
 		actionSettingsFieldDown: windowStep(func(w settingsWindow) settingsWindow { return w.fieldStep(1) }),
 		actionSettingsEdit:      settingsHandler(Model.settingsEnter),
 
-		actionInputBlur:   plain(Model.blurInput),
-		actionInputSubmit: plain(func(m Model) Model { return m.submitInput().syncSettings() }),
+		actionInputBlur: plain(Model.blurInput),
+		actionInputSubmit: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
+			// A prompt's submit acts, so it may return a command; the other
+			// inputs' submits are plain transitions.
+			if m.owner == ownerPrompt {
+				return m.promptSubmit()
+			}
+
+			return m.submitInput().syncSettings(), nil
+		},
 	}
 }
 

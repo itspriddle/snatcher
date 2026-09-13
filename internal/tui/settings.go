@@ -896,9 +896,13 @@ func (m Model) beginEdit() (Model, tea.Cmd) {
 // blurInput is the ladder's "blur input" rung, and how a submitted input is
 // left. It runs the owning input's own blur, then releases the keyboard.
 func (m Model) blurInput() Model {
-	if m.owner == ownerSearch {
+	switch m.owner {
+	case ownerSearch:
 		m = m.searchBlur()
-	} else {
+	case ownerPrompt:
+		// A prompt's draft is the overlay, so it is closed rather than blurred,
+		// and closing it is what releases the input. Nothing to blur here.
+	case ownerNone, ownerSettings:
 		m = m.settingsBlur()
 	}
 
@@ -966,8 +970,12 @@ func (m Model) settingsSubmit() Model {
 // bracketed paste, the cursor's blink ticks — to the input that owns the
 // keyboard.
 func (m Model) forwardToInput(msg tea.Msg) (Model, tea.Cmd) {
-	if m.owner == ownerSearch {
+	switch m.owner {
+	case ownerSearch:
 		return m.searchForward(msg)
+	case ownerPrompt:
+		return m.promptForward(msg)
+	case ownerNone, ownerSettings:
 	}
 
 	return m.settingsForward(msg)

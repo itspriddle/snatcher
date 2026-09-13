@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -32,7 +33,20 @@ func TestEveryHandlerHasABinding(t *testing.T) {
 	}
 
 	for action := range handlers {
-		assert.Truef(t, bound[action], "%s has a handler but no binding", action)
+		assert.Truef(t, bound[action] || slices.Contains(menuOnlyActions, action), "%s has a handler but no binding", action)
+	}
+}
+
+// TestMenuOnlyActionsAreUnbound checks the exception list above is honest: each
+// menu-only action has a handler and no key.
+func TestMenuOnlyActionsAreUnbound(t *testing.T) {
+	for _, action := range menuOnlyActions {
+		_, handled := handlers[action]
+		assert.Truef(t, handled, "%s has no handler", action)
+
+		for _, b := range registry {
+			assert.NotEqualf(t, action, b.Action, "%s is listed as menu-only but is bound", action)
+		}
 	}
 }
 
