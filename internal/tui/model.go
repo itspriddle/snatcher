@@ -248,6 +248,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.fileRenamed(msg)
 	case trackerPrefillMsg:
 		return m.trackersFetched(msg)
+	case portTestMsg:
+		return m.portTested(msg)
+	case settingResetMsg:
+		return m.settingReset(msg)
 	}
 
 	return m.forwardToInput(msg)

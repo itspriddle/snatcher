@@ -75,6 +75,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"prompt limit", press(openOtherMenu(live), "j", "enter")},
 		{"palette", press(live, ":")},
 		{"palette filtered", typeText(press(live, ":"), "lim")},
+		{"palette reset", press(typeText(press(live, ":"), "reset a"), "enter")},
 		{"prompt add tracker", press(openTrackersMenu(live), "enter")},
 		{"loading", liveModel(t, srv, w, h)},
 		{"detail loading", press(live, "enter")},

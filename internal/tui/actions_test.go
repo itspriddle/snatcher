@@ -23,7 +23,7 @@ func TestEveryBindingHasAHandler(t *testing.T) {
 
 // TestEveryHandlerHasABinding checks the other direction. A handler with no
 // binding is either dead code or an action that was meant to be reachable and is
-// not; T7's palette will list actions by name, and a name nothing can reach is a
+// not; the palette lists actions by name, and a name nothing can reach is a
 // bug either way.
 func TestEveryHandlerHasABinding(t *testing.T) {
 	bound := map[Action]bool{}

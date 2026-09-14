@@ -88,7 +88,10 @@ func (paletteOverlay) helpBindings() []key.Binding {
 }
 
 // filter rescores every entry against the query and puts the cursor back on the
-// best match. Ties keep their base order.
+// best match. Among equal scores a shorter label ranks first — it is the closer
+// fit, so "speed-limit-down" finds itself before "speed-limit-down-enabled" —
+// and labels of one length keep their base order. An empty query scores every
+// entry zero and leaves the base order alone.
 func (o paletteOverlay) filter() paletteOverlay {
 	query := o.input.Value()
 
@@ -108,7 +111,16 @@ func (o paletteOverlay) filter() paletteOverlay {
 		}
 	}
 
-	slices.SortStableFunc(hits, func(a, b scored) int { return cmp.Compare(b.score, a.score) })
+	slices.SortStableFunc(hits, func(a, b scored) int {
+		if query == "" {
+			return 0
+		}
+
+		return cmp.Or(
+			cmp.Compare(b.score, a.score),
+			cmp.Compare(lipgloss.Width(o.entries[a.index].label), lipgloss.Width(o.entries[b.index].label)),
+		)
+	})
 
 	o.matches = make([]int, len(hits))
 	for i, h := range hits {

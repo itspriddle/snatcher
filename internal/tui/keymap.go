@@ -351,6 +351,8 @@ var unboundActions = []unboundAction{
 	{actionTorrentPriorityNormal, ctxTorrentList, "bandwidth priority normal"},
 	{actionTorrentPriorityLow, ctxTorrentList, "bandwidth priority low"},
 	{actionTorrentGroup, ctxTorrentList, "bandwidth group…"},
+	{actionServerPortTest, ctxGlobal, "test port"},
+	{actionServerResetSetting, ctxGlobal, "reset a setting…"},
 	{actionFilePriorityHigh, ctxTorrentFiles, "file priority high"},
 	{actionFilePriorityNormal, ctxTorrentFiles, "file priority normal"},
 	{actionFilePriorityLow, ctxTorrentFiles, "file priority low"},
