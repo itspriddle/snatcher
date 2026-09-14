@@ -22,7 +22,8 @@ type menuItem struct {
 	// sub is a submenu's rows.
 	sub []menuItem
 
-	// disabled rows are drawn muted and never hold the cursor; note says why.
+	// disabled rows are drawn muted and never hold the cursor. note follows the
+	// label: why a disabled row is disabled, or a caveat on an enabled one.
 	disabled bool
 	note     string
 }
@@ -38,9 +39,7 @@ type menuOverlay struct {
 	cursor int
 }
 
-// torrentMenu is the action menu over n torrents, in vision.md's order. The
-// per-torrent limits wait on T7's palette, so they are listed greyed rather than
-// left out: a menu that silently lacked them would read as the whole list.
+// torrentMenu is the action menu over n torrents, in vision.md's order.
 func torrentMenu(n int) menuOverlay {
 	return menuOverlay{
 		title: "Actions (" + pluralTorrents(n) + ")",
@@ -71,7 +70,7 @@ func torrentMenu(n int) menuOverlay {
 				{label: "replace", action: actionTrackerReplace},
 				{label: "clear", action: actionTrackerClear},
 			}},
-			{label: "other", disabled: true, note: "(T7)"},
+			{label: "other", sub: otherMenu()},
 		},
 	}
 }
@@ -108,8 +107,12 @@ func (o menuOverlay) view(m Model, w, h int) string {
 			label += " ▸"
 		}
 
+		if it.note != "" {
+			label += "  " + it.note
+		}
+
 		if it.disabled {
-			rows = append(rows, m.styles.Muted.Render(padLine("  "+label+"  "+it.note, width)))
+			rows = append(rows, m.styles.Muted.Render(padLine("  "+label, width)))
 
 			continue
 		}

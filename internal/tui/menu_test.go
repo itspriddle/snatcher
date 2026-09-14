@@ -26,8 +26,7 @@ func openQueueMenu(m Model) Model {
 	return press(press(press(m, "m"), menuQueueDown...), "enter")
 }
 
-// TestMenuListsVisionItems pins the menu's rows to vision.md's list, in order,
-// with other greyed until the milestone that implements it.
+// TestMenuListsVisionItems pins the menu's rows to vision.md's list, in order.
 func TestMenuListsVisionItems(t *testing.T) {
 	o := torrentMenu(3)
 
@@ -42,8 +41,8 @@ func TestMenuListsVisionItems(t *testing.T) {
 
 	assert.Equal(t, []string{"add", "replace", "clear"}, menuLabels(o.items[11].sub))
 	assert.False(t, o.items[11].disabled)
-	assert.True(t, o.items[12].disabled)
-	assert.Equal(t, "(T7)", o.items[12].note)
+	assert.False(t, o.items[12].disabled)
+	assert.Len(t, o.items[12].sub, 9)
 }
 
 // TestMenuLeavesHaveHandlers walks every leaf: each runs an action with a
@@ -68,19 +67,23 @@ func TestMenuLeavesHaveHandlers(t *testing.T) {
 	walk(torrentMenu(1).items)
 }
 
-// TestMenuSkipsDisabledRows checks the cursor never rests on a greyed row, and
-// that the greyed rows say why.
-func TestMenuSkipsDisabledRows(t *testing.T) {
+// TestMenuCursorStopsAtTheEnds checks the cursor reaches the last row and stops
+// there, and never rests on a disabled row.
+func TestMenuCursorStopsAtTheEnds(t *testing.T) {
 	o := torrentMenu(1)
 
-	for range o.items {
+	for range len(o.items) + 2 {
 		o = o.move(1)
 	}
 
-	assert.Equal(t, 11, o.cursor, "the cursor stops on trackers, the last enabled row")
+	assert.Equal(t, 12, o.cursor, "the cursor stops on other, the last row")
 
 	_, m := polledModel(t)
-	assert.Contains(t, ansi.Strip(press(m, "m").render()), "other  (T7)")
+	assert.Contains(t, ansi.Strip(press(m, "m").render()), "other ▸")
+
+	o = menuOverlay{items: []menuItem{{label: "a"}, {label: "b", disabled: true, note: "(later)"}, {label: "c"}}}
+	assert.Equal(t, 2, o.move(1).cursor, "a disabled row is skipped")
+	assert.Equal(t, 2, o.move(1).move(1).cursor)
 }
 
 // TestMenuRefusals checks m opens nothing over no server or no selection.

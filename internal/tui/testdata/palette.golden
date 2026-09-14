@@ -4,35 +4,35 @@
 │  Downloading        │ Command palette                                                          │0 B/s   0.00       - ┃
 │  Seeding            │ :                                                                        │KiB/s   0.50      1h ┃
 │  Active             │                                                                          │                     ┃
-│  Stopped            │ > open detail         torrent list                                 enter │                     ┃
-│  Verifying          │   start               torrent list                                     s │                     ┃
-│  Queued to download │   pause               torrent list                                     p │                     ┃
-│  Queued to seed     │   verify              torrent list                                     v │                     ┃
-│  Queued to verify   │   reannounce          torrent list                                     r │                     ┃
-│  Error              │   delete              torrent list                                     d │                     ┃
-│Labels               │   queue down          torrent list                                     J │                     ┃
-│  linux              │   queue up            torrent list                                     K │                     ┃
-│  No label           │   labels              torrent list                                     L │                     ┃
-│Trackers             │   move                torrent list                                     M │                     ┃
-│  (none yet)         │   force start         torrent list                                       │                     ┃
-│                     │   rename torrent…     torrent list                                       │                     ┃
-│                     │   queue top           torrent list                                       │                     ┃
-│                     │   queue bottom        torrent list                                       │                     ┃
-│                     │   add tracker…        torrent list                                       │                     ┃
-│                     │   replace trackers…   torrent list                                       │                     ┃
-│                     │   clear trackers      torrent list                                       │                     ┃
-│                     │   yank magnet link    yank                                           y m │                     ┃
-│                     │   yank info hash      yank                                           y h │                     ┃
-│                     │   yank name           yank                                           y n │                     ┃
-│                     │   yank download path  yank                                           y p │                     ┃
-│                     │   toggle filter pane  torrents                                         { │                     ┃
-│                     │   detail: overview    torrents                                         1 │                     ┃
-│                     │   detail: files       torrents                                         2 │                     ┃
-│                     │   detail: trackers    torrents                                         3 │                     ┃
-│                     │   detail: peers       torrents                                         4 │                     ┃
-│                     │   detail: pieces      torrents                                         5 │                     ┃
-│                     │   filter              torrents                                         f │                     ┃
-│                     │   search              torrents                                         / │                     ┃
+│  Stopped            │ > open detail                torrent list                          enter │                     ┃
+│  Verifying          │   start                      torrent list                              s │                     ┃
+│  Queued to download │   pause                      torrent list                              p │                     ┃
+│  Queued to seed     │   verify                     torrent list                              v │                     ┃
+│  Queued to verify   │   reannounce                 torrent list                              r │                     ┃
+│  Error              │   delete                     torrent list                              d │                     ┃
+│Labels               │   queue down                 torrent list                              J │                     ┃
+│  linux              │   queue up                   torrent list                              K │                     ┃
+│  No label           │   labels                     torrent list                              L │                     ┃
+│Trackers             │   move                       torrent list                              M │                     ┃
+│  (none yet)         │   force start                torrent list                                │                     ┃
+│                     │   rename torrent…            torrent list                                │                     ┃
+│                     │   queue top                  torrent list                                │                     ┃
+│                     │   queue bottom               torrent list                                │                     ┃
+│                     │   add tracker…               torrent list                                │                     ┃
+│                     │   replace trackers…          torrent list                                │                     ┃
+│                     │   clear trackers             torrent list                                │                     ┃
+│                     │   honor session limits on    torrent list                                │                     ┃
+│                     │   honor session limits off   torrent list                                │                     ┃
+│                     │   download limit…            torrent list                                │                     ┃
+│                     │   upload limit…              torrent list                                │                     ┃
+│                     │   peer limit…                torrent list                                │                     ┃
+│                     │   seed ratio limit…          torrent list                                │                     ┃
+│                     │   seed idle limit…           torrent list                                │                     ┃
+│                     │   sequential download on     torrent list                                │                     ┃
+│                     │   sequential download off    torrent list                                │                     ┃
+│                     │   bandwidth priority high    torrent list                                │                     ┃
+│                     │   bandwidth priority normal  torrent list                                │                     ┃
+│                     │   bandwidth priority low     torrent list                                │                     ┃
 │                     │                                                                          │                     ┃
 │                     │ ↑/↓ move • enter run • esc cancel                                        │                     ┃
 ╰─────────────────────╰──────────────────────────────────────────────────────────────────────────╯━━━━━━━━━━━━━━━━━━━━━┛

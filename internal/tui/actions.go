@@ -66,6 +66,7 @@ func init() {
 	register(menuHandlers())
 	register(fileHandlers())
 	register(trackerHandlers())
+	register(torrentUpdateHandlers())
 	register(paletteHandlers())
 	register(notYetHandlers())
 }

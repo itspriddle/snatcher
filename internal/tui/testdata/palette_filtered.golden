@@ -11,20 +11,20 @@
 │  Queued to verify   0│┃                                                                                              ┃
 │  Error              1│┃                                                                                              ┃
 │Labels                │┃                                                                                              ┃
-│  linux              1│┃                                                                                              ┃
-│  No label           2│┃                                                                                              ┃
-│Trackers              │┃                                                                                              ┃
-│  (none yet)         ╭──────────────────────────────────────────────────────────────────────────╮                     ┃
-│                     │ Command palette                                                          │                     ┃
-│                     │ : lim                                                                    │                     ┃
-│                     │                                                                          │                     ┃
-│                     │   no matches                                                             │                     ┃
+│  linux              ╭──────────────────────────────────────────────────────────────────────────╮                     ┃
+│  No label           │ Command palette                                                          │                     ┃
+│Trackers             │ : lim                                                                    │                     ┃
+│  (none yet)         │                                                                          │                     ┃
+│                     │ > peer limit…               torrent list                                 │                     ┃
+│                     │   upload limit…             torrent list                                 │                     ┃
+│                     │   download limit…           torrent list                                 │                     ┃
+│                     │   seed ratio limit…         torrent list                                 │                     ┃
+│                     │   seed idle limit…          torrent list                                 │                     ┃
+│                     │   honor session limits on   torrent list                                 │                     ┃
+│                     │   honor session limits off  torrent list                                 │                     ┃
 │                     │                                                                          │                     ┃
 │                     │ ↑/↓ move • enter run • esc cancel                                        │                     ┃
 │                     ╰──────────────────────────────────────────────────────────────────────────╯                     ┃
-│                      │┃                                                                                              ┃
-│                      │┃                                                                                              ┃
-│                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃

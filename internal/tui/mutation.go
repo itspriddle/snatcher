@@ -31,6 +31,7 @@ const (
 	mutateTrackerAdd
 	mutateTrackerReplace
 	mutateTrackerClear
+	mutateUpdate
 )
 
 // mutationVerb is how one verb is worded: asked in a confirm, announced while it
@@ -86,6 +87,11 @@ var mutationVerbs = map[mutationKind]mutationVerb{
 	mutateTrackerAdd:     {ask: "Add tracker to", doing: "Updating", done: "Updated"},
 	mutateTrackerReplace: {ask: "Replace trackers on", doing: "Updating", done: "Updated"},
 	mutateTrackerClear:   {ask: "Clear trackers on", doing: "Updating", done: "Updated"},
+
+	// The per-torrent field changes share one kind: one RPC and the CLI's
+	// `update` wording. Each brings its own ask on the mutation, so a failure
+	// still names what was tried.
+	mutateUpdate: {ask: "Update", doing: "Updating", done: "Updated"},
 }
 
 // bySelector adapts a client method that takes only a selector — a method
@@ -116,8 +122,13 @@ func countPrompt(verb string, n int, group string) string {
 
 // mutationMsg is the answer to a mutation.
 type mutationMsg struct {
-	gen   int
-	kind  mutationKind
+	gen  int
+	kind mutationKind
+
+	// ask is the mutation's ask, which names a failure; empty falls back to the
+	// verb's.
+	ask string
+
 	count int
 	err   error
 }
@@ -133,6 +144,19 @@ type mutation struct {
 	// run overrides the verb's own run, for a verb whose RPC needs more than the
 	// selector: the labels, the location, the new name.
 	run func(ctx context.Context, c *transmission.Client, sel transmission.Selector) error
+
+	// ask overrides the verb's ask, for the kinds that share one verb but not
+	// one question: "Set download limit on", "Honor session limits on".
+	ask string
+}
+
+// askWord is how the mutation is asked about and how its failure is named.
+func (mu mutation) askWord() string {
+	if mu.ask != "" {
+		return mu.ask
+	}
+
+	return mutationVerbs[mu.kind].ask
 }
 
 // refuseMutation says why a mutation cannot run, or reports that it can.
@@ -182,7 +206,7 @@ func (m Model) verb(kind mutationKind) (Model, tea.Cmd) {
 // confirmed runs a mutation, first asking when it names more than one torrent.
 func (m Model) confirmed(mu mutation, group string) (Model, tea.Cmd) {
 	if n := len(mu.sel.IDs); n > 1 || group != "" {
-		question := countPrompt(mutationVerbs[mu.kind].ask, n, group)
+		question := countPrompt(mu.askWord(), n, group)
 
 		return m.push(newConfirm(question, func(m Model) (Model, tea.Cmd) { return m.runMutation(mu) }, nil)), nil
 	}
@@ -204,7 +228,7 @@ func (m Model) runMutation(mu mutation) (Model, tea.Cmd) {
 
 	verb := mutationVerbs[mu.kind]
 	n := len(mu.sel.IDs)
-	ctx, client, gen := m.ctx, m.client, m.live.gen
+	ctx, client, gen, ask := m.ctx, m.client, m.live.gen, mu.askWord()
 
 	run := verb.run
 	if mu.run != nil {
@@ -217,7 +241,7 @@ func (m Model) runMutation(mu mutation) (Model, tea.Cmd) {
 		ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 		defer cancel()
 
-		return mutationMsg{gen: gen, kind: mu.kind, count: n, err: run(ctx, client, mu.sel)}
+		return mutationMsg{gen: gen, kind: mu.kind, ask: ask, count: n, err: run(ctx, client, mu.sel)}
 	}
 }
 
@@ -234,7 +258,12 @@ func (m Model) mutated(msg mutationMsg) (Model, tea.Cmd) {
 	verb := mutationVerbs[msg.kind]
 
 	if msg.err != nil {
-		m.toast = strings.ToLower(verb.ask) + ": " + errorLine(msg.err)
+		ask := msg.ask
+		if ask == "" {
+			ask = verb.ask
+		}
+
+		m.toast = strings.ToLower(ask) + ": " + errorLine(msg.err)
 
 		return m, nil
 	}
