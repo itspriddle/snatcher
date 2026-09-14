@@ -2,9 +2,8 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
+	"maps"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -128,13 +127,18 @@ type updateFlags struct {
 // were explicitly set (detected via cmd.Flags().Changed), validating each value
 // and returning a clear error (and no map entry) on bad input. Unset flags are
 // never written, so unspecified fields are left untouched on the server.
+//
+// The priority, speed-limit, and seed-limit values are parsed by the shared
+// change builders in internal/transmission (BandwidthPriority, RateLimitChanges,
+// SeedRatioChanges, SeedIdleChanges), which the TUI's limit prompts call too;
+// this function only names the flag in their errors.
 func (f *updateFlags) collectChanges(cmd *cobra.Command) (map[string]any, error) {
 	changes := make(map[string]any)
 
 	if cmd.Flags().Changed("priority") {
-		v, err := parsePriority(f.priority)
+		v, err := transmission.BandwidthPriority(f.priority)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid value for --priority: %w", err)
 		}
 		changes["bandwidth-priority"] = v
 	}
@@ -161,28 +165,27 @@ func (f *updateFlags) collectChanges(cmd *cobra.Command) (map[string]any, error)
 		changes["sequential-download"] = f.sequentialDownload
 	}
 
-	if cmd.Flags().Changed("download-limit") {
-		if err := applyRateLimit(changes, "download", f.downloadLimit); err != nil {
-			return nil, err
-		}
+	builders := []struct {
+		flag  string
+		build func() (map[string]any, error)
+	}{
+		{"download-limit", func() (map[string]any, error) { return transmission.RateLimitChanges("download", f.downloadLimit) }},
+		{"upload-limit", func() (map[string]any, error) { return transmission.RateLimitChanges("upload", f.uploadLimit) }},
+		{"seed-ratio", func() (map[string]any, error) { return transmission.SeedRatioChanges(f.seedRatio) }},
+		{"seed-idle", func() (map[string]any, error) { return transmission.SeedIdleChanges(f.seedIdle) }},
 	}
 
-	if cmd.Flags().Changed("upload-limit") {
-		if err := applyRateLimit(changes, "upload", f.uploadLimit); err != nil {
-			return nil, err
+	for _, b := range builders {
+		if !cmd.Flags().Changed(b.flag) {
+			continue
 		}
-	}
 
-	if cmd.Flags().Changed("seed-ratio") {
-		if err := applySeedRatio(changes, f.seedRatio); err != nil {
-			return nil, err
+		built, err := b.build()
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for --%s: %w", b.flag, err)
 		}
-	}
 
-	if cmd.Flags().Changed("seed-idle") {
-		if err := applySeedIdle(changes, f.seedIdle); err != nil {
-			return nil, err
-		}
+		maps.Copy(changes, built)
 	}
 
 	if err := applyLabels(cmd, changes, f.labels, f.clearLabels); err != nil {
@@ -198,115 +201,6 @@ func (f *updateFlags) collectChanges(cmd *cobra.Command) (map[string]any, error)
 	}
 
 	return changes, nil
-}
-
-// parsePriority maps a --priority value (low, normal, or high, matched
-// case-insensitively) to the Transmission bandwidth-priority integer
-// (-1, 0, 1). Any other value returns a clear error and the caller performs no
-// write.
-func parsePriority(raw string) (int, error) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "low":
-		return -1, nil
-	case "normal":
-		return 0, nil
-	case "high":
-		return 1, nil
-	default:
-		return 0, fmt.Errorf("invalid value for --priority: must be low, normal, or high")
-	}
-}
-
-// applyRateLimit writes the paired <kind>-limit / <kind>-limited keys for a
-// --download-limit / --upload-limit value. "off" (case-insensitive) disables the
-// limit by setting <kind>-limited=false and leaves the limit value untouched; a
-// non-negative integer sets the limit (in kB/s) and enables it via
-// <kind>-limited=true. Any other value is rejected.
-func applyRateLimit(changes map[string]any, kind, raw string) error {
-	value := strings.TrimSpace(raw)
-
-	if strings.EqualFold(value, "off") {
-		changes[kind+"-limited"] = false
-		return nil
-	}
-
-	kbps, err := strconv.Atoi(value)
-	if err != nil || kbps < 0 {
-		return fmt.Errorf("invalid value for --%s-limit: must be a non-negative integer (kB/s) or 'off'", kind)
-	}
-
-	changes[kind+"-limit"] = kbps
-	changes[kind+"-limited"] = true
-
-	return nil
-}
-
-// applySeedRatio writes the paired seed-ratio-limit / seed-ratio-mode keys for a
-// --seed-ratio value. A numeric ratio sets the limit and seed-ratio-mode=1
-// (single); "global" sets mode=0; "unlimited" sets mode=2. Any other value is
-// rejected.
-func applySeedRatio(changes map[string]any, raw string) error {
-	value := strings.TrimSpace(raw)
-
-	switch strings.ToLower(value) {
-	case "global":
-		changes["seed-ratio-mode"] = 0
-		return nil
-	case "unlimited":
-		changes["seed-ratio-mode"] = 2
-		return nil
-	}
-
-	ratio, err := strconv.ParseFloat(value, 64)
-	if err != nil || ratio < 0 {
-		return fmt.Errorf("invalid value for --seed-ratio: must be a non-negative number, 'global', or 'unlimited'")
-	}
-
-	changes["seed-ratio-limit"] = ratio
-	changes["seed-ratio-mode"] = 1
-
-	return nil
-}
-
-// applySeedIdle writes the paired seed-idle-limit / seed-idle-mode keys for a
-// --seed-idle value. A bare integer (minutes) or a Go-style duration string
-// (30m, 1h, 1h30m) sets the limit in whole minutes and seed-idle-mode=1
-// (single); "global" sets mode=0; "unlimited" sets mode=2. Durations with
-// sub-minute precision (e.g. 90s) and any other value are rejected.
-func applySeedIdle(changes map[string]any, raw string) error {
-	value := strings.TrimSpace(raw)
-
-	switch strings.ToLower(value) {
-	case "global":
-		changes["seed-idle-mode"] = 0
-		return nil
-	case "unlimited":
-		changes["seed-idle-mode"] = 2
-		return nil
-	}
-
-	if minutes, err := strconv.Atoi(value); err == nil {
-		if minutes < 0 {
-			return invalidSeedIdleErr()
-		}
-		changes["seed-idle-limit"] = minutes
-		changes["seed-idle-mode"] = 1
-		return nil
-	}
-
-	d, err := time.ParseDuration(value)
-	if err != nil || d < 0 || d%time.Minute != 0 {
-		return invalidSeedIdleErr()
-	}
-
-	changes["seed-idle-limit"] = int(d / time.Minute)
-	changes["seed-idle-mode"] = 1
-
-	return nil
-}
-
-func invalidSeedIdleErr() error {
-	return fmt.Errorf("invalid value for --seed-idle: must be whole minutes (integer or duration like 30m/1h), 'global', or 'unlimited'")
 }
 
 // applyLabels writes the labels key from --label / --clear-labels. --label

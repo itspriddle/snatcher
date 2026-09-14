@@ -276,8 +276,8 @@ func (f fileChangeFlags) resolve(cmd *cobra.Command) (func([]int) transmission.F
 	priority := 0
 	if setPriority {
 		var err error
-		if priority, err = parsePriority(f.priority); err != nil {
-			return nil, err
+		if priority, err = transmission.BandwidthPriority(f.priority); err != nil {
+			return nil, fmt.Errorf("invalid value for --priority: %w", err)
 		}
 	}
 
