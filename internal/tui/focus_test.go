@@ -189,4 +189,7 @@ func TestModalStatesReplaceTheStack(t *testing.T) {
 	form := press(live, "A")
 	assert.Equal(t, []Context{ctxForm}, form.contextStack())
 	assert.Equal(t, []Context{ctxTextInput}, press(form, "enter").contextStack())
+
+	palette := press(newTestModel(120, 40), ":")
+	assert.Equal(t, []Context{ctxPalette, ctxTextInput}, palette.contextStack())
 }

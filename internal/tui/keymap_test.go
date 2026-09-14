@@ -286,6 +286,22 @@ func TestMenuStackIsModal(t *testing.T) {
 	})
 }
 
+// TestPaletteStackIsModal pins the palette's keys and its swallow-everything
+// rule. In the palette a key that resolves to nothing is not swallowed but
+// forwarded to the query (TestPaletteColonIsACharacter pins that); here it is
+// enough that no global or pane action resolves.
+func TestPaletteStackIsModal(t *testing.T) {
+	assertModalStack(t, paletteOverlay{}, map[string]Action{
+		"up": actionPaletteUp, "down": actionPaletteDown, "pgup": actionPalettePageUp, "pgdown": actionPalettePageDown,
+		"enter": actionInputSubmit,
+	})
+
+	for _, k := range []string{"j", "k", "m", "y"} {
+		_, ok := lookup(paletteOverlay{}.contexts(), stringKey(k))
+		assert.Falsef(t, ok, "%q must type into the palette", k)
+	}
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.

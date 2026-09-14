@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -84,6 +85,10 @@ const (
 	// submenus, is open.
 	ctxMenu
 
+	// ctxPalette is the command palette's cursor keys, which sit above the
+	// palette's text input.
+	ctxPalette
+
 	// ctxChordYank is the second key of the y chord.
 	ctxChordYank
 
@@ -128,6 +133,8 @@ func (c Context) String() string {
 		return "form"
 	case ctxMenu:
 		return "action menu"
+	case ctxPalette:
+		return "command palette"
 	case ctxChordYank:
 		return "yank"
 	case ctxChordWindow:
@@ -139,7 +146,7 @@ func (c Context) String() string {
 
 // Action is the stable dotted name of something the TUI can do. It is the join
 // between a key press and the code that runs: the registry maps keys to
-// actions, the handler table maps actions to code, and T7's command palette
+// actions, the handler table maps actions to code, and the command palette
 // lists actions by name — including the ones no key is bound to.
 //
 // These names are a surface. Renaming one is a user-visible change to the
@@ -256,6 +263,11 @@ const (
 	actionMenuDown   Action = "menu.down"
 	actionMenuSelect Action = "menu.select"
 
+	actionPaletteUp       Action = "palette.up"
+	actionPaletteDown     Action = "palette.down"
+	actionPalettePageUp   Action = "palette.page-up"
+	actionPalettePageDown Action = "palette.page-down"
+
 	actionHelpScrollUp   Action = "help.scroll-up"
 	actionHelpScrollDown Action = "help.scroll-down"
 	actionHelpPageUp     Action = "help.page-up"
@@ -274,7 +286,7 @@ const (
 
 // The actions T5 leaves without a key: rename, which is single-torrent and rare,
 // and force start and the queue's two ends, the long tail of s, J, and K. They
-// live in the action menu now, and T7's palette later.
+// live in the action menu and the palette.
 const (
 	actionTorrentRename     Action = "torrent.rename"
 	actionTorrentForceStart Action = "torrent.force-start"
@@ -300,14 +312,73 @@ const (
 	actionTrackerClear   Action = "tracker.clear"
 )
 
-// menuOnlyActions are the actions no key is bound to, reachable by name from the
-// action menu now and the command palette later. The handler-coverage test
-// accepts an unbound handler only when it is listed here.
-var menuOnlyActions = []Action{
-	actionTorrentRename, actionTorrentForceStart, actionQueueTop, actionQueueBottom,
-	actionFilePriorityHigh, actionFilePriorityNormal, actionFilePriorityLow,
-	actionFileWanted, actionFileUnwanted, actionFileRename,
-	actionTrackerAdd, actionTrackerReplace, actionTrackerClear,
+// unboundAction is an action no key is bound to: reachable by name from the
+// command palette, and from a menu where it has a leaf.
+type unboundAction struct {
+	action Action
+
+	// ctx is the pane context that must be live for the action to make sense;
+	// the palette lists the action only from a stack that contains it.
+	ctx Context
+
+	// label is the palette's wording. A trailing "…" marks an action that
+	// prompts.
+	label string
+}
+
+// unboundActions are the actions with a handler and no key. The palette lists
+// each after its context's bound actions, and the handler-coverage test accepts
+// an unbound handler only when it is listed here: adding an unbound action means
+// adding a row.
+var unboundActions = []unboundAction{
+	{actionTorrentForceStart, ctxTorrentList, "force start"},
+	{actionTorrentRename, ctxTorrentList, "rename torrent…"},
+	{actionQueueTop, ctxTorrentList, "queue top"},
+	{actionQueueBottom, ctxTorrentList, "queue bottom"},
+	{actionTrackerAdd, ctxTorrentList, "add tracker…"},
+	{actionTrackerReplace, ctxTorrentList, "replace trackers…"},
+	{actionTrackerClear, ctxTorrentList, "clear trackers"},
+	{actionFilePriorityHigh, ctxTorrentFiles, "file priority high"},
+	{actionFilePriorityNormal, ctxTorrentFiles, "file priority normal"},
+	{actionFilePriorityLow, ctxTorrentFiles, "file priority low"},
+	{actionFileWanted, ctxTorrentFiles, "file wanted"},
+	{actionFileUnwanted, ctxTorrentFiles, "file unwanted"},
+	{actionFileRename, ctxTorrentFiles, "rename file…"},
+}
+
+// isUnbound reports whether an action is listed in unboundActions.
+func isUnbound(a Action) bool {
+	return slices.ContainsFunc(unboundActions, func(u unboundAction) bool { return u.action == a })
+}
+
+// paletteHidden are the pane-stack actions the palette does not list: navigation,
+// and keys that only make sense as keys — a mark on the cursor row, the first key
+// of a chord, the menu the palette already supersedes.
+var paletteHidden = map[Action]bool{
+	actionEscape: true, actionPalette: true,
+
+	actionNavUp: true, actionNavDown: true, actionNavTop: true, actionNavBottom: true,
+	actionNavHalfPageUp: true, actionNavHalfPageDown: true, actionNavPageUp: true, actionNavPageDown: true,
+	actionFocusNext: true, actionFocusPrev: true, actionFocusChord: true,
+
+	actionYankChord: true, actionMenuOpen: true, actionFileMenu: true,
+	actionToggleMark: true, actionFileMark: true,
+	actionSearchNext: true, actionSearchPrev: true, actionFilterApply: true,
+	actionDetailPrevTab: true, actionDetailNextTab: true,
+
+	actionSettingsPrevTab: true, actionSettingsNextTab: true,
+	actionSettingsNextField: true, actionSettingsPrevField: true,
+	actionSettingsEdit: true, actionSettingsFieldUp: true, actionSettingsFieldDown: true,
+}
+
+// paletteChords are the chord contexts the palette flattens into a pane's stack:
+// each is listed after the context whose key starts it, its entries named and
+// keyed with the chord's prefix ("yank magnet link", "y m").
+var paletteChords = []struct {
+	ctx, after             Context
+	labelPrefix, keyPrefix string
+}{
+	{ctx: ctxChordYank, after: ctxTorrentList, labelPrefix: "yank ", keyPrefix: "y "},
 }
 
 // Binding is one row of the registry: a key, the context it is live in, and the
@@ -489,6 +560,13 @@ var registry = []Binding{
 	bind(ctxMenu, actionMenuOpen, "m", "close", "m"),
 	bind(ctxMenu, actionEscape, "esc", "back", "esc"),
 
+	// Command palette — only the cursor keys, above the palette's input: j, k,
+	// and every other key type into the query.
+	bind(ctxPalette, actionPaletteUp, "↑", "up", "up"),
+	bind(ctxPalette, actionPaletteDown, "↓", "down", "down"),
+	bind(ctxPalette, actionPalettePageUp, "pgup", "page up", "pgup"),
+	bind(ctxPalette, actionPalettePageDown, "pgdn", "page down", "pgdown"),
+
 	// Help overlay.
 	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
 	bind(ctxHelp, actionHelpScrollDown, "↓/j", "scroll down", "down", "j"),
@@ -647,6 +725,7 @@ var modalStacks = [][]Context{
 	{ctxFilterPick},
 	{ctxForm},
 	{ctxMenu},
+	{ctxPalette, ctxTextInput},
 	{ctxChordYank},
 	{ctxChordWindow},
 	{ctxTextInput},

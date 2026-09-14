@@ -66,6 +66,7 @@ func init() {
 	register(menuHandlers())
 	register(fileHandlers())
 	register(trackerHandlers())
+	register(paletteHandlers())
 	register(notYetHandlers())
 }
 
@@ -168,19 +169,21 @@ func settingsHandlers() map[Action]handler {
 		actionSettingsEdit:      settingsHandler(Model.settingsEnter),
 
 		actionInputBlur:   plain(Model.blurInput),
-		actionInputSubmit: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.submitFocusedInput() },
+		actionInputSubmit: func(m Model, msg tea.KeyPressMsg) (Model, tea.Cmd) { return m.submitFocusedInput(msg) },
 	}
 }
 
 // submitFocusedInput is enter in whichever input owns the keyboard. A prompt's
 // submit acts, so it may return a command; the other inputs' submits are plain
 // transitions.
-func (m Model) submitFocusedInput() (Model, tea.Cmd) {
+func (m Model) submitFocusedInput(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	switch m.owner {
 	case ownerPrompt:
 		return m.promptSubmit()
 	case ownerForm:
 		return m.formSubmitInput(), nil
+	case ownerPalette:
+		return m.paletteSubmit(msg)
 	case ownerNone, ownerSettings, ownerSearch:
 	}
 

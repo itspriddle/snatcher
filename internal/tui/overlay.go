@@ -3,13 +3,14 @@ package tui
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
-// overlay is something drawn on top of a window: the help view now, and the
-// confirm dialog, action menu, and command palette in T5 and T7.
+// overlay is something drawn on top of a window: the help view, the confirm
+// dialog, the action menu, the command palette, and the rest.
 //
 // Overlays are a stack rather than a field, because the esc ladder's first real
 // rung is "close the topmost overlay" and a confirm dialog opened from the
@@ -120,6 +121,10 @@ func stepTop[T overlay](f func(T) T) handler {
 type modal struct {
 	title string
 
+	// head lines are drawn between the title and the rows, outside the scroll:
+	// the palette's input line.
+	head []string
+
 	// rows are the selectable lines, already styled and padded to width.
 	rows []string
 
@@ -131,6 +136,10 @@ type modal struct {
 
 	// ctx is the context whose keys the help line lists.
 	ctx Context
+
+	// help, when non-nil, replaces ctx's bindings on the help line, for a modal
+	// that words its keys itself.
+	help []key.Binding
 
 	// width is the content width.
 	width int
@@ -147,12 +156,14 @@ func overlayContentHeight(h int) int {
 // keeping the focused row in view: a column list is fifteen rows, and a 60x16
 // terminal has room for five of them.
 func (m Model) modalBox(b modal, h int) string {
-	budget := max(1, overlayContentHeight(h)-4-len(b.footer))
+	budget := max(1, overlayContentHeight(h)-4-len(b.footer)-len(b.head))
 	start := scrollStart(b.focus, len(b.rows), budget)
 	end := min(len(b.rows), start+budget)
 
-	lines := make([]string, 0, budget+4+len(b.footer))
-	lines = append(lines, m.styles.Title.Render(truncate(b.title, b.width)), "")
+	lines := make([]string, 0, budget+4+len(b.footer)+len(b.head))
+	lines = append(lines, m.styles.Title.Render(truncate(b.title, b.width)))
+	lines = append(lines, b.head...)
+	lines = append(lines, "")
 	lines = append(lines, b.rows[start:end]...)
 	lines = append(lines, "")
 	lines = append(lines, b.footer...)
@@ -161,7 +172,12 @@ func (m Model) modalBox(b modal, h int) string {
 	// ShortHelpView stops truncating once an item overflows and the ellipsis no
 	// longer fits either, and appends every remaining item, which would stretch
 	// the box past the frame.
-	lines = append(lines, ansi.Truncate(m.help.ShortHelpView(contextBindings(b.ctx)), b.width, "…"))
+	bindings := b.help
+	if bindings == nil {
+		bindings = contextBindings(b.ctx)
+	}
+
+	lines = append(lines, ansi.Truncate(m.help.ShortHelpView(bindings), b.width, "…"))
 
 	return m.styles.Overlay.Render(strings.Join(lines, "\n"))
 }

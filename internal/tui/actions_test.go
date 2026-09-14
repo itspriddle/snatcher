@@ -33,20 +33,24 @@ func TestEveryHandlerHasABinding(t *testing.T) {
 	}
 
 	for action := range handlers {
-		assert.Truef(t, bound[action] || slices.Contains(menuOnlyActions, action), "%s has a handler but no binding", action)
+		assert.Truef(t, bound[action] || isUnbound(action), "%s has a handler but no binding", action)
 	}
 }
 
-// TestMenuOnlyActionsAreUnbound checks the exception list above is honest: each
-// menu-only action has a handler and no key.
-func TestMenuOnlyActionsAreUnbound(t *testing.T) {
-	for _, action := range menuOnlyActions {
-		_, handled := handlers[action]
-		assert.Truef(t, handled, "%s has no handler", action)
+// TestUnboundActionsAreUnbound checks the exception list above is honest: each
+// unbound action has a handler, no key, and a context a pane stack can hold, so
+// the palette can list it from somewhere.
+func TestUnboundActionsAreUnbound(t *testing.T) {
+	for _, u := range unboundActions {
+		_, handled := handlers[u.action]
+		assert.Truef(t, handled, "%s has no handler", u.action)
 
 		for _, b := range registry {
-			assert.NotEqualf(t, action, b.Action, "%s is listed as menu-only but is bound", action)
+			assert.NotEqualf(t, u.action, b.Action, "%s is listed as unbound but is bound", u.action)
 		}
+
+		assert.Truef(t, slices.ContainsFunc(paneStacks(), func(s []Context) bool { return slices.Contains(s, u.ctx) }),
+			"%s is unbound in %s, which no pane stack holds", u.action, u.ctx)
 	}
 }
 
@@ -54,9 +58,9 @@ func TestMenuOnlyActionsAreUnbound(t *testing.T) {
 // the status bar. A registered key that silently did nothing would be
 // indistinguishable from a broken one.
 func TestNotYetHandlersReportThemselves(t *testing.T) {
-	m := press(newTestModel(120, 40), ":")
+	m := press(newTestModel(120, 40), "ctrl+p")
 
-	assert.Contains(t, m.toast, actionPalette)
+	assert.Contains(t, m.toast, actionWindowProwlarr)
 	assert.Contains(t, m.toast, "not implemented yet")
 }
 

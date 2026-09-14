@@ -48,6 +48,10 @@ const (
 	// ownerForm is a form overlay's row editor, whose blur discards the row's
 	// draft and leaves the form open.
 	ownerForm
+
+	// ownerPalette is the command palette's query, released when the palette
+	// closes.
+	ownerPalette
 )
 
 // Model is the root model. It owns focus, the overlay stack, the pending chord,

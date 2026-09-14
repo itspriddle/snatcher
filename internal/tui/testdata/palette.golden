@@ -1,0 +1,40 @@
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
+│  All                ╭──────────────────────────────────────────────────────────────────────────╮KiB/s   2.50       - ┃
+│  Downloading        │ Command palette                                                          │0 B/s   0.00       - ┃
+│  Seeding            │ :                                                                        │KiB/s   0.50      1h ┃
+│  Active             │                                                                          │                     ┃
+│  Stopped            │ > open detail         torrent list                                 enter │                     ┃
+│  Verifying          │   start               torrent list                                     s │                     ┃
+│  Queued to download │   pause               torrent list                                     p │                     ┃
+│  Queued to seed     │   verify              torrent list                                     v │                     ┃
+│  Queued to verify   │   reannounce          torrent list                                     r │                     ┃
+│  Error              │   delete              torrent list                                     d │                     ┃
+│Labels               │   queue down          torrent list                                     J │                     ┃
+│  linux              │   queue up            torrent list                                     K │                     ┃
+│  No label           │   labels              torrent list                                     L │                     ┃
+│Trackers             │   move                torrent list                                     M │                     ┃
+│  (none yet)         │   force start         torrent list                                       │                     ┃
+│                     │   rename torrent…     torrent list                                       │                     ┃
+│                     │   queue top           torrent list                                       │                     ┃
+│                     │   queue bottom        torrent list                                       │                     ┃
+│                     │   add tracker…        torrent list                                       │                     ┃
+│                     │   replace trackers…   torrent list                                       │                     ┃
+│                     │   clear trackers      torrent list                                       │                     ┃
+│                     │   yank magnet link    yank                                           y m │                     ┃
+│                     │   yank info hash      yank                                           y h │                     ┃
+│                     │   yank name           yank                                           y n │                     ┃
+│                     │   yank download path  yank                                           y p │                     ┃
+│                     │   toggle filter pane  torrents                                         { │                     ┃
+│                     │   detail: overview    torrents                                         1 │                     ┃
+│                     │   detail: files       torrents                                         2 │                     ┃
+│                     │   detail: trackers    torrents                                         3 │                     ┃
+│                     │   detail: peers       torrents                                         4 │                     ┃
+│                     │   detail: pieces      torrents                                         5 │                     ┃
+│                     │   filter              torrents                                         f │                     ┃
+│                     │   search              torrents                                         / │                     ┃
+│                     │                                                                          │                     ┃
+│                     │ ↑/↓ move • enter run • esc cancel                                        │                     ┃
+╰─────────────────────╰──────────────────────────────────────────────────────────────────────────╯━━━━━━━━━━━━━━━━━━━━━┛
+↑/↓ move • enter run • esc cancel                                                                                       
+snatcher v1.2.3 │ home@nas:9091 │ Transmission 4.0.6 │ ↓ 2.0 MiB/s │ ↑ 1.0 MiB/s │ free 120.0 GiB │ used 2.1 GiB        
