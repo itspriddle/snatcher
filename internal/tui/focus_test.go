@@ -181,4 +181,12 @@ func TestModalStatesReplaceTheStack(t *testing.T) {
 	inputs := chorded
 	inputs.inputFocused = true
 	assert.Equal(t, []Context{ctxTextInput}, inputs.contextStack())
+
+	// A form is its own stack until a row is edited, and the text input's while
+	// one is: the overlay holding the focused input decides the stack.
+	_, live := polledModel(t)
+
+	form := press(live, "A")
+	assert.Equal(t, []Context{ctxForm}, form.contextStack())
+	assert.Equal(t, []Context{ctxTextInput}, press(form, "enter").contextStack())
 }

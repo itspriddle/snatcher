@@ -62,10 +62,12 @@ const (
 )
 
 // handleInputKey resolves a key while a text input owns the keyboard. Only the
-// two keys ctxTextInput binds resolve; everything else is forwarded to the input
-// itself, which is the "a focused text input owns the keyboard" rule.
+// keys the input's stack binds resolve — ctxTextInput's two escapes, and
+// whatever an overlay holding the input binds above them; everything else is
+// forwarded to the input itself, never swallowed, which is the "a focused text
+// input owns the keyboard" rule.
 func (m Model) handleInputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	action, ok := lookup([]Context{ctxTextInput}, msg)
+	action, ok := lookup(m.contextStack(), msg)
 	if !ok {
 		return m.forwardToInput(msg)
 	}

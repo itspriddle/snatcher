@@ -97,9 +97,15 @@ func newAddForm(st Styles, downloadDir string) formOverlay {
 // kind implements overlay.
 func (formOverlay) kind() string { return formOverlayKind }
 
-// contexts implements overlay. While a row is being edited the router gives the
-// input the keyboard before it consults this stack.
-func (formOverlay) contexts() []Context { return []Context{ctxForm} }
+// contexts implements overlay. While a row is being edited the row's input owns
+// the keyboard, so the stack is the text input's.
+func (o formOverlay) contexts() []Context {
+	if o.editing {
+		return []Context{ctxTextInput}
+	}
+
+	return []Context{ctxForm}
+}
 
 // ownsInput names the input a form holds, so pop releases it.
 func (formOverlay) ownsInput() inputOwner { return ownerForm }

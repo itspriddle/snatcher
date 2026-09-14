@@ -112,8 +112,18 @@ func (m Model) switchWindow(w window) Model {
 // is the "a focused text input owns the keyboard" rule from vision.md, and the
 // same shape gives an overlay and a pending chord their swallow-everything
 // behavior for free.
+//
+// A focused input's stack is usually ctxTextInput alone, but an overlay that
+// holds the focused input decides it: the palette binds its cursor keys above
+// the input's two escapes, and every key neither binds still reaches the input.
 func (m Model) contextStack() []Context {
 	if m.inputFocused {
+		if top, ok := m.topOverlay(); ok {
+			if holder, ok := top.(inputHolder); ok && holder.ownsInput() == m.owner {
+				return top.contexts()
+			}
+		}
+
 		return []Context{ctxTextInput}
 	}
 

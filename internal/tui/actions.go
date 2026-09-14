@@ -167,21 +167,24 @@ func settingsHandlers() map[Action]handler {
 		actionSettingsFieldDown: windowStep(func(w settingsWindow) settingsWindow { return w.fieldStep(1) }),
 		actionSettingsEdit:      settingsHandler(Model.settingsEnter),
 
-		actionInputBlur: plain(Model.blurInput),
-		actionInputSubmit: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
-			// A prompt's submit acts, so it may return a command; the other
-			// inputs' submits are plain transitions.
-			if m.owner == ownerPrompt {
-				return m.promptSubmit()
-			}
-
-			if m.owner == ownerForm {
-				return m.formSubmitInput(), nil
-			}
-
-			return m.submitInput().syncSettings(), nil
-		},
+		actionInputBlur:   plain(Model.blurInput),
+		actionInputSubmit: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.submitFocusedInput() },
 	}
+}
+
+// submitFocusedInput is enter in whichever input owns the keyboard. A prompt's
+// submit acts, so it may return a command; the other inputs' submits are plain
+// transitions.
+func (m Model) submitFocusedInput() (Model, tea.Cmd) {
+	switch m.owner {
+	case ownerPrompt:
+		return m.promptSubmit()
+	case ownerForm:
+		return m.formSubmitInput(), nil
+	case ownerNone, ownerSettings, ownerSearch:
+	}
+
+	return m.submitInput().syncSettings(), nil
 }
 
 // helpHandlers are the help overlay's scroll keys.
