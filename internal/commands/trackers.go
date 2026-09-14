@@ -20,6 +20,10 @@ import (
 // Every string column is sanitized. A tracker's announce URL, host, and site name
 // come from the torrent's own metadata (which the operator did not author), and
 // the last announce result is text the tracker itself chose.
+//
+// internal/tui/detail_table.go mirrors its default columns' headers and
+// renderers for the TUI detail pane's trackers tab, under a pinning test; a
+// change here fails that test until the mirror follows.
 var trackerFields = map[string]column[transmission.Tracker]{
 	"announce": {header: "Announce", truncate: true, sanitize: true, value: func(t transmission.Tracker) string {
 		return t.Announce

@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
 // newServerUpdateCmd builds "server update", which writes one or more session
@@ -140,35 +141,35 @@ func newServerResetCmd() *cobra.Command {
 // baked-in default. Unknown and read-only keys error before any network call.
 // Duplicate keys collapse, and the definitions follow registry order so output is
 // stable regardless of argument order.
-func collectSettingResets(keys []string) ([]settingDef, map[string]any, error) {
+func collectSettingResets(keys []string) ([]transmission.SettingDef, map[string]any, error) {
 	if len(keys) == 0 {
 		return nil, nil, fmt.Errorf("nothing to reset: provide at least one setting key")
 	}
 
 	wanted := make(map[string]bool, len(keys))
 	for _, key := range keys {
-		def, ok := lookupSetting(key)
+		def, ok := transmission.LookupSetting(key)
 		if !ok {
-			return nil, nil, fmt.Errorf("unknown setting %q: valid settings are %s", key, strings.Join(allSettingKeys(), ", "))
+			return nil, nil, fmt.Errorf("unknown setting %q: valid settings are %s", key, strings.Join(transmission.SettingKeys(), ", "))
 		}
 
-		if def.readOnly {
+		if def.ReadOnly {
 			return nil, nil, fmt.Errorf("setting %q is read-only", key)
 		}
 
-		wanted[def.key] = true
+		wanted[def.Key] = true
 	}
 
-	var defs []settingDef
+	var defs []transmission.SettingDef
 	changes := make(map[string]any, len(wanted))
 
-	for _, def := range settingRegistry {
-		if !wanted[def.key] {
+	for _, def := range transmission.SettingDefs() {
+		if !wanted[def.Key] {
 			continue
 		}
 
 		defs = append(defs, def)
-		changes[def.key] = def.def
+		changes[def.Key] = def.Default
 	}
 
 	return defs, changes, nil

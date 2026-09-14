@@ -447,7 +447,7 @@ func formatClientValue(v any) string {
 		return strings.Join(list, ",")
 	}
 
-	return formatSettingValue(v)
+	return transmission.FormatSettingValue(v)
 }
 
 // resolveStoredClientKey returns what the config file says one key is, and its

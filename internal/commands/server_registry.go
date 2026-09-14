@@ -992,12 +992,36 @@ func firstArg(args []string) string {
 // serverPassword). Store selection precedence is SNATCHER_SECRET_STORE > the
 // server's secret_store > the keyring (see resolveStoreMode).
 func dial(cmd *cobra.Command, server string) (*transmission.Client, string, error) {
-	srv, err := dialTarget(cmd, server, config.TypeTransmission)
+	d, err := dialNamed(cmd, server)
 	if err != nil {
 		return nil, "", err
 	}
 
-	return connectTransmission(cmd, srv)
+	return d.client, d.url, nil
+}
+
+// dialed is a Transmission client together with the alias and URL the
+// precedence chain resolved it from.
+type dialed struct {
+	client *transmission.Client
+	name   string
+	url    string
+}
+
+// dialNamed is dial, keeping the resolved alias. Commands have no use for the
+// alias once the client exists; the TUI's status bar and server picker do.
+func dialNamed(cmd *cobra.Command, server string) (dialed, error) {
+	target, err := dialTarget(cmd, server, config.TypeTransmission)
+	if err != nil {
+		return dialed{}, err
+	}
+
+	client, url, err := connectTransmission(cmd, target.server)
+	if err != nil {
+		return dialed{}, err
+	}
+
+	return dialed{client: client, name: target.name, url: url}, nil
 }
 
 // connectTransmission reads srv's password and builds the Transmission client
@@ -1025,12 +1049,12 @@ func connectTransmission(cmd *cobra.Command, srv config.Server) (*transmission.C
 // the default it falls back to is default_prowlarr_server, so a Transmission
 // default and a Prowlarr default coexist without either shadowing the other.
 func dialProwlarr(cmd *cobra.Command, server string) (*prowlarr.Client, string, error) {
-	srv, err := dialTarget(cmd, server, config.TypeProwlarr)
+	target, err := dialTarget(cmd, server, config.TypeProwlarr)
 	if err != nil {
 		return nil, "", err
 	}
 
-	return connectProwlarr(cmd, srv)
+	return connectProwlarr(cmd, target.server)
 }
 
 // connectProwlarr reads srv's API key and builds the Prowlarr client for it. It
@@ -1061,17 +1085,17 @@ func connectProwlarr(cmd *cobra.Command, srv config.Server) (*prowlarr.Client, s
 // would be offered to a Prowlarr host. The error names the alias, what it
 // actually is, and where the alias came from, since an alias supplied by an
 // exported SNATCHER_SERVER is the case an operator is least likely to guess.
-func dialTarget(cmd *cobra.Command, server, wantType string) (config.Server, error) {
+func dialTarget(cmd *cobra.Command, server, wantType string) (resolvedServer, error) {
 	target, err := resolveDialTarget(cmd, server, wantType)
 	if err != nil {
-		return config.Server{}, err
+		return resolvedServer{}, err
 	}
 
 	if got := target.server.ResolvedType(); got != wantType {
-		return config.Server{}, serverTypeMismatchError(target.name, got, wantType, target.fromEnv)
+		return resolvedServer{}, serverTypeMismatchError(target.name, got, wantType, target.fromEnv)
 	}
 
-	return target.server, nil
+	return target, nil
 }
 
 // resolvedServer is a configured server a command has selected: the alias it was

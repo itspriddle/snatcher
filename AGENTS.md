@@ -39,6 +39,7 @@ internal/prowlarr/        # typed Prowlarr REST client (Transport→Client→dom
 internal/config/          # non-secret config (named servers + types, JSON, XDG path)
 internal/secrets/         # passwords and Prowlarr API keys (OS keyring, or file store)
 internal/output/          # JSON / jq / human formatters + terminal sanitizer
+internal/tui/             # terminal UI: layout, focus router, keymap registry
 internal/surface/         # CLI surface snapshot generator
 internal/version/         # ldflags-injected build info
 .surface                  # committed CLI surface snapshot (regression guard)
@@ -66,11 +67,54 @@ Layers, outermost to innermost:
   which are type-aware. The power-user `api` escape hatch (`api.go`) calls
   `client.CallAPI(...)` directly on either backend — `--prowlarr` switches its
   positional from an RPC method to a REST path, and its output from the
-  Transmission envelope to the raw response body.
+  Transmission envelope to the raw response body. `tui.go` holds the seams
+  `internal/cli` hands the TUI: `Dialer`, whose `DialResult` carries the
+  resolved alias and any unavailable-store warning (captured, never written to
+  stderr under the alt screen); `Servers`, the Transmission aliases for the
+  server picker; `ResolveClientSettings`; and `ClientConfigStore`, which reads
+  and writes client settings through the same functions `config list` and
+  `config set` use.
+- **`internal/tui`** — the terminal UI, launched by `internal/cli` when
+  `snatcher` is run bare on a terminal. It depends on `transmission` and
+  `output` and **never imports `commands`**: everything it needs arrives through
+  `tui.Deps`, built from the `commands.Dialer` / `commands.Servers` /
+  `commands.ResolveClientSettings` / `commands.ClientConfigStore` seam — the
+  picker's list as `Deps.Servers`, the config store as `Deps.Config`, the
+  `tui.ClientConfig` store the settings window reads and writes client settings
+  through (adapted in `internal/cli`, since neither package imports the other).
+  It is handed the *dialer*, not a dialed client, so switching servers
+  mid-session needs no new seam, and `tui.Run` dials before entering the alt
+  screen so a configuration error reaches the terminal. Live data rides one
+  refresh spine (`poll.go`): a tick-driven poll whose superseded ticks and
+  replies are dropped by sequence and generation rather than canceled. Mock
+  torrents exist only in tests, where a non-nil `Deps.Torrents` disables
+  polling. Mutations ride the same spine: a verb's RPC runs as a `Cmd`, and its
+  reply refetches at once (queued behind a poll already in flight) rather than
+  editing rows optimistically. The detail pane's `TorrentDetail` rides the same
+  spine while the pane is open (`detail_fetch.go`): debounced on cursor moves,
+  and dropped by torrent ID when the cursor has moved on. The list's sort,
+  direction, and columns are read from and written to `client.list_*` through
+  `Deps.Config`, and `columns.go` mirrors `internal/commands/list.go`'s field
+  keys under a pinning test rather than importing them. `detail_overview.go` and
+  `detail_table.go` mirror `torrent show`'s fields and the
+  `files`/`peers`/`trackers` registries the same way, and the files tab consumes
+  the same generic selection model (`selection.go`) as the torrent list. The
+  keymap registry in `keymap.go` is this package's `.surface`: every key the UI
+  responds to is one row of it, components are constructed from those rows
+  rather than from their own defaults, and the collision test asserts no key
+  resolves twice in any focus context a user can be in. Adding a binding means
+  adding a registry row, not a `switch` case. The `:` command palette
+  (`palette.go`) is fed by that registry plus `unboundActions`, the table of
+  actions no key is bound to, filtered to the live pane stack less
+  `paletteHidden`; drift tests fail on an action that is neither listed nor
+  hidden. Adding an unbound action means adding a table row.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list
-  transforms (filter/search/sort), the error sentinels (`ErrAuth` /
+  transforms (filter/search/sort), the session settings registry
+  (`SettingDefs`: every setting's key, type, category, default, and accessor,
+  shared by `server show`/`update`/`reset` and the TUI settings window), the
+  error sentinels (`ErrAuth` /
   `ErrUnreachable` / `ErrServer` / `ErrUnsupported`), and the concrete `Client`
   that wraps `*rpc.Client` and maps rpc errors to those sentinels. It is the
   **only** package that imports `rpc`.

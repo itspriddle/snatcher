@@ -17,9 +17,9 @@ const (
 	flagConfig = "config"
 
 	// flagTheme and flagNoNerdFont override, for one invocation, the two client
-	// settings that decide how snatcher draws itself. Nothing renders either one
-	// yet: they resolve and validate so the forthcoming TUI consumes a settled
-	// contract rather than inventing one.
+	// settings that decide how snatcher draws itself. Both are the TUI's: they
+	// pick its palette and its glyph set, and no other command's output
+	// changes.
 	//
 	// Both are checked where they are read — resolveClientSetting validates each
 	// rung as it resolves it — and nowhere else. Checking them ahead of every

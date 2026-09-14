@@ -1,0 +1,40 @@
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
+│  All                0│┃                                                                                              ┃
+│  Downloading        0│┃                                                                                              ┃
+│  Seeding            0│┃                                                                                              ┃
+│  Active             0│┃                                                                                              ┃
+│  Stopped            0│┃                                                                                              ┃
+│  Verifying          0│┃                                                                                              ┃
+│  Queued to download 0│┃                                                                                              ┃
+│  Queued to seed     0│┃                                                                                              ┃
+│  Queued to verify   0│┃                                                                                              ┃
+│  Error              0│┃                                                                                              ┃
+│Labels                │┃                                                                                              ┃
+│  No label           0│┃                                                                                              ┃
+│Trackers              │┃                                                                                              ┃
+│  (none yet)          │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                         no torrents                                          ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+space mark • enter open detail • y yank… • s start • p pause • v verify • r reannounce • d delete • J queue down …      
+snatcher v1.2.3 │ home@nas:9091 │ Transmission 4.0.6 │ ↓ 2.0 MiB/s │ ↑ 1.0 MiB/s │ free 120.0 GiB │ used 0 B            

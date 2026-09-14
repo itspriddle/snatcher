@@ -180,8 +180,9 @@ var AllFields = []Field{
 // refreshes on every tick: identity, lifecycle state, progress, transfer rates,
 // and the size/left bytes a progress bar needs. It deliberately omits the
 // expensive or rarely-changing fields (peers, dates, labels, download dir) so a
-// frequent poll stays light. Its exact membership is not contract-locked the way
-// the json tags are and may be tuned once the poll loop exists.
+// frequent poll stays light. The TUI's poll projects AllFields instead, because
+// its list, sidebar, and detail pane need nearly every field. Its exact
+// membership is not contract-locked the way the json tags are.
 var PollFields = []Field{
 	FieldID, FieldHash, FieldStatus, FieldPercentDone, FieldRateDownload,
 	FieldRateUpload, FieldLeftUntilDone, FieldSizeWhenDone,

@@ -20,6 +20,10 @@ import (
 // are the most hostile input the CLI renders — they are chosen by an arbitrary
 // member of the swarm, not by the operator's own server — and the address comes
 // off the same connection.
+//
+// internal/tui/detail_table.go mirrors its default columns' headers and
+// renderers for the TUI detail pane's peers tab, under a pinning test; a change
+// here fails that test until the mirror follows.
 var peerFields = map[string]column[transmission.Peer]{
 	"address": {header: "Address", sanitize: true, value: func(p transmission.Peer) string {
 		return p.Address

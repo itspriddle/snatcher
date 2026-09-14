@@ -1,0 +1,40 @@
+╭──────────────────────╮╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+│Status                ││      ID Name               Status      Done      Size        Down          Up  Ratio     ETA │
+│  All               12││  v    1 ubuntu-24.04.1-de… Downloading  42%   5.8 GiB   4.0 MiB/s 128.0 KiB/s   0.12 14m 18s │
+│  Downloading        4││  ^    2 debian-12.7.0-amd… Seeding     100% 631.0 MiB       0 B/s 512.0 KiB/s   3.41       - │
+│  Seeding            3││  x    3 archlinux-2026.09… Stopped      87%   1.1 GiB       0 B/s       0 B/s   0.00       - │
+│  Active             7││  %    4 fedora-workstatio… Verifying    99%   2.1 GiB       0 B/s       0 B/s   0.00       - │
+│  Stopped            2││  ~    5 nixos-minimal-25.… Queued to … 100%   1.0 GiB       0 B/s       0 B/s   0.00       - │
+│  Verifying          1││  ~    6 openbsd-7.6-amd64… Queued to …   0% 769.0 MiB       0 B/s       0 B/s   0.00       - │
+│  Queued to download 1││  ~    7 freebsd-14.1-rele… Queued to … 100%   4.2 GiB       0 B/s       0 B/s   0.88       - │
+│  Queued to seed     1││  !    8 alpine-standard-3… Error        31% 200.0 MiB       0 B/s       0 B/s   0.00       - │
+│  Queued to verify   1││  v    9 void-live-x86_64-… Downloading   5% 695.0 MiB 768.0 KiB/s       0 B/s   0.00 14m 40s │
+│  Error              1││  ^   10 gentoo-admincd-am… Seeding     100% 560.0 MiB       0 B/s  64.0 KiB/s   1.04       - │
+│Labels                ││  x   11 slackware64-15.0-… Stopped      50%   3.6 GiB       0 B/s       0 B/s   0.00       - │
+│  linux              3││  v   12 hostile[31mname[0… Downloading  17% 1000.0 M… 256.0 KiB/s       0 B/s   0.00 55m 19s │
+│  seed               3││                                                                                              │
+│  No label           7││                                                                                              │
+│Trackers              ││                                                                                              │
+│  (none yet)          ││                                                                                              │
+│                      ││                                                                                              │
+│                      ││                                                                                              │
+│                      ││                                                                                              │
+│                      ││                                                                                              │
+╰──────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Overview  Files  Trackers  Peers  Pieces                                                                             ┃
+┃──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┃
+┃  Index Name                                                                      Size      Done    % Priority Wanted ┃
+┃      0 ubuntu/ubuntu-24.04.1-desktop-amd64.iso                                5.8 GiB   2.4 GiB  42% high     yes    ┃
+┃      1 ubuntu/SHA256SUMS                                                      1.0 KiB   1.0 KiB 100% normal   yes    ┃
+┃      2 ubuntu/hostile[31mfile[0m.txt                                              0 B       0 B 100% low      no     ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┃                                                                                                                      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+space mark file • m file menu • ? help • q quit                                                                         
+snatcher v1.2.3 │ no server                                                                                             

@@ -50,92 +50,328 @@ green throughout; new flags mean `make surface` and a man page edit.
 
 ---
 
-## T1. Shell, focus router, keymap spine
+## T1. Shell, focus router, keymap spine — **done**
 
 **The hard 80%.** Layout is a consequence of getting focus and routing right;
 the panes fall out of it.
 
-- Window/pane layout and resize reflow (`JoinHorizontal`/`JoinVertical` +
-  `Compositor` per TUI-PLAN)
-- Focus router: which pane owns input → which keymap is active → which keymap
+- ~~Window/pane layout and resize reflow (`JoinHorizontal`/`JoinVertical` +
+  `Compositor` per TUI-PLAN)~~
+- ~~Focus router: which pane owns input → which keymap is active → which keymap
   feeds help. `tab`/`shift-tab` cycles **panes only**; `ctrl-w` + `hjkl`
-  targets directly
-- The **esc ladder** as an explicit ordered stack (vision.md, Principles), not
+  targets directly~~
+- ~~The **esc ladder** as an explicit ordered stack (vision.md, Principles), not
   scattered local handlers. Implement it once, here, with the overlay stack it
-  depends on
-- The **selection model** and the mark rendering, even before real data
-- Keymap registry + collision test + `?` help
-- Theme/styles/icon plumbing threaded from the first component (v2 has no
-  global renderer - styles are passed explicitly)
-- Launch wiring: bare `snatcher` on a TTY starts the TUI, `--help`, an explicit
+  depends on~~
+- ~~The **selection model** and the mark rendering, even before real data~~
+- ~~Keymap registry + collision test + `?` help~~
+- ~~Theme/styles/icon plumbing threaded from the first component (v2 has no
+  global renderer - styles are passed explicitly)~~
+- ~~Launch wiring: bare `snatcher` on a TTY starts the TUI, `--help`, an explicit
   subcommand, or non-TTY stdout keeps CLI behavior; client injected through a
-  seam over `commands.dial()`, which is still unexported - exporting it (or
-  adding a TUI constructor that takes a client) is this milestone's job, moved
-  here from CLI M9
-- Every `bubbles`/`huh` component constructed with a zeroed keymap; the
-  collision test checks the components' active keymaps, not just the registry
-  (`docs/TUI-PLAN.md`, last gotcha)
-- Windows scaffolded with mock data: torrents + settings
+  seam over `commands.dial()`~~ — shipped as `commands.Dialer` +
+  `commands.ResolveClientSettings`; the TUI keeps the *dialer*, not a dialed
+  client, so T4's server picker re-dials without a new seam
+- ~~Every `bubbles`/`huh` component constructed with a zeroed keymap; the
+  collision test checks the components' active keymaps, not just the registry~~
+- ~~Windows scaffolded with mock data: torrents + settings~~
 
 **Done when:** an empty shell navigates correctly - panes focus, `esc`
 unwinds in the specified order, help lists the active context's keys, resize
-reflows, and no key is bound twice.
+reflows, and no key is bound twice. **Met.**
 
-## T2. Theme + Nerd Font content
+### Decisions
+
+These were settled while building T1 and are not open in later milestones.
+
+- **One package, `internal/tui`,** split by file. A window gets a sub-package
+  when it outgrows that, not before (T5+).
+- **The filter sidebar is hand-rolled,** not `bubbles/v2/list`. The list
+  component binds `q`, `esc`, `h`, `l`, `u`, `d`, `f`, and `b` — seven keys
+  vision.md spends elsewhere — and adds a status line and paginator to style
+  away, in exchange for a fuzzy filter a fixed-length sectioned index does not
+  want. TUI-PLAN's component table is corrected to match.
+- **Every binding vision.md specifies is registered from T1,** with a `notYet`
+  handler that toasts "not implemented yet" for the verbs a later milestone
+  owns. Later milestones replace handlers, never bindings, so the collision
+  test sees the whole keyboard from the start instead of discovering a clash in
+  T5.
+- **Goldens store `ansi.Strip(render())`.** A golden full of escape sequences
+  is unreadable in review and pins the palette, which is exactly what T2
+  changes. Style correctness gets two narrow assertions instead, plus an
+  invariant that every frame is exactly `h` lines of exactly `w` cells.
+- **`ctrl+c` escapes even a focused text input,** the one exception to "a
+  focused input owns the keyboard". A user must never be trapped by a widget
+  that has swallowed the keyboard.
+- **The filter sidebar's status vocabulary is `transmission.Filter`'s own** —
+  the values `--filter` takes — rather than vision.md's sketch of
+  "Completed"/"Waiting", which the CLI cannot express. The parity rule says the
+  TUI and the CLI name a selection the same way.
+- **List-pane `h`/`l` horizontal scroll is deferred to T5.** `bubbles/v2/table`
+  has no horizontal scroll, and a binding that did nothing would lie. The
+  columns drop from the right as the pane narrows instead.
+- **The help overlay stacks its contexts vertically and scrolls,** rather than
+  using `help.FullHelpView`'s side-by-side columns: at 80 columns those
+  silently drop two of the four contexts, leaving a help view that does not
+  mention `q`.
+
+## T2. Theme + Nerd Font content — **done**
 
 Fills in the substrate stood up in T1.
 
-- `default` / `dracula` / `nord` palettes, light/dark detection via
-  `lipgloss.LightDark(hasDark)`
-- Status→glyph icon map with the `--no-nerd-font` ASCII fallback
-- Wire flag > `snatcher config` > default (the precedence built in CLI M4)
-- `NO_COLOR` honored, matching the CLI's plaintext behavior
+- ~~`default` / `dracula` / `nord` palettes, light/dark detection via
+  `lipgloss.LightDark(hasDark)`~~
+- ~~Status→glyph icon map with the `--no-nerd-font` ASCII fallback~~
+- ~~Wire flag > `snatcher config` > default (the precedence built in CLI M4)~~ —
+  the chain was already built and wired in T1; what T2 added is that the three
+  names now render differently
+- ~~`NO_COLOR` honored, matching the CLI's plaintext behavior~~
 
-## T3. Settings window
+**Done when:** the three theme names render as three distinct palettes, each
+legible on a light and a dark terminal; the Nerd Font and ASCII glyph sets both
+draw one cell per status; and `NO_COLOR`, `TERM=dumb`, and a piped stdout all
+draw a frame whose focus and cursor are still readable. **Met.**
+
+### Decisions
+
+- **`default` is the terminal's own ANSI-16 palette,** identical for light and
+  dark: text is `lipgloss.NoColor{}` (the terminal's configured foreground) and
+  every other slot is one of the sixteen colors the terminal already resolves
+  for every other program. The terminal has already made both decisions, so a
+  light/dark pick for this theme would only second-guess it. `dracula` and
+  `nord` are the opt-in fixed truecolor looks.
+- **Every theme ships light and dark.** `dracula`'s light variant is Alucard,
+  Dracula's own official light palette; `nord`'s follows Nord's guidance for
+  bright interfaces (Polar Night for text, Snow Storm for surfaces). All three
+  go through one `lipgloss.LightDark` pick, so no theme can render invisible
+  text on a background it did not expect.
+- **Focus is encoded in the border shape, always** — rounded when unfocused,
+  thick when focused, double for the focused filter pane whose group actions hit
+  every torrent in a group. Color stays too, but shape is what survives
+  `NO_COLOR`, a 16-color terminal, and a colorblind user, and it is why the
+  ANSI-stripped goldens now record which pane has focus.
+- **Monochrome is a color-profile question, decided once in the model.** The
+  model keeps the `colorprofile.Profile` from `tea.ColorProfileMsg` exactly as
+  it keeps `isDark` from `tea.BackgroundColorMsg`, and `newStyles` takes a
+  `mono` flag: no `Foreground`/`Background` call at all, with reverse video for
+  the cursor row, the table's selected row, and the status bar. `NO_COLOR`,
+  `TERM=dumb`, a pipe, and a forced profile are all one branch.
+- **`NO_COLOR` is resolved at the command layer,** by the same non-empty
+  predicate `isTTY` uses, and forced into the program with
+  `tea.WithColorProfile(colorprofile.Ascii)`. colorprofile's own check is
+  `strconv.ParseBool`, so left to it `NO_COLOR=yes` would strip color from
+  `snatcher list` and not from the TUI. The TUI still reads no environment of
+  its own.
+- **Nerd Font glyphs are written as `\uXXXX` escapes,** never as literal
+  private-use characters. T1 shipped the map as eight empty strings — the
+  glyphs were lost between editor and commit, and the golden faithfully pinned a
+  zero-width column — and the same thing happened once more while planning T2.
+  The invariants (one rune, in U+E000–U+F8FF, one cell wide) are asserted on the
+  glyphs rather than on a frame, because a golden cannot tell a private-use
+  glyph from a missing one.
+- **The `Mark` color slot is removed.** `bubbles/v2/table` cannot style one
+  cell, so a marked row is a glyph, not a color. T5 adds a slot back if it finds
+  a use.
+
+## T3. Settings window — **done**
 
 First real backend round-trip, and the place the form pattern gets solved.
 
-- `huh/v2` embedding (it is **not** a drop-in `tea.Model` - see TUI-PLAN)
-- Tab strip: General, Polling, Download, Network, Bandwidth, Queue
-- General/Polling read and write `snatcher config`; the rest read `GetSession`
+- ~~`huh/v2` embedding (it is **not** a drop-in `tea.Model` - see TUI-PLAN)~~ —
+  not embedded: the form is hand-rolled over `bubbles/v2/textinput` (see
+  Decisions)
+- ~~Tab strip: General, Polling, Download, Network, Bandwidth, Queue~~
+- ~~General/Polling read and write `snatcher config`; the rest read `GetSession`
   and write `SetSession`, driven by the same category table behind
-  `server show --category`
-- Field navigation per vision.md: `tab` moves fields, `up`/`down` belong to the
-  focused field. Decide it here, before there are forty fields
-- Loading / error / dirty states; `esc` prompts to save pending changes
+  `server show --category`~~ — the table now lives in `internal/transmission`,
+  and the config writes go through `Deps.Config`
+- ~~Field navigation per vision.md: `tab` moves fields, `up`/`down` belong to the
+  focused field. Decide it here, before there are forty fields~~
+- ~~Loading / error / dirty states; `esc` prompts to save pending changes~~
 
 **Done when:** both a client-config write and a session write round-trip with
-visible loading and error states, and the form keymap does not fight `huh`.
+visible loading and error states, and the form keymap does not fight the
+registry. **Met.**
 
-## T4. Status bar + data/refresh spine
+### Decisions
+
+- **No `huh/v2`.** The form is hand-rolled over `bubbles/v2/textinput`, the same
+  call T1 made for the filter sidebar. Source review found five frictions:
+  `huh.Input` cannot strip the banned `ctrl+h` from its embedded textinput; its
+  field accessors write on every keystroke, so a draft cannot be discarded;
+  `NewForm` reads `TERM`, and the TUI reads no environment; a submitted form's
+  `View()` goes blank; and it pulls in about nine more modules. The window needs
+  three widget kinds (toggle, text, single select) plus a button row. `huh` is
+  re-evaluated when the upload and labels forms are built.
+- **The session settings registry moved to `internal/transmission`** as exported
+  domain metadata (`SettingDefs`, `LookupSetting`, `FilterSettings`, …), because
+  the TUI may import `transmission` but never `commands`. It gained
+  `ParseSettingValue` (so the window and a `server update` flag accept the same
+  spellings), a display-only `Unit`, and `ServerDerived`, which replaced the
+  command layer's private sanitize map. The CLI surface did not change.
+- **Client settings reach the TUI through `Deps.Config`,** a `tui.ClientConfig`
+  interface implemented by `commands.ClientConfigStore` and adapted in
+  `internal/cli`. It wraps the same resolve/validate/write functions as
+  `config list` and `config set`, so the window cannot accept a value the CLI
+  rejects. A key overridden by a flag or environment variable for this run is
+  read-only and names the override (`(set by --theme for this run)`), since
+  writing the file would change nothing the user can see. With no store the
+  client rows show this run's values read-only.
+- **`client.list_columns`, `list_sort`, and `list_reverse` are not in the window.**
+  T5 decides where they live, next to the `c` and `o` keys that change them.
+- **`up`/`down` belong to the row:** a toggle flips, a select cycles its option,
+  an open dropdown moves its cursor, and a text row or button ignores them.
+  `enter` flips a toggle, opens or commits a dropdown, starts editing a text row,
+  or presses a button. `tab`/`shift+tab` move rows, buttons included.
+- **esc in a settings input discards the draft.** vision.md's "blur, keeping
+  contents" was written for a search field, whose text is its state; a settings
+  row's state is its last committed value. A submitted value that does not parse
+  keeps the input open with the reason on the hint line.
+- **Read-only rows are skipped by `tab` and never hold the cursor.** The Save and
+  Revert buttons are on every tab and act on every tab. The focused button is
+  marked in its text (`[>Save (2)<]`) as well as its style, so focus survives
+  `NO_COLOR` and a stripped golden.
+- **Units are raw.** `KB/s`, minutes, and MiB values are shown and edited exactly
+  as Transmission stores them, with a muted unit hint. `output.Speed` (IEC over
+  bytes) is never used for the KB/s keys.
+- **Client config is read synchronously; the session is fetched asynchronously.**
+  The config store is a local file read on every open; `GetSession` is the first
+  `Cmd`/msg pair, with a 15s timeout derived from the program context. A loaded
+  window is not re-fetched on re-entry, so edits survive leaving it; `R`
+  reloads, confirming first when it would discard changes. A save blocks every
+  settings key; a load blocks only Save and `R`, because the server rows are not
+  selectable until it lands and the client tabs have nothing to race. Save
+  writes client keys first (all validated before any is written), then one
+  `SetSession` and a `GetSession` to show what the server kept.
+- **The confirm overlay is modal.** Its stack is `ctxConfirm` alone, so a stray
+  `q` cannot quit past "Save 2 changes before quitting?". `q` prompts from any
+  window while settings are unsaved, since leaving the window does not save
+  them; `ctrl+c` never prompts. The status bar shows `unsaved: N` everywhere.
+- **The ladder gained two rungs:** `close dropdown` (the inline dropdown is not an
+  overlay, but it is on top) below `close overlay`, and `prompt to save` above
+  `return to torrents`. Eleven rungs.
+- **The settings input's keymap is built explicitly,** not taken as "defaults
+  minus `ctrl+h`": `textinput.DefaultKeyMap` also binds seven `alt+` chords, and
+  the registry bans the prefix. Paste is unbound too — textinput's paste reads
+  the system clipboard, which vision.md rules out — and the terminal's bracketed
+  paste still arrives as a forwarded `tea.PasteMsg`. The input keeps the virtual
+  cursor; `tea.View.Cursor` stays nil.
+- **The help line advertises `?` and `q` only where they resolve.** Under a
+  focused input, a confirm, or a pending chord they are swallowed, and a line
+  offering them would be advertising dead keys.
+- **`errorLine` is the first typed-error presentation** — auth, unreachable,
+  unsupported, server — used by the settings window. T4 relocates it and makes
+  it the one presentation.
+- `bubbles/v2/textinput` brings `github.com/atotto/clipboard` in as an indirect
+  dependency; nothing in snatcher calls it.
+
+## T4. Status bar + data/refresh spine — **done**
 
 The reusable machine everything live rides on.
 
-- `tea.Tick` → fetch `Cmd` → `DataMsg` → update, with explicit loading, empty,
-  and error states; poll interval from config
-- Status bar: version, host, current server alias, global down/up and limits,
-  free space, total size, mark count
-- `▁▂▃▄▅▆▇█` sparkline from a rolling rate buffer
-- Server picker (`S`) - switch named servers without leaving the TUI, tearing
-  down and re-dialing cleanly
-- The typed-error presentation decided once, here
+- ~~`tea.Tick` → fetch `Cmd` → `DataMsg` → update, with explicit loading, empty,
+  and error states; poll interval from config~~
+- ~~Status bar: version, host, current server alias, global down/up and limits,
+  free space, total size, mark count~~
+- ~~`▁▂▃▄▅▆▇█` sparkline from a rolling rate buffer~~
+- ~~Server picker (`S`) - switch named servers without leaving the TUI, tearing
+  down and re-dialing cleanly~~
+- ~~The typed-error presentation decided once, here~~
+- ~~`t` alt-speed~~ — moved here from T5 as the spine's first mutation→refresh
 
-## T5. Torrent list, live
+**Done when:** the torrent list and status bar fill from a live poll with
+visible loading, empty, and error states; `R`, `t`, and `S` each round-trip;
+and every frame still fills the terminal exactly at 60, 80, 120, and 200
+columns. **Met.**
+
+### Decisions
+
+- **Split cadence.** Every tick polls `ListTorrents` (every torrent,
+  `AllFields`) and `Stats`. The first poll, and every sixth after it, also runs
+  the slow refresh: one `Session` round-trip (`ServerInfo` + `SessionSettings`)
+  and `FreeSpace` on the session's download directory, skipped when it has none.
+  `R`, `t`, a server switch, and a settings save that wrote session keys run it
+  early. Limits another client changes can lag by up to six ticks.
+- **The interval runs from the reply.** The next tick is scheduled when a poll
+  answers, so a slow server stretches the cadence rather than stacking polls,
+  and polls never overlap. `Deps.PollInterval` is read at scheduling time, so a
+  saved `client.poll_interval` applies from the next tick.
+- **Stale work is retired, not canceled.** `tea.Tick` cannot be stopped, so
+  every tick carries a sequence number and every reply a generation: `R` bumps
+  the sequence, a server switch the generation, and whatever no longer matches
+  is dropped. Every backend `Cmd` derives its 15s timeout from the program
+  context.
+- **The poll projects `AllFields`.** The list pane, the sidebar (labels,
+  errors), and T6's overview need nearly all of them, and none is nested.
+  `PollFields` stays for a caller that wants the light set.
+- **Rows are in queue order,** the CLI's default `list_sort`. A non-default
+  `client.list_sort` is not honored until T5 wires `o`, so until then the TUI
+  and `snatcher list` can disagree for a user who changed it.
+- **Mock data is test-only.** `mock.go` became `mock_test.go`. A non-nil
+  `Deps.Torrents` is a static set that disables polling (tests); nil with a
+  client polls; nil without one is the `no server` state.
+- **The cursor follows its torrent by ID** across a poll, and marks on torrents
+  that disappeared are dropped silently — the status bar's count is the only
+  tell, the stance vision.md takes on hidden marks. The sidebar is rebuilt on
+  every poll, keeping its cursor and applied filter by what they name rather
+  than by index.
+- **Used space is Σ (`SizeWhenDone` − `LeftUntilDone`)** over the polled rows.
+  T5's filter must keep summing the unfiltered set.
+- **Limits render raw,** `(5000 KB/s)`, exactly as `server bandwidth show`
+  prints them, never through `output.Speed` (IEC over bytes). The limit shown is
+  the one in force: alt-speed's while it is on, otherwise a global limit only
+  while it is enabled. Rates use `output.Speed`.
+- **Sparklines are hand-rolled:** eight samples per direction, scaled to that
+  ring's own maximum, blank until there are two, and left-padded to eight cells
+  so the segment does not jitter. No `ntcharts`.
+- **The status bar degrades by rank** when it does not fit: the Transmission
+  version first, then used, free, the two rates (sparkline, then limit, then
+  dropped, evenly between them), then snatcher's version. The server, an error
+  (`! unreachable`), `alt-speed`, and the mark/unsaved/chord counts are never
+  dropped. Alt-speed is plain text rather than a glyph, so `Icons` stays
+  status-only.
+- **One typed-error presentation, in `errors.go`.** Each sentinel has a short
+  form for the status bar (`auth failed`, `unsupported server`, `unreachable`,
+  `server error`), the sentence T3 introduced, and a pane hint that always ends
+  "press R to retry". Any other error is sanitized, and bounded in the bar.
+- **`t` flips alt-speed from the last slow refresh** with one `SetSession`,
+  shows the change at once, then re-reads the session. It does not confirm, and
+  before the first slow refresh it says it is waiting rather than guessing. The
+  settings window's loaded Bandwidth tab is not touched; `R` there reloads it.
+- **The picker is session-only,** like `--server`. It lists Transmission aliases
+  only, never writes `default_server`, and asks before discarding unsaved
+  settings. The dial runs as a `Cmd`, because resolving a secret can raise a
+  Keychain prompt, and a second `S` is refused until it lands. A failed dial
+  keeps the old server and resumes its polling; a successful one empties the
+  rows, rebuilds the settings window (reloading it if it is in front), and polls
+  at once.
+- **Two seams changed.** `commands.Dialer` returns a `DialResult` carrying the
+  resolved alias and any unavailable-store warning, captured by swapping the
+  command's error writer around the dial so it becomes the first toast instead
+  of a line under the alt screen; the single-flight picker is what keeps the
+  swap safe. `commands.Servers` lists the picker's aliases without touching a
+  secret store. `internal/cli` adapts both to the TUI's own types. The status
+  bar's version is `v` + `version.Version`; `FullVersion()` had printed
+  "snatcher" twice.
+
+## T5. Torrent list, live — **done**
 
 The main event. Reuses everything above.
 
-- `bubbles/v2/table` driven by the existing `internal/transmission`
+- ~~`bubbles/v2/table` driven by the existing `internal/transmission`
   filter/search/sort transforms (neither table sorts itself - sort the data,
-  rebuild rows)
-- Filter sidebar (`bubbles/v2/list`) with live counts; `enter` applies
-- Marks (`space`), `/` search with `n`/`N`, `f` filter modal, `o` sort,
-  `c` columns
-- Actions on marks-or-cursor: `s p v r d`, `J`/`K` queue, `L` labels, `M` move,
-  `t` alt-speed, `R` refresh, `y` yank chords, `a`/`A` add
-- `m` action menu with the full vision.md list
-- Filter-pane group actions with counted confirmation and loud focus styling
-- Optimistic update or immediate refetch after each mutation - pick one and
-  apply it uniformly
+  rebuild rows)~~
+- ~~Filter sidebar with live counts; `enter` applies~~ — the sidebar is
+  hand-rolled (T1), not `bubbles/v2/list`
+- ~~Marks (`space`), `/` search with `n`/`N`, `f` filter modal, `o` sort,
+  `c` columns~~
+- ~~Actions on marks-or-cursor: `s p v r d`, `J`/`K` queue, `L` labels, `M` move,
+  `R` refresh, `y` yank chords, `a`/`A` add (`t` alt-speed shipped in T4)~~
+- ~~`m` action menu with the full vision.md list~~ — trackers and per-torrent
+  limits are listed greyed, for T6 and T7
+- ~~Filter-pane group actions with counted confirmation and loud focus styling~~
+- ~~Optimistic update or immediate refetch after each mutation - pick one and
+  apply it uniformly~~ — immediate refetch
 
 **Label discovery is client-side.** The sidebar's `Labels (dynamic)` group needs
 the distinct labels in use on the server. CLI M6 (`torrent label`) shipped
@@ -154,26 +390,201 @@ the model the list pane already holds, with no extra round-trip.
 
 **Done when:** every list-pane binding in vision.md works against a real
 server, and no action can hit more torrents than the confirmation stated.
+**Met.**
+
+### Decisions
+
+- **Refetch, never optimistic.** A mutation's reply toasts the CLI's own verb
+  ("Started 3 torrents") and polls at once; rows are never edited locally,
+  because Transmission's transitions pass through queued states a guess would
+  get wrong. A refetch asked for while a poll is in flight is queued
+  (`pollAgain`) rather than dropped by the tick guard. There is no single-flight
+  for mutations: they are independent RPCs.
+- **`o` and `c` persist through `Deps.Config`** as `client.list_sort`,
+  `client.list_reverse`, and `client.list_columns`, validated by the CLI's own
+  validators, so the TUI cannot store what `snatcher list` rejects. They are
+  read once at launch; only a key that changed is written; a failed write is
+  toasted and the session value still applies. Without a store they are
+  session-only.
+- **The TUI's defaults are `list`'s defaults,** so `ID` and `Ratio` joined the
+  table. `columns.go` mirrors `listFields`' keys, headings, and renderers under
+  `TestColumnKeysMirrorTheCLI` rather than importing them. Right alignment is
+  padding in the cell, and columns drop right to left over the user's own set,
+  never the prefix cells or the name.
+- **`/` jumps, never hides.** Typing jumps to the first match; `enter` and `esc`
+  both blur keeping the text; `n`/`N` wrap; a second esc clears. The search and
+  the filter share a one-line footer inside the list pane, with a `(k/n)` match
+  count. Marks survive a search.
+- **One filter at a time, and it clears marks.** A status or a label (including
+  "No label"), from the sidebar or the `f` modal, which is the sidebar's own pane
+  in a box. Counts and used space come from the unfiltered set, and a label row
+  matches the raw label while displaying the sanitized one.
+- **Confirmation scales with blast radius.** `s p v r J K` and the menu's verbs
+  confirm with the count above one torrent; group actions always confirm and
+  name the group; their selector is explicit IDs, never All. A selector naming
+  no torrents is refused before any RPC: an empty `ids` argument means every
+  torrent on the wire.
+- **Remove is two questions, in the CLI's words** ("Remove 3 torrents?", then
+  "Also delete downloaded data?"). The second is strict: only `y` deletes data,
+  and `enter` is refused, so answering through a remove by momentum cannot
+  delete files.
+- **Prompts and the add form are hand-rolled;** `huh` is declined again. `L`,
+  `M`, `a`, and rename are one prompt overlay whose count-titled question is the
+  confirmation; one esc cancels it. `A` is a minimal five-row form: esc blurs an
+  edited row (discarding the draft) and the next esc closes it. Every
+  server-derived prefill is sanitized, and the form sends no download directory
+  while the row still holds the session's. Both add paused unless told
+  otherwise, as `torrent add` does.
+- **Input ownership is explicit.** `Model.owner` names which input
+  `inputFocused` refers to (settings, search, prompt, form); popping an overlay
+  releases the input it held; an overlay that words its own keys drives the help
+  line under it too.
+- **The action menu dispatches by `Action`,** so every leaf runs its key's
+  handler, confirms included; a leaf closes every menu level first so its
+  confirm sits over the list. Force start, queue top/bottom, and rename have no
+  key and are listed in `menuOnlyActions`, which seeds T7's palette. Trackers and
+  "other" are greyed with the milestone that owns them.
+- **`y m` fetches `TorrentDetail`** for exactly one torrent: the poll carries no
+  magnet link.
+- **Three wording helpers are duplicated, not promoted:** the mutation verbs,
+  the torrent-count noun, and the counted prompt. `internal/tui` does not import
+  `internal/commands`.
+- **Still deferred:** list-pane `h`/`l` horizontal scroll (T1), and the
+  sidebar's Trackers group, which needs a projected field that would change
+  `list --json` — T6's call.
 
 ## T6. Detail pane
 
-- Tabs: overview, files, trackers, peers, pieces, in a `viewport`, reusing the
-  T3 tab strip
-- `[`/`]`, `h`/`l`, `1`-`5`; `tab` leaves the pane rather than cycling tabs
-- Files tab: marks, priority high/normal/low, wanted/unwanted, rename - over
-  CLI M2/M3
-- Pieces tab: filled/unfilled block rendering from the decoded bitfield
-- Peers and trackers read-only tables
+- ~~Tabs: overview, files, trackers, peers, pieces, in a `viewport`, reusing the
+  T3 tab strip~~ — the overview and pieces scroll a `viewport`; files, peers,
+  and trackers are `bubbles/v2/table`s under the same strip
+- ~~`[`/`]`, `h`/`l`, `1`-`5`; `tab` leaves the pane rather than cycling tabs~~
+- ~~Files tab: marks, priority high/normal/low, wanted/unwanted, rename - over
+  CLI M2/M3~~
+- ~~Pieces tab: filled/unfilled block rendering from the decoded bitfield~~
+- ~~Peers and trackers read-only tables~~
+- ~~The action menu's greyed trackers entry~~ — add / replace / clear over
+  `tracker-list`
+
+**Met.**
+
+### Decisions
+
+- **The detail rides the poll while the pane is open.** `startPoll` batches one
+  `TorrentDetail` for the cursor torrent when the pane is open and none is in
+  flight, so the detail refreshes at the poll's cadence, under its single-flight,
+  and on `R`, for free. Every key and every poll funnels through `ensureDetail`:
+  a change of torrent starts a 150ms debounce whose superseded timers are dropped
+  by sequence, so a held `j` costs one fetch. A reply for a torrent the cursor
+  has left is dropped by ID and the new one debounced; a server switch clears it
+  all. A failed fetch leads the tab with the error and `press R to retry`, over
+  the last detail.
+- **Same torrent, same place.** Every poll repoints the pane, so the same
+  torrent keeps its detail, scroll offset, table cursors (by key), and file
+  marks; only a different torrent resets them. The offset is clamped on a
+  refresh, never reset to 0.
+- **The overview is `torrent show` in a pane:** `show`'s 29 default fields, its
+  headers and order and renderers, pinned by `TestOverviewMirrorsShow`. The list
+  fields draw from the polled row at once; the detail-only rows say `loading…`
+  until the detail lands. The magnet link is left out, as `show` leaves it out;
+  `y m` yanks it.
+- **Three `bubbles/v2/table`s mirror the CLI registries** (`files`, `peers`,
+  `trackers`) under `TestDetailColumnsMirrorTheCLI`, sharing the list's
+  `colSpec`/`fitSpecs` so columns drop right to left by one rule. One deviation:
+  the trackers table's `Next` is a countdown (`12m`, `1h 3m`, `now`) where the
+  CLI prints a date that would read the same all day. A table is focused only
+  while the pane is focused and its tab is current.
+- **Pieces are sized to fit, never scrolled:** a summary line, then a grid of
+  exactly the pane's cells, each an equal run of pieces shaded by its own run's
+  completeness in plain block elements (`· ░ ▒ ▓ █`), which survive `NO_COLOR`.
+  A magnet with no bitfield yet says so.
+- **One generic selection model.** `selection` serves the torrent list (keyed
+  by ID) and the files tab (keyed by index, the space `FileChanges` addresses).
+  The key comes from a zero-size type parameter rather than the plan's func
+  field: a func never compares equal under `reflect.DeepEqual`, and tests
+  compare selections.
+- **`ctxTorrentFiles` comes from the pane and its tab.** `paneStack()` is what
+  the router, the help overlay, and the help line all read; `tabStacks` puts the
+  files stack in the collision test. `space` marks a file and `m` opens the file
+  menu there, and nowhere else in the pane.
+- **File changes do not confirm:** one torrent, undone from the same menu, and
+  `files update` does not ask either. The report wording is the TUI's own. Rename
+  is one file, its last path component, reported in the CLI's line (`Renamed
+  <path> to <name> in torrent <torrent>`). Every file action refetches the detail
+  at once and polls.
+- **Tracker edits write `tracker-list` only,** as the CLI's `--tracker` and
+  `--clear-trackers` do. Add is one torrent and appends the URL as a new tier,
+  reading the list inside its `Cmd`; replace is one torrent, prefilled with the
+  current URLs (read first when the pane does not already have them), and joins
+  what is typed into one tier exactly as the CLI does; clear always confirms
+  with the count. Each edit is its own mutation kind, so a failure names what
+  was tried rather than borrowing clear's wording.
+- **File marks unwind first:** a `clear file marks` rung sits directly above
+  `focus main pane`, making twelve rungs, and the status bar shows
+  `file marks: N` apart from torrent marks.
+- **Still deferred:** the sidebar's Trackers group. It needs a tracker field
+  projected on `Torrent`, which changes `list --json`, so it gets its own
+  milestone.
 
 ## T7. Command palette
 
-- `:` opens a fuzzy list of every registered action, including the long tail
+- ~~`:` opens a fuzzy list of every registered action, including the long tail
   with no binding (switch server, test port, reset a setting, obscure
-  `torrent update` flags)
-- Runs against the current selection, so palette actions obey the same
-  marks-or-cursor rule
-- Fed by the T1 keymap registry plus a table of unbound actions, so it cannot
-  drift out of sync with what the TUI can actually do
+  `torrent update` flags)~~ — the actions live beneath it, less the hidden
+  navigation keys; the `torrent update` fields also got the action menu's
+  "other" submenu
+- ~~Runs against the current selection, so palette actions obey the same
+  marks-or-cursor rule~~
+- ~~Fed by the T1 keymap registry plus a table of unbound actions, so it cannot
+  drift out of sync with what the TUI can actually do~~ — `unboundActions`,
+  pinned two ways by the drift tests
+
+**Met.**
+
+### Decisions
+
+- **The palette is context-aware, like help.** It lists the actions live in the
+  pane stack beneath it — registry order within a context, most specific
+  context first — less `paletteHidden` (navigation, and keys that only make
+  sense as keys), with the `y` chord flattened in after the list pane
+  (`yank magnet link`, `y m`). `unboundActions` replaces `menuOnlyActions` and
+  names the context each unbound action needs. The drift tests fail on a pane
+  action that is neither listed nor hidden, on a stale hidden entry, and on a
+  menu leaf that is neither bound nor unbound.
+- **Fuzzy matching is hand-rolled:** a greedy, case-insensitive scored
+  subsequence (`fuzzy.go`) that rewards word starts and runs and charges for a
+  late start. Ties go to the shorter label, so `speed-limit-down` finds itself
+  before `speed-limit-down-enabled`; an empty query keeps the base order.
+  `sahilm/fuzzy` stays out of the module graph.
+- **An overlay that holds the focused input decides the stack.** The palette's
+  stack is `ctxPalette` over `ctxTextInput`: up/down/pgup/pgdn move, enter runs,
+  and every other key — `j`, `q`, `:` itself — is a lookup miss forwarded to the
+  query, never swallowed. The form's `contexts()` became honest (`ctxTextInput`
+  while a row is edited) so the rule changed nothing that existed.
+- **One esc, no new rung.** The ladder's close-overlay rung pops the palette and
+  `pop` releases its input, as for a prompt. `:` from help closes help first, so
+  the palette describes the pane help described.
+- **The reset chooser is the same overlay** with different entries: every
+  writable setting by key, its description as a searchable note, then a confirm
+  naming the default. A reset re-reads the session, and reloads the settings
+  window only when it is loaded and clean — a dirty window's draft wins, and
+  `R`'s discard prompt is the way to refresh it.
+- **One `mutateUpdate` kind, the ask on the mutation.** The thirteen
+  `torrent update` leaves share one RPC and the CLI's `Updated` wording, so they
+  are one kind carrying their own ask (`Set download limit on`), which still
+  names a failure the way T6's separate tracker kinds do. Fixed leaves confirm
+  above one torrent; prompt leaves use the counted title as the confirmation.
+- **`torrent update`'s value parsers were promoted** to
+  `internal/transmission` (`BandwidthPriority`, `RateLimitChanges`,
+  `SeedRatioChanges`, `SeedIdleChanges`), as T3 promoted `SettingDefs`. Their
+  errors name the value; the CLI wraps them with the flag, so its messages are
+  unchanged.
+- **No other CLI long tail belongs.** `server port set`, bandwidth, and
+  `config set` are settings tabs; `free-space` and `stats` are the status bar;
+  `--queue-position` is `J`/`K`/top/bottom; `server add/remove/default` write
+  `config.json`, which the picker only reads; Prowlarr is T8.
+- **Still deferred:** the sidebar's Trackers group, which changes the domain
+  model and the `list --json` contract, gets its own milestone.
 
 ## T8. Prowlarr window
 
@@ -214,17 +625,24 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
   **Decided** in `docs/vision.md` (Selection principle): marks survive sort
   and `/` search, and clear on a filter change - a single hidden mark would
   otherwise silently displace the cursor row with no confirmation.
-- Poll cadence vs. server load: one interval for everything, or a cheap
-  `PollFields` tick for the list plus a slower full refresh?
-- Where does the status bar (T4) get its global speed limits: poll
+- ~~Poll cadence vs. server load: one interval for everything, or a cheap
+  `PollFields` tick for the list plus a slower full refresh?~~
+  **Decided** in T4: the full record and stats every tick, the session and
+  free space every sixth.
+- ~~Where does the status bar (T4) get its global speed limits: poll
   `snatcher server bandwidth show`'s object on the refresh interval, or reuse
   the `stats` call the bar already makes and refresh the limits on a slower
   tick? `bandwidth show` returns the current rates, both limit pairs, and the
   alt-speed switch together, but costs two round-trips (`session-get` +
   `session-stats`); `stats` alone is one round-trip and carries the rates only.
-  The CLI contract supports either, so this is a TUI cost decision.
-- Does the torrent action menu's "trackers" entry edit trackers in place, or
-  defer to the trackers tab?
+  The CLI contract supports either, so this is a TUI cost decision.~~
+  **Decided** in T4: rates from `Stats` every tick, limits from `Session` on
+  the slow refresh.
+- ~~Does the torrent action menu's "trackers" entry edit trackers in place, or
+  defer to the trackers tab?~~ **Decided** in T5: it defers to T6's trackers
+  tab, and is listed greyed until then. **Revised** in T6: the menu edits in
+  place — add, replace, clear over `tracker-list` — and the trackers tab stays
+  read-only.
 - Does the `Labels (dynamic)` filter group derive its labels client-side from
   the polled torrent list (see T5), or does CLI M6 grow a server-side discovery
   verb first? Leaning client-side: the union is already in the poll payload once

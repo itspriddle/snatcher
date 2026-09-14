@@ -1,0 +1,40 @@
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
+│  All                3│┃  ^    2 debian.iso         Seeding     100%   1.0 GiB       0 B/s 128.0 KiB/s   2.50       - ┃
+│  Downloading        1│┃  !    3 alpine.iso         Error        50% 200.0 MiB       0 B/s       0 B/s   0.00       - ┃
+│  Seeding            1│┃  v    1 ubuntu-24.04.iso   Downloading  50%   2.0 GiB   1.5 MiB/s 512.0 KiB/s   0.50      1h ┃
+│  Active             2│┃                                                                                              ┃
+│  Stopped            0│┃                                                                                              ┃
+│  Verifying          0│┃                                                                                              ┃
+│  Queued to download 0│┃                                                                                              ┃
+│  Queued to seed     0│┃                                                                                              ┃
+│  Queued to verify   0│┃                                                                                              ┃
+│  Error              1│┃                                                                                              ┃
+│Labels                │┃                                                                                              ┃
+│  linux              ╭──────────────────────────────────────────────────────────────────────────╮                     ┃
+│  No label           │ Command palette                                                          │                     ┃
+│Trackers             │ : lim                                                                    │                     ┃
+│  (none yet)         │                                                                          │                     ┃
+│                     │ > peer limit…               torrent list                                 │                     ┃
+│                     │   upload limit…             torrent list                                 │                     ┃
+│                     │   download limit…           torrent list                                 │                     ┃
+│                     │   seed ratio limit…         torrent list                                 │                     ┃
+│                     │   seed idle limit…          torrent list                                 │                     ┃
+│                     │   honor session limits on   torrent list                                 │                     ┃
+│                     │   honor session limits off  torrent list                                 │                     ┃
+│                     │                                                                          │                     ┃
+│                     │ ↑/↓ move • enter run • esc cancel                                        │                     ┃
+│                     ╰──────────────────────────────────────────────────────────────────────────╯                     ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+↑/↓ move • enter run • esc cancel                                                                                       
+snatcher v1.2.3 │ home@nas:9091 │ Transmission 4.0.6 │ ↓ 2.0 MiB/s │ ↑ 1.0 MiB/s │ free 120.0 GiB │ used 2.1 GiB        

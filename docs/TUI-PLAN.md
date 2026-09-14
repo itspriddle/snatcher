@@ -21,10 +21,19 @@ Runtime dependencies — the entire set for v1 of the TUI:
 
 | Module | Version | Used for |
 |--------|---------|----------|
-| `charm.land/bubbletea/v2` | v2.0.6 | framework (Elm architecture, `View() tea.View`) |
-| `charm.land/lipgloss/v2` | v2.0.3 | styling + `Compositor` (overlays/modals/toasts) |
-| `charm.land/bubbles/v2` | v2.1.0 | table, list, viewport, help, key, spinner, progress, textinput |
-| `charm.land/huh/v2` | v2.0.3 | forms (settings, upload, labels) |
+| `charm.land/bubbletea/v2` | v2.0.8 | framework (Elm architecture, `View() tea.View`) |
+| `charm.land/lipgloss/v2` | v2.0.5 | styling + `Compositor` (overlays/modals/toasts) |
+| `charm.land/bubbles/v2` | v2.2.1 | table, viewport, help, key, spinner, progress, textinput |
+| `charm.land/huh/v2` | — | **deferred** — T3 hand-rolled the settings form over `textinput` instead; re-evaluate for the upload and labels forms |
+
+The first three landed in T1. `bubbles/v2/textinput`, first used in T3, brings
+`github.com/atotto/clipboard` in as an indirect dependency. Two more are direct
+dependencies:
+`github.com/charmbracelet/x/ansi` for the golden helper's `ansi.Strip`, and
+`github.com/charmbracelet/colorprofile` (v0.4.3), added in T2 for
+`colorprofile.Profile` — the model stores the one bubbletea reports, and forces
+`colorprofile.Ascii` under `NO_COLOR`. No `replace` directives anywhere in the
+graph.
 
 Deferred (v2-ready, add when mouse lands):
 `github.com/lrstanley/bubblezone/v2@v2.0.0`.
@@ -34,10 +43,12 @@ Deferred (v2-ready, add when mouse lands):
 | Surface | Built with |
 |---------|------------|
 | Torrent list (main pane) | `bubbles/v2/table` + existing `internal/transmission` sort/filter/search transforms |
-| Filter sidebar / in-list search | `bubbles/v2/list` (built-in `sahilm/fuzzy` filter) |
+| Filter sidebar | **hand-rolled** sectioned cursor list — see the T1 decision in `tui-todo.md` |
+| In-list search (`/`) | `bubbles/v2/textinput` over the existing `transmission.SearchByName` |
 | Detail pane (scrollable) | `bubbles/v2/viewport` |
 | Modals / confirmations / toasts | lipgloss `Compositor` layers |
-| Settings / upload / labels forms | `huh/v2` (wrapped — not a drop-in `tea.Model`) |
+| Settings form | **hand-rolled** over `bubbles/v2/textinput` — see the T3 decision in `tui-todo.md` |
+| Upload / labels forms | re-evaluate `huh/v2`; otherwise reuse the T3 form pattern |
 | Verify / port-test progress | `bubbles/v2/spinner` + `progress` |
 | Copy magnet/tracker URL | `tea.SetClipboard` (OSC52, built-in) |
 | Speed graph | hand-rolled `▁▂▃▄▅▆▇█` sparkline from a rolling buffer |
@@ -49,7 +60,11 @@ Deferred (v2-ready, add when mouse lands):
   but still bubbletea v1.)
 - **Tabs** (detail tabs, settings tabs) — styled tab strip. No tabs component
   exists in bubbles v2; the core PR for one is still open.
-- **Themes** (`default|dracula|nord`) — small hex const map per theme.
+- **Themes** (`default|dracula|nord`) — one function per theme returning the
+  named color slots. `default` is the terminal's own ANSI-16 palette (text is
+  `lipgloss.NoColor{}`), identical light and dark; `dracula` and `nord` are
+  fixed truecolor palettes, each with a light arrangement (Alucard, and Nord's
+  bright guidance) picked by `lipgloss.LightDark`.
   (`catppuccin/go` is v2-agnostic if Catppuccin is ever added.)
 - **Nerd Font icons** — const glyph map keyed by torrent state, with the
   `--no-nerd-font` ASCII fallback.
@@ -67,18 +82,27 @@ Deferred (v2-ready, add when mouse lands):
 
 ## Architecture decisions
 
-**Package placement preserves the layering rule.** TUI code lives in a new
-`internal/tui/` package (with sub-packages per window/component as it grows).
-It depends on `*transmission.Client` plus `config`/`secrets`, the same set the
-commands use. `internal/cli` launches it and injects the client.
+**Package placement preserves the layering rule.** TUI code lives in
+`internal/tui/`, one package split by file through T1; a window gets a
+sub-package when it outgrows that (T5+). It depends on `internal/transmission`
+and `internal/output` and nothing else of snatcher's — not `commands`, not
+`config`, not `secrets`. `internal/cli` launches it and injects everything
+through `tui.Deps`.
 
-**Launch model.** Bare `snatcher` on a TTY launches the TUI (replacing today's
-`cmd.Help()` fallback in `internal/cli/root.go`). `--help`, an explicit
-subcommand, or non-TTY stdout keeps CLI behavior. Add `--theme` and
-`--no-nerd-font` as persistent root flags (shown in `vision.md`, not yet
-wired). `dial()` is currently unexported in `internal/commands`; expose a seam
-(`commands.Dial(...)` or a TUI constructor that takes a `*transmission.Client`)
-so `cli` can dial and inject the client into `internal/tui`.
+**Launch model** (built in T1). Bare `snatcher` on a terminal launches the TUI;
+`--help`, an explicit subcommand, or a redirected stdin or stdout keeps CLI
+behavior. `--config`, `--theme`, and `--no-nerd-font` are persistent root flags
+already in `.surface` and the man page.
+
+The seam is `commands.Dialer(cmd)`, `commands.Servers(cmd)`, and
+`commands.ResolveClientSettings(cmd)`: `internal/cli` adapts them into a
+`tui.Deps` and calls `tui.Run`, and `internal/tui` imports neither
+`internal/commands` nor `internal/config`. It is handed the *dialer* rather than
+a dialed client, so the server picker re-dials without a second seam. A dial
+returns a `DialResult` with the resolved alias and any unavailable-store
+warning, captured rather than written to stderr under the alt screen.
+`tui.Run` dials before `tea.NewProgram`, so an unconfigured machine sees the
+CLI's own error on the terminal instead of inside an alt screen.
 
 **Focus / routing is the core architecture.** The keybindings in `vision.md`
 are deeply context-dependent — the same key means different things in the
@@ -86,6 +110,12 @@ filter pane vs list pane vs detail pane, `tab` cycles panes, `esc` is layered.
 The spine is a focus router: which pane owns input → which `key.Map` is active
 → which keymap feeds the `bubbles/help` view. Root model orchestrates focus and
 routes messages; each window/pane is a sub-model with its own `Update`/`View`.
+
+A focused input's stack is not always `ctxTextInput` alone. An overlay that
+holds the focused input decides it, and may bind keys above the input's two
+escapes — the `:` palette binds the arrow and page keys over its query. A
+registry miss in that stack must be forwarded to the input, never swallowed, or
+`j`, `q`, and `:` stop typing.
 
 **Theme/styles is a substrate, not a phase.** Lip Gloss v2 has no global
 renderer and no root `AdaptiveColor`; every component is handed its styles
@@ -111,7 +141,8 @@ the man page.
 
 - **`huh` is not a drop-in `tea.Model`.** `Form.Update` returns `huh.Model`
   (assert to `*huh.Form`), `Form.View()` returns `string`. Wrap it inside the
-  outer model's `View() tea.View`. Solve this once in the settings page.
+  outer model's `View() tea.View`. T3 did not use `huh` (see its decisions in
+  `tui-todo.md`); this still applies if the upload or labels forms do.
 - **Neither table sorts.** `bubbles/v2/table` and `lipgloss/v2/table` render
   only — sort the underlying data and rebuild rows via `SetRows`.
 - **Overlays use `Compositor`, not just Canvas/Layer.**
@@ -128,6 +159,19 @@ the man page.
   subpackage if ever needed).
 - **Clipboard via OSC52** isn't universal across terminals; consider a fallback
   for copy actions.
+- **The color profile arrives as a message, like the background color.**
+  bubbletea detects it with `colorprofile.Detect` unless
+  `tea.WithColorProfile` forced one, then sends `tea.ColorProfileMsg`. A
+  truecolor palette is safe on a 16-color terminal: ultraviolet downsamples
+  ANSI/ANSI256 automatically. The two profiles that carry no color differ —
+  `Ascii` drops fg/bg/underline color but **keeps** bold, reverse, and
+  underline; `NoTTY` strips everything — so reverse video is a usable fallback
+  under `Ascii`, which is the profile `NO_COLOR` forces.
+- **colorprofile's own `NO_COLOR` check is `strconv.ParseBool`,** not
+  "non-empty". `NO_COLOR=yes` would not disable color there, while the CLI's
+  `isTTY` treats any non-empty value as set, per no-color.org. So the command
+  layer decides, with one helper, and hands the answer to the TUI as
+  `Deps.NoColor`; the TUI reads no environment of its own.
 - **Every component ships a default keymap that fights `vision.md`.** Read
   from the v2.1.0 / v2.0.3 sources:
   - `bubbles/v2/table`: `f`/`b`/`space` page, `u`/`d` half-page, `g`/`G`
@@ -136,7 +180,8 @@ the man page.
   - `bubbles/v2/list`: `q`/`esc` quit, `?` help, `h`/`l`/`u`/`d`/`f`/`b`
     paging, `ctrl+j`/`ctrl+k` accept while filtering
   - `bubbles/v2/textinput` and `textarea`: `ctrl+p`/`ctrl+n` suggestions or
-    lines, `ctrl+d`, `ctrl+u`, `ctrl+w`, `ctrl+h`, `ctrl+t` (textarea)
+    lines, `ctrl+d`, `ctrl+u`, `ctrl+w`, `ctrl+h`, `ctrl+t` (textarea), and
+    seven `alt+` chords for word movement and deletion (textinput v2.2.1)
   - `huh/v2`: `ctrl+j`/`ctrl+k` on Select and MultiSelect, `ctrl+j` newline
     on Text, `enter` = next field, `h`/`l` toggle Confirm, `y`/`Y` accept
     Confirm, `x`/`space` toggle MultiSelect, `ctrl+a` select all
@@ -149,9 +194,61 @@ the man page.
   the registry against itself - a default that survives construction is a
   binding the registry never saw. Text inputs are the one exception, and
   deliberately: their readline chords are the "focused input owns the
-  keyboard" rule in `vision.md`, so they keep their defaults minus the banned
-  `ctrl+h`, and the router simply does not forward other keys while one has
-  focus.
+  keyboard" rule in `vision.md`. They are not "defaults minus `ctrl+h`",
+  though — the `alt+` chords are banned too — so each input gets an explicitly
+  built readline keymap with no banned key, no suggestion keys, and no
+  clipboard-reading paste, and a focused input is handed every key the router
+  does not reserve (`esc`, `enter`, `ctrl+c`).
+
+- **`tea.Tick` cannot be canceled.** Its timer starts when `Tick` is called and
+  there is no handle to stop it. Retire a superseded tick instead: carry a
+  sequence number on the message and drop any tick that no longer matches, and
+  a generation for anything that must not outlive a server switch. The timer can
+  outlive the program by one interval; it only delivers a message nobody reads.
+- **`tea.Batch` delivers a `tea.BatchMsg`** (`[]Cmd`), which the runtime runs
+  concurrently — except that a batch of one non-nil command is returned as that
+  command. A synchronous test helper that runs a `Cmd` and feeds its message
+  back has to flatten a `BatchMsg` itself, or it silently tests nothing.
+- **Every backend `Cmd` derives from the program context** (`tea.WithContext`)
+  with its own timeout, so quitting cancels a round trip in flight.
+- **`bubbles/v2/table` columns have no alignment.** `table.Column` is
+  `{Title, Width}`. Right alignment is padding in the cell when rows are built,
+  and it holds only while every non-flex width is fixed at that point:
+  `fitColumns` changes only the flex (name) width and zeroes dropped columns, so
+  cell counts and padded widths never shift under a resize.
+- **A tick issued while a poll is in flight is dropped** by the spine's own
+  single-flight guard. A refetch requested then — after a mutation — must be
+  queued (`pollAgain`, honored when the in-flight reply lands), or it waits a
+  whole interval.
+- **A `textinput` held by an overlay is a value in the overlay stack.** Its
+  `Update` returns a new model; write the overlay back with
+  `replaceTopOverlay`, or keystrokes land on a copy nothing draws.
+- **The router has to know which input owns the keyboard.** `inputFocused`
+  says one does; `Model.owner` says which, so a key, a paste, or a blink tick
+  reaches the right input, and a blur runs that input's own rule: a search keeps
+  its text, a settings or form row discards its draft, a prompt closes.
+- **`help.ShortHelpView` does not reliably truncate** (bubbles v2.2.1). Once an
+  item overflows and the ellipsis no longer fits either, it appends every
+  remaining item. A help line inside a fixed-width box is truncated by the
+  caller with `ansi.Truncate`.
+
+- **Repointing a viewport every poll must not reset its offset.**
+  `viewport.SetContent` leaves the offset alone, and a `SetYOffset(0)` after it
+  throws the user back to the top of a tab each tick. Clamp on a refresh
+  (`SetYOffset(YOffset())`) and reset only on a change of subject: another
+  torrent, another tab.
+- **A `table` in a pane with several is focused only while its tab is
+  current.** `table.Update` no-ops on an unfocused table, and a focused one on a
+  hidden tab eats the nav keys silently, so focus is pushed on a tab switch as
+  well as on a pane focus.
+- **`table.SetHeight` takes its own header out of the height it is given,** so
+  a pane passes the region the header and rows share.
+- **The test stub's `torrent-get` is both the poll and a detail read.** Tell
+  them apart by argument — only a detail read names `files` in `fields` — with
+  `respondWhen`, which is checked before a method's plain answer.
+- **`reflect.DeepEqual` never equates two non-nil funcs,** so a func field on a
+  value the tests compare with `assert.Equal` breaks the comparison. Carry
+  behavior on a zero-size type parameter instead.
 
 ## Build sequence
 
@@ -176,7 +273,8 @@ default). Fills in the substrate stood up in step 1.
 
 ### 3. Settings page
 
-`huh` forms (solve the v2 embedding gotcha here), settings tabs
+A hand-rolled form over `bubbles/v2/textinput` (`huh` was evaluated and
+deferred — see the T3 decisions in `tui-todo.md`), settings tabs
 (General/Polling/Download/Network/Bandwidth/Queue per `vision.md`), and the
 first real backend round-trip: `GetSession` load + `SetSession` write with
 loading/error UX. Establishes the form pattern (reused by upload/labels) and
@@ -187,9 +285,11 @@ session-write paths.
 
 ### 4. Status bar + data/refresh spine
 
-Generic poll loop over `Stats` (down/up rates, counts), live UI updates, and
-the `▁▂▃▄▅▆▇█` speed sparkline from a rolling rate buffer. Deliverable: the
-reusable fetch→update→render machine the torrent list will ride.
+A tick-driven poll over `ListTorrents` + `Stats`, with a slower refresh of the
+session and free space, feeding the torrent list and a status bar of live
+rates, limits, and `▁▂▃▄▅▆▇█` sparklines; explicit loading, empty, and error
+states; the `S` server picker and `t` alt-speed. Deliverable: the reusable
+fetch→update→render machine the torrent list rides.
 
 ### 5. Torrent list (live)
 

@@ -1,4 +1,4 @@
-.TH SNATCHER 1 2026-05-30 snatcher "Snatcher Manual"
+.TH SNATCHER 1 2026-09-12 snatcher "Snatcher Manual"
 .SH NAME
 snatcher \- Transmission BitTorrent CLI client
 .SH SYNOPSIS
@@ -10,11 +10,24 @@ snatcher \- Transmission BitTorrent CLI client
 .br
 .B snatcher
 .RB [ \-\-version ]
+.br
+.B snatcher
 .SH DESCRIPTION
 .B snatcher
-is a modern CLI for managing the Transmission BitTorrent client.
-It is built so that anything the (forthcoming) TUI can do is also scriptable
-from the command line.
+is a modern CLI and TUI for managing the Transmission BitTorrent client.
+It is built so that anything the TUI can do is also scriptable from the command
+line.
+.PP
+Run
+.B snatcher
+with no arguments on a terminal to start the TUI. A subcommand,
+.BR \-\-help ,
+or a redirected standard input or output keeps the command\-line behavior, so
+.B snatcher | cat
+prints usage rather than trying to draw a full\-screen interface. The TUI is
+currently a shell: it lays out the torrents and settings windows, routes focus
+between panes, and renders placeholder data. Live server data arrives in a
+later release.
 .PP
 snatcher requires
 .B Transmission 4.0 or newer
@@ -81,6 +94,13 @@ one of
 for this invocation only, overriding the
 .B client.theme
 setting. An unknown name is an error listing the valid ones.
+.IP
+.B default
+is the terminal's own sixteen colors, so it follows whatever color scheme the
+terminal is configured with;
+.BR dracula " and " nord
+are fixed palettes, each with a light and a dark arrangement chosen from the
+terminal's background color.
 .TP
 .B \-\-no\-nerd\-font
 Draw ASCII icons rather than Nerd Font glyphs for this invocation only,
@@ -93,9 +113,9 @@ means
 .B \-\-no\-nerd\-font=false
 asks for glyphs explicitly.
 .IP
-Nothing renders a theme or a glyph yet \(em these two options resolve and are
-checked, but no command's output changes. They exist so the forthcoming TUI
-reads a settled contract. Their full precedence chain is
+Both options are the TUI's: they choose the palette it draws with and whether
+it may use Nerd Font glyphs, and no other command's output changes. Their full
+precedence chain is
 .BR \-\-theme / \-\-no\-nerd\-font
 over
 .BR SNATCHER_THEME / SNATCHER_NO_NERD_FONT
@@ -103,9 +123,9 @@ over the config file, over the built-in default;
 .B snatcher config list
 reports which rung supplied each value. An invalid value at any rung is an
 error naming that rung, never a silent fallback, on every command that reads
-the setting \(em today that is
-.BR "config list" " and " "config get" .
-A command that renders neither is unaffected, so a stale
+the setting \(em the TUI,
+.BR "config list" ", and " "config get" .
+A command that reads neither is unaffected, so a stale
 .B SNATCHER_THEME
 cannot fail the
 .B config
@@ -1883,8 +1903,13 @@ write the file and are unaffected by whatever is in force, so a
 on the command line can never end up persisted.
 .PP
 .BR client.theme ", " client.nerd_font ", and " client.poll_interval
-are stored and validated but nothing renders them yet; they exist for the
-forthcoming TUI.
+are the TUI's own settings, and no other command renders them:
+.B client.theme
+picks its palette,
+.B client.nerd_font
+whether it draws Nerd Font glyphs or their ASCII fallbacks, and
+.B client.poll_interval
+how often it refreshes server data.
 .SS "search"
 .B snatcher search
 .RI [ options "] [" query ]
@@ -2590,10 +2615,13 @@ is not consulted for those. The same warning about the privacy of a process
 environment applies.
 .TP
 .B SNATCHER_THEME
-Selects the color theme for this invocation, equivalent to passing
+Selects the color theme the TUI draws with for this invocation, equivalent to
+passing
 .BR \-\-theme .
 One of
-.BR default ", " dracula ", or " nord .
+.BR default " (the terminal's own sixteen colors), " dracula ", or " nord ;
+each of the latter two has a light and a dark arrangement, chosen from the
+terminal's background color.
 The
 .B \-\-theme
 flag takes precedence; when neither is set, the
@@ -2618,9 +2646,8 @@ falls through to the config file. The
 flag takes precedence. A value that is not a boolean is an error naming the
 variable, never a silent fallback.
 .IP
-Neither variable changes any output today \(em nothing renders a theme or a
-glyph until the TUI exists \(em but both are resolved and checked by the
-commands that read them, and
+Both variables are the TUI's: they change how it draws itself and nothing else.
+They are resolved and checked by every command that reads them, and
 .B snatcher config list
 reports a setting they supply with the source
 .BR env .
@@ -2629,7 +2656,16 @@ A command that reads neither ignores them entirely, invalid value and all.
 .B NO_COLOR
 When set to a non-empty value, forces
 .B list
-into the piped, tab-separated, header-less contract even on a terminal.
+into the piped, tab-separated, header-less contract even on a terminal, and
+draws the TUI without color: pane focus is shown by its border shape \(em
+rounded when unfocused, thick when focused, double for the filter pane \(em and
+the cursor row, the selected list row, and the status bar in reverse video, so
+nothing that color carried is lost. The predicate is the conventional one: any
+non-empty value, whatever it says.
+.IP
+A terminal that cannot show color, including
+.BR TERM=dumb ,
+is drawn the same way without the variable.
 .TP
 .B XDG_CONFIG_HOME
 When set, the default config path is

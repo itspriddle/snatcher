@@ -1,0 +1,40 @@
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
+│  All                ╭──────────────────────────────────────────────────────────────────────────╮KiB/s   2.50       - ┃
+│  Downloading        │ Reset setting                                                            │0 B/s   0.00       - ┃
+│  Seeding            │ :                                                                        │KiB/s   0.50      1h ┃
+│  Active             │                                                                          │                     ┃
+│  Stopped            │ > download-dir                Default directory for completed downloads  │                     ┃
+│  Verifying          │   start-added-torrents        Start torrents automatically when added    │                     ┃
+│  Queued to download │   rename-partial-files        Append .part to incomplete files           │                     ┃
+│  Queued to seed     │   incomplete-dir-enabled      Keep incomplete downloads in a separate d… │                     ┃
+│  Queued to verify   │   incomplete-dir              Directory for incomplete downloads (when … │                     ┃
+│  Error              │   seed-ratio-limited          Stop seeding at the global seed-ratio lim… │                     ┃
+│Labels               │   seed-ratio-limit            Global seed ratio to stop seeding at (whe… │                     ┃
+│  linux              │   idle-seeding-limit-enabled  Stop seeding torrents that have been idle… │                     ┃
+│  No label           │   idle-seeding-limit          Idle time in minutes before stopping seed… │                     ┃
+│Trackers             │   cache-size-mib              Disk cache size in MiB                     │                     ┃
+│  (none yet)         │   peer-port                   Port to listen for incoming peer connecti… │                     ┃
+│                     │   peer-port-random-on-start   Pick a random peer port on each start      │                     ┃
+│                     │   port-forwarding-enabled     Request UPnP/NAT-PMP port forwarding       │                     ┃
+│                     │   encryption                  Peer encryption mode (allowed, preferred,… │                     ┃
+│                     │   peer-limit-global           Maximum peer connections across all torre… │                     ┃
+│                     │   peer-limit-per-torrent      Maximum peer connections per torrent       │                     ┃
+│                     │   pex-enabled                 Enable Peer Exchange (PEX)                 │                     ┃
+│                     │   dht-enabled                 Enable the Distributed Hash Table (DHT)    │                     ┃
+│                     │   lpd-enabled                 Enable Local Peer Discovery (LPD)          │                     ┃
+│                     │   utp-enabled                 Enable the uTP transport protocol          │                     ┃
+│                     │   blocklist-enabled           Block peers listed in the blocklist        │                     ┃
+│                     │   blocklist-url               URL to fetch the peer blocklist from       │                     ┃
+│                     │   speed-limit-down-enabled    Enable the global download speed limit     │                     ┃
+│                     │   speed-limit-down            Global download speed limit in KB/s (when… │                     ┃
+│                     │   speed-limit-up-enabled      Enable the global upload speed limit       │                     ┃
+│                     │   speed-limit-up              Global upload speed limit in KB/s (when e… │                     ┃
+│                     │   alt-speed-enabled           Use the alternative (throttled) speed lim… │                     ┃
+│                     │   alt-speed-down              Alternative download speed limit in KB/s   │                     ┃
+│                     │   alt-speed-up                Alternative upload speed limit in KB/s     │                     ┃
+│                     │                                                                          │                     ┃
+│                     │ ↑/↓ move • enter run • esc cancel                                        │                     ┃
+╰─────────────────────╰──────────────────────────────────────────────────────────────────────────╯━━━━━━━━━━━━━━━━━━━━━┛
+↑/↓ move • enter run • esc cancel                                                                                       
+snatcher v1.2.3 │ home@nas:9091 │ Transmission 4.0.6 │ ↓ 2.0 MiB/s │ ↑ 1.0 MiB/s │ free 120.0 GiB │ used 2.1 GiB        

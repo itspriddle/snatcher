@@ -1,0 +1,40 @@
+╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
+│  All               12│┃  v    1 ubuntu-24.04.1-de… Downloading  42%   5.8 GiB   4.0 MiB/s 128.0 KiB/s   0.12 14m 18s ┃
+│  D╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ - ┃
+│  S│ torrent list                                                                                                 │ - ┃
+│  A│   space  mark                                                                                                │ - ┃
+│  S│   enter  open detail                                                                                         │ - ┃
+│  V│   y      yank…                                                                                               │ - ┃
+│  Q│   s      start                                                                                               │ - ┃
+│  Q│   p      pause                                                                                               │ - ┃
+│  Q│   v      verify                                                                                              │0s ┃
+│  E│   r      reannounce                                                                                          │ - ┃
+│Lab│   d      delete                                                                                              │ - ┃
+│  l│   J      queue down                                                                                          │9s ┃
+│  s│   K      queue up                                                                                            │   ┃
+│  N│   L      labels                                                                                              │   ┃
+│Tra│   M      move                                                                                                │   ┃
+│  (│   m      action menu                                                                                         │   ┃
+│   │                                                                                                              │   ┃
+│   │ torrents                                                                                                     │   ┃
+│   │   {  toggle filter pane                                                                                      │   ┃
+│   │   1  detail: overview                                                                                        │   ┃
+│   │   2  detail: files                                                                                           │   ┃
+│   │   3  detail: trackers                                                                                        │   ┃
+│   │   4  detail: peers                                                                                           │   ┃
+│   │   5  detail: pieces                                                                                          │   ┃
+│   │   f  filter                                                                                                  │   ┃
+│   │   /  search                                                                                                  │   ┃
+│   │   n  next match                                                                                              │   ┃
+│   │   N  previous match                                                                                          │   ┃
+│   │   o  sort                                                                                                    │   ┃
+│   │   c  columns                                                                                                 │   ┃
+│   │   a  add torrent                                                                                             │   ┃
+│   │   A  add with options                                                                                        │   ┃
+│   │                                                                                                              │   ┃
+│   │ navigation                                                                                                   │   ┃
+│   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   ┃
+╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+↑/k scroll up • ↓/j scroll down • pgup page up • pgdn page down • ? help • q quit                                       
+snatcher v1.2.3 │ no server                                                                                             

@@ -507,14 +507,19 @@ powers `snatcher server show --category`.
 - `esc`
     - no field focused, close, ask to save pending changes if any, back to
       previous window (rung 7)
-    - field focused, unfocus, stay in settings window (rung 2)
+    - field focused, unfocus, stay in settings window (rung 2). A settings
+      field's text is a draft, so unfocusing discards it; only `enter` commits
 - `q` - the same save prompt if there are pending changes, then quit
 - `[` / `]` - move between tabs, cycle
 - `tab` / `shift-tab` - move between fields, cycle on current tab only
 - `up` / `down` - belong to the **focused field** (moving through select
   options, lines in a multi-line input), never to field navigation. This is the
-  rule that stops `huh` widget keymaps from fighting the form's own navigation;
+  rule that stops a widget's keymap from fighting the form's own navigation;
   decide it here, not after the fields are built.
 - `enter` - edit field, if select dropdown open it, if toggle toggle it, etc
-- Saving is an explicit action in the form, plus the `esc` prompt above.
-  `ctrl-s` is deliberately unbound - it is XOFF on many terminals.
+- `R` - re-read the settings from the config file and the server, asking first
+  if that would discard pending changes
+- Saving is a `[ Save (N) ]  [ Revert ]` button row at the bottom of every tab,
+  reached with `tab` and pressed with `enter`. Save writes every pending change
+  on every tab; Revert discards them. The `esc` and `q` prompts above save the
+  same way. `ctrl-s` is deliberately unbound - it is XOFF on many terminals.

@@ -1,0 +1,761 @@
+package tui
+
+import (
+	"slices"
+	"strings"
+
+	"charm.land/bubbles/v2/key"
+)
+
+// Context is one focus context: a named scope that owns some set of keys. A
+// key press is resolved against an ordered stack of contexts, most specific
+// first, so the same key means different things in the filter pane and the list
+// pane without either knowing about the other.
+//
+// Contexts are not panes. A pane maps to a stack of contexts (see paneContexts),
+// and the shared rungs of that stack — ctxNav, ctxGlobal — are declared once.
+type Context int
+
+// The focus contexts, in no particular order: precedence is a property of a
+// stack, not of the enum.
+const (
+	// ctxGlobal holds the keys that mean the same thing everywhere: quit, help,
+	// window switching, the esc ladder.
+	ctxGlobal Context = iota
+
+	// ctxNav holds the navigation keys shared by every pane that scrolls, plus
+	// pane focus movement. Its actions are forwarded to the focused component
+	// rather than handled at the root.
+	ctxNav
+
+	// ctxTorrents holds the torrents window's own keys, shared by all three of
+	// its panes.
+	ctxTorrents
+
+	// ctxTorrentList holds the torrent verbs. Per vision.md, action verbs live
+	// in a window's main pane and nowhere else in that window.
+	ctxTorrentList
+
+	// ctxTorrentFilter holds the filter sidebar's keys, including the group
+	// actions whose blast radius is a whole filter group.
+	ctxTorrentFilter
+
+	// ctxTorrentDetail holds the detail pane's tab navigation. It deliberately
+	// carries no torrent verbs.
+	ctxTorrentDetail
+
+	// ctxTorrentFiles holds the files tab's own keys: marks and the file menu.
+	// It is live only while the detail pane is focused on the files tab, so its
+	// stack comes from the pane and the tab (see detailContexts).
+	ctxTorrentFiles
+
+	// ctxSettings holds the settings window's keys. Settings owns tab and
+	// up/down itself, so it does not sit on top of ctxNav.
+	ctxSettings
+
+	// ctxTextInput is the whole stack while a text input has focus: a focused
+	// input owns the keyboard, and only esc and enter escape it.
+	ctxTextInput
+
+	// ctxHelp is the help overlay's scroll keys.
+	ctxHelp
+
+	// ctxConfirm is the whole stack while a confirm overlay is open: its
+	// answers, and nothing global.
+	ctxConfirm
+
+	// ctxPicker is the whole stack while the server picker is open: its keys,
+	// and nothing global.
+	ctxPicker
+
+	// ctxSort is the whole stack while the o sort modal is open.
+	ctxSort
+
+	// ctxColumns is the whole stack while the c columns modal is open.
+	ctxColumns
+
+	// ctxFilterPick is the whole stack while the f filter modal is open.
+	ctxFilterPick
+
+	// ctxForm is the whole stack while a form overlay is open and none of its
+	// rows is being edited.
+	ctxForm
+
+	// ctxMenu is the whole stack while the m action menu, or one of its
+	// submenus, is open.
+	ctxMenu
+
+	// ctxPalette is the command palette's cursor keys, which sit above the
+	// palette's text input.
+	ctxPalette
+
+	// ctxChordYank is the second key of the y chord.
+	ctxChordYank
+
+	// ctxChordWindow is the second key of the ctrl+w chord.
+	ctxChordWindow
+)
+
+// String names a Context for test failures and help column headings.
+func (c Context) String() string {
+	switch c {
+	case ctxGlobal:
+		return "global"
+	case ctxNav:
+		return "navigation"
+	case ctxTorrents:
+		return "torrents"
+	case ctxTorrentList:
+		return "torrent list"
+	case ctxTorrentFilter:
+		return "filter"
+	case ctxTorrentDetail:
+		return "detail"
+	case ctxTorrentFiles:
+		return "files"
+	case ctxSettings:
+		return "settings"
+	case ctxTextInput:
+		return "input"
+	case ctxHelp:
+		return "help"
+	case ctxConfirm:
+		return "confirm"
+	case ctxPicker:
+		return "server picker"
+	case ctxSort:
+		return "sort"
+	case ctxColumns:
+		return "columns"
+	case ctxFilterPick:
+		return "filter picker"
+	case ctxForm:
+		return "form"
+	case ctxMenu:
+		return "action menu"
+	case ctxPalette:
+		return "command palette"
+	case ctxChordYank:
+		return "yank"
+	case ctxChordWindow:
+		return "window"
+	}
+
+	return "unknown"
+}
+
+// Action is the stable dotted name of something the TUI can do. It is the join
+// between a key press and the code that runs: the registry maps keys to
+// actions, the handler table maps actions to code, and the command palette
+// lists actions by name — including the ones no key is bound to.
+//
+// These names are a surface. Renaming one is a user-visible change to the
+// palette, so treat them the way the JSON tags on the domain types are treated.
+type Action string
+
+// The actions, grouped by the context that binds them.
+const (
+	actionQuit           Action = "app.quit"
+	actionHelp           Action = "app.help"
+	actionEscape         Action = "app.escape"
+	actionRefresh        Action = "app.refresh"
+	actionPalette        Action = "palette.open"
+	actionWindowTorrents Action = "window.torrents"
+	actionWindowProwlarr Action = "window.prowlarr"
+	actionWindowSettings Action = "window.settings"
+	actionServerPicker   Action = "server.picker"
+	actionServerAltSpeed Action = "server.alt-speed"
+
+	actionNavUp           Action = "nav.up"
+	actionNavDown         Action = "nav.down"
+	actionNavTop          Action = "nav.top"
+	actionNavBottom       Action = "nav.bottom"
+	actionNavHalfPageUp   Action = "nav.half-page-up"
+	actionNavHalfPageDown Action = "nav.half-page-down"
+	actionNavPageUp       Action = "nav.page-up"
+	actionNavPageDown     Action = "nav.page-down"
+	actionFocusNext       Action = "focus.next"
+	actionFocusPrev       Action = "focus.prev"
+	actionFocusChord      Action = "focus.chord"
+	actionToggleDetail    Action = "pane.detail"
+
+	actionToggleFilter   Action = "pane.filter"
+	actionTorrentFilter  Action = "torrent.filter"
+	actionTorrentSearch  Action = "torrent.search"
+	actionSearchNext     Action = "torrent.search-next"
+	actionSearchPrev     Action = "torrent.search-prev"
+	actionTorrentSort    Action = "torrent.sort"
+	actionTorrentColumns Action = "torrent.columns"
+	actionTorrentAdd     Action = "torrent.add"
+	actionTorrentAddOpts Action = "torrent.add-options"
+	actionTabOverview    Action = "detail.tab.overview"
+	actionTabFiles       Action = "detail.tab.files"
+	actionTabTrackers    Action = "detail.tab.trackers"
+	actionTabPeers       Action = "detail.tab.peers"
+	actionTabPieces      Action = "detail.tab.pieces"
+
+	actionToggleMark    Action = "selection.toggle-mark"
+	actionDetailOpen    Action = "detail.open"
+	actionYankChord     Action = "yank.chord"
+	actionTorrentStart  Action = "torrent.start"
+	actionTorrentStop   Action = "torrent.stop"
+	actionTorrentVerify Action = "torrent.verify"
+	actionTorrentReann  Action = "torrent.reannounce"
+	actionTorrentRemove Action = "torrent.remove"
+	actionQueueDown     Action = "torrent.queue-down"
+	actionQueueUp       Action = "torrent.queue-up"
+	actionTorrentLabels Action = "torrent.labels"
+	actionTorrentMove   Action = "torrent.move"
+	actionMenuOpen      Action = "menu.open"
+
+	actionFilterApply Action = "filter.apply"
+	actionGroupStart  Action = "filter.group-start"
+	actionGroupStop   Action = "filter.group-stop"
+	actionGroupVerify Action = "filter.group-verify"
+	actionGroupRemove Action = "filter.group-remove"
+
+	actionDetailPrevTab Action = "detail.prev-tab"
+	actionDetailNextTab Action = "detail.next-tab"
+
+	actionFileMark Action = "file.mark"
+	actionFileMenu Action = "file.menu"
+
+	actionSettingsPrevTab   Action = "settings.prev-tab"
+	actionSettingsNextTab   Action = "settings.next-tab"
+	actionSettingsNextField Action = "settings.next-field"
+	actionSettingsPrevField Action = "settings.prev-field"
+	actionSettingsEdit      Action = "settings.edit"
+	actionSettingsFieldUp   Action = "settings.field-up"
+	actionSettingsFieldDown Action = "settings.field-down"
+
+	actionInputBlur   Action = "input.blur"
+	actionInputSubmit Action = "input.submit"
+
+	actionConfirmYes Action = "confirm.yes"
+	actionConfirmNo  Action = "confirm.no"
+
+	actionPickerUp     Action = "picker.up"
+	actionPickerDown   Action = "picker.down"
+	actionPickerSelect Action = "picker.select"
+
+	actionSortUp      Action = "sort.up"
+	actionSortDown    Action = "sort.down"
+	actionSortReverse Action = "sort.reverse"
+	actionSortSelect  Action = "sort.select"
+
+	actionColumnsUp       Action = "columns.up"
+	actionColumnsDown     Action = "columns.down"
+	actionColumnsToggle   Action = "columns.toggle"
+	actionColumnsMoveUp   Action = "columns.move-up"
+	actionColumnsMoveDown Action = "columns.move-down"
+	actionColumnsApply    Action = "columns.apply"
+
+	actionFilterPickUp     Action = "filter.pick-up"
+	actionFilterPickDown   Action = "filter.pick-down"
+	actionFilterPickSelect Action = "filter.pick-select"
+
+	actionFormNext   Action = "form.next"
+	actionFormPrev   Action = "form.prev"
+	actionFormEnter  Action = "form.enter"
+	actionFormToggle Action = "form.toggle"
+
+	actionMenuUp     Action = "menu.up"
+	actionMenuDown   Action = "menu.down"
+	actionMenuSelect Action = "menu.select"
+
+	actionPaletteUp       Action = "palette.up"
+	actionPaletteDown     Action = "palette.down"
+	actionPalettePageUp   Action = "palette.page-up"
+	actionPalettePageDown Action = "palette.page-down"
+
+	actionHelpScrollUp   Action = "help.scroll-up"
+	actionHelpScrollDown Action = "help.scroll-down"
+	actionHelpPageUp     Action = "help.page-up"
+	actionHelpPageDown   Action = "help.page-down"
+
+	actionYankHash   Action = "yank.hash"
+	actionYankName   Action = "yank.name"
+	actionYankPath   Action = "yank.path"
+	actionYankMagnet Action = "yank.magnet"
+
+	actionFocusLeft  Action = "focus.left"
+	actionFocusDown  Action = "focus.down"
+	actionFocusUp    Action = "focus.up"
+	actionFocusRight Action = "focus.right"
+)
+
+// The actions T5 leaves without a key: rename, which is single-torrent and rare,
+// and force start and the queue's two ends, the long tail of s, J, and K. They
+// live in the action menu and the palette.
+const (
+	actionTorrentRename     Action = "torrent.rename"
+	actionTorrentForceStart Action = "torrent.force-start"
+	actionQueueTop          Action = "torrent.queue-top"
+	actionQueueBottom       Action = "torrent.queue-bottom"
+)
+
+// The files tab's menu leaves. A file change has no key of its own: the menu is
+// how a priority or wanted change is chosen, over the marks or the cursor file.
+const (
+	actionFilePriorityHigh   Action = "file.priority-high"
+	actionFilePriorityNormal Action = "file.priority-normal"
+	actionFilePriorityLow    Action = "file.priority-low"
+	actionFileWanted         Action = "file.wanted"
+	actionFileUnwanted       Action = "file.unwanted"
+	actionFileRename         Action = "file.rename"
+)
+
+// The action menu's trackers leaves, which edit a torrent's tracker list.
+const (
+	actionTrackerAdd     Action = "tracker.add"
+	actionTrackerReplace Action = "tracker.replace"
+	actionTrackerClear   Action = "tracker.clear"
+)
+
+// unboundAction is an action no key is bound to: reachable by name from the
+// command palette, and from a menu where it has a leaf.
+type unboundAction struct {
+	action Action
+
+	// ctx is the pane context that must be live for the action to make sense;
+	// the palette lists the action only from a stack that contains it.
+	ctx Context
+
+	// label is the palette's wording. A trailing "…" marks an action that
+	// prompts.
+	label string
+}
+
+// unboundActions are the actions with a handler and no key. The palette lists
+// each after its context's bound actions, and the handler-coverage test accepts
+// an unbound handler only when it is listed here: adding an unbound action means
+// adding a row.
+var unboundActions = []unboundAction{
+	{actionTorrentForceStart, ctxTorrentList, "force start"},
+	{actionTorrentRename, ctxTorrentList, "rename torrent…"},
+	{actionQueueTop, ctxTorrentList, "queue top"},
+	{actionQueueBottom, ctxTorrentList, "queue bottom"},
+	{actionTrackerAdd, ctxTorrentList, "add tracker…"},
+	{actionTrackerReplace, ctxTorrentList, "replace trackers…"},
+	{actionTrackerClear, ctxTorrentList, "clear trackers"},
+	{actionTorrentHonorLimitsOn, ctxTorrentList, "honor session limits on"},
+	{actionTorrentHonorLimitsOff, ctxTorrentList, "honor session limits off"},
+	{actionTorrentLimitDownload, ctxTorrentList, "download limit…"},
+	{actionTorrentLimitUpload, ctxTorrentList, "upload limit…"},
+	{actionTorrentLimitPeers, ctxTorrentList, "peer limit…"},
+	{actionTorrentLimitSeedRatio, ctxTorrentList, "seed ratio limit…"},
+	{actionTorrentLimitSeedIdle, ctxTorrentList, "seed idle limit…"},
+	{actionTorrentSequentialOn, ctxTorrentList, "sequential download on"},
+	{actionTorrentSequentialOff, ctxTorrentList, "sequential download off"},
+	{actionTorrentPriorityHigh, ctxTorrentList, "bandwidth priority high"},
+	{actionTorrentPriorityNormal, ctxTorrentList, "bandwidth priority normal"},
+	{actionTorrentPriorityLow, ctxTorrentList, "bandwidth priority low"},
+	{actionTorrentGroup, ctxTorrentList, "bandwidth group…"},
+	{actionServerPortTest, ctxGlobal, "test port"},
+	{actionServerResetSetting, ctxGlobal, "reset a setting…"},
+	{actionFilePriorityHigh, ctxTorrentFiles, "file priority high"},
+	{actionFilePriorityNormal, ctxTorrentFiles, "file priority normal"},
+	{actionFilePriorityLow, ctxTorrentFiles, "file priority low"},
+	{actionFileWanted, ctxTorrentFiles, "file wanted"},
+	{actionFileUnwanted, ctxTorrentFiles, "file unwanted"},
+	{actionFileRename, ctxTorrentFiles, "rename file…"},
+}
+
+// isUnbound reports whether an action is listed in unboundActions.
+func isUnbound(a Action) bool {
+	return slices.ContainsFunc(unboundActions, func(u unboundAction) bool { return u.action == a })
+}
+
+// paletteHidden are the pane-stack actions the palette does not list: navigation,
+// and keys that only make sense as keys — a mark on the cursor row, the first key
+// of a chord, the menu the palette already supersedes.
+var paletteHidden = map[Action]bool{
+	actionEscape: true, actionPalette: true,
+
+	actionNavUp: true, actionNavDown: true, actionNavTop: true, actionNavBottom: true,
+	actionNavHalfPageUp: true, actionNavHalfPageDown: true, actionNavPageUp: true, actionNavPageDown: true,
+	actionFocusNext: true, actionFocusPrev: true, actionFocusChord: true,
+
+	actionYankChord: true, actionMenuOpen: true, actionFileMenu: true,
+	actionToggleMark: true, actionFileMark: true,
+	actionSearchNext: true, actionSearchPrev: true, actionFilterApply: true,
+	actionDetailPrevTab: true, actionDetailNextTab: true,
+
+	actionSettingsPrevTab: true, actionSettingsNextTab: true,
+	actionSettingsNextField: true, actionSettingsPrevField: true,
+	actionSettingsEdit: true, actionSettingsFieldUp: true, actionSettingsFieldDown: true,
+}
+
+// paletteChords are the chord contexts the palette flattens into a pane's stack:
+// each is listed after the context whose key starts it, its entries named and
+// keyed with the chord's prefix ("yank magnet link", "y m").
+var paletteChords = []struct {
+	ctx, after             Context
+	labelPrefix, keyPrefix string
+}{
+	{ctx: ctxChordYank, after: ctxTorrentList, labelPrefix: "yank ", keyPrefix: "y "},
+}
+
+// Binding is one row of the registry: a key, the context it is live in, and the
+// action it runs. Nothing else in the TUI declares a keybinding — components are
+// constructed from these rows (see bindingFor), the help view reads them, and
+// the collision test iterates them.
+type Binding struct {
+	// Context is the focus context this binding is live in.
+	Context Context
+
+	// Key carries the key strings and the help text.
+	Key key.Binding
+
+	// Action is what the key runs.
+	Action Action
+}
+
+// bind is registry shorthand. keys are tea.KeyPressMsg.String() spellings;
+// display is how the key is shown in help, which is not always the same string
+// (help shows "↑/k" for the pair "up", "k").
+func bind(ctx Context, action Action, display, desc string, keys ...string) Binding {
+	return Binding{
+		Context: ctx,
+		Key:     key.NewBinding(key.WithKeys(keys...), key.WithHelp(display, desc)),
+		Action:  action,
+	}
+}
+
+// registry is every keybinding in the TUI, in help display order within each
+// context. It is the TUI's equivalent of .surface: a change here is a
+// user-visible change to the keyboard, visible as a diff in review, and pinned
+// by the collision test in keymap_test.go.
+//
+// Bindings for actions that are not implemented yet are registered anyway, with
+// a handler that reports "not implemented yet". A later milestone replaces the
+// handler; it must not have to invent the binding, and the collision test sees
+// the full keyboard from the start rather than discovering a clash in T5.
+var registry = []Binding{
+	// Global — the same in every window.
+	bind(ctxGlobal, actionQuit, "q", "quit", "q", "ctrl+c"),
+	bind(ctxGlobal, actionHelp, "?", "help", "?"),
+	bind(ctxGlobal, actionEscape, "esc", "back", "esc"),
+	bind(ctxGlobal, actionPalette, ":", "command palette", ":"),
+	bind(ctxGlobal, actionWindowTorrents, "ctrl+t", "torrents window", "ctrl+t"),
+	bind(ctxGlobal, actionWindowProwlarr, "ctrl+p", "prowlarr window", "ctrl+p"),
+	bind(ctxGlobal, actionWindowSettings, ",", "settings window", ","),
+	bind(ctxGlobal, actionServerPicker, "S", "switch server", "S"),
+	bind(ctxGlobal, actionServerAltSpeed, "t", "toggle alt-speed", "t"),
+	bind(ctxGlobal, actionRefresh, "R", "refresh", "R"),
+
+	// Navigation — forwarded to whichever pane has focus.
+	bind(ctxNav, actionNavUp, "↑/k", "up", "up", "k"),
+	bind(ctxNav, actionNavDown, "↓/j", "down", "down", "j"),
+	bind(ctxNav, actionNavTop, "g/home", "top", "g", "home"),
+	bind(ctxNav, actionNavBottom, "G/end", "bottom", "G", "end"),
+	bind(ctxNav, actionNavHalfPageUp, "ctrl+u", "½ page up", "ctrl+u"),
+	bind(ctxNav, actionNavHalfPageDown, "ctrl+d", "½ page down", "ctrl+d"),
+	bind(ctxNav, actionNavPageUp, "pgup", "page up", "pgup"),
+	bind(ctxNav, actionNavPageDown, "pgdn", "page down", "pgdown"),
+	bind(ctxNav, actionFocusNext, "tab", "next pane", "tab"),
+	bind(ctxNav, actionFocusPrev, "shift+tab", "previous pane", "shift+tab"),
+	bind(ctxNav, actionFocusChord, "ctrl+w", "focus pane…", "ctrl+w"),
+	bind(ctxNav, actionToggleDetail, "}", "toggle detail pane", "}"),
+
+	// Torrents window — shared by its three panes.
+	bind(ctxTorrents, actionToggleFilter, "{", "toggle filter pane", "{"),
+	bind(ctxTorrents, actionTabOverview, "1", "detail: overview", "1"),
+	bind(ctxTorrents, actionTabFiles, "2", "detail: files", "2"),
+	bind(ctxTorrents, actionTabTrackers, "3", "detail: trackers", "3"),
+	bind(ctxTorrents, actionTabPeers, "4", "detail: peers", "4"),
+	bind(ctxTorrents, actionTabPieces, "5", "detail: pieces", "5"),
+	bind(ctxTorrents, actionTorrentFilter, "f", "filter", "f"),
+	bind(ctxTorrents, actionTorrentSearch, "/", "search", "/"),
+	bind(ctxTorrents, actionSearchNext, "n", "next match", "n"),
+	bind(ctxTorrents, actionSearchPrev, "N", "previous match", "N"),
+	bind(ctxTorrents, actionTorrentSort, "o", "sort", "o"),
+	bind(ctxTorrents, actionTorrentColumns, "c", "columns", "c"),
+	bind(ctxTorrents, actionTorrentAdd, "a", "add torrent", "a"),
+	bind(ctxTorrents, actionTorrentAddOpts, "A", "add with options", "A"),
+
+	// Torrent list pane — the torrent verbs, and nowhere else in the window.
+	bind(ctxTorrentList, actionToggleMark, "space", "mark", "space"),
+	bind(ctxTorrentList, actionDetailOpen, "enter", "open detail", "enter"),
+	bind(ctxTorrentList, actionYankChord, "y", "yank…", "y"),
+	bind(ctxTorrentList, actionTorrentStart, "s", "start", "s"),
+	bind(ctxTorrentList, actionTorrentStop, "p", "pause", "p"),
+	bind(ctxTorrentList, actionTorrentVerify, "v", "verify", "v"),
+	bind(ctxTorrentList, actionTorrentReann, "r", "reannounce", "r"),
+	bind(ctxTorrentList, actionTorrentRemove, "d", "delete", "d"),
+	bind(ctxTorrentList, actionQueueDown, "J", "queue down", "J"),
+	bind(ctxTorrentList, actionQueueUp, "K", "queue up", "K"),
+	bind(ctxTorrentList, actionTorrentLabels, "L", "labels", "L"),
+	bind(ctxTorrentList, actionTorrentMove, "M", "move", "M"),
+	bind(ctxTorrentList, actionMenuOpen, "m", "action menu", "m"),
+
+	// Filter sidebar — apply, plus the group actions.
+	bind(ctxTorrentFilter, actionFilterApply, "enter", "apply filter", "enter"),
+	bind(ctxTorrentFilter, actionGroupStart, "s", "start group", "s"),
+	bind(ctxTorrentFilter, actionGroupStop, "p", "pause group", "p"),
+	bind(ctxTorrentFilter, actionGroupVerify, "v", "verify group", "v"),
+	bind(ctxTorrentFilter, actionGroupRemove, "d", "delete group", "d"),
+
+	// Detail pane — tabs only.
+	bind(ctxTorrentDetail, actionDetailPrevTab, "[/h", "previous tab", "[", "h", "left"),
+	bind(ctxTorrentDetail, actionDetailNextTab, "]/l", "next tab", "]", "l", "right"),
+
+	// Files tab — its own marks and menu, over files rather than torrents.
+	bind(ctxTorrentFiles, actionFileMark, "space", "mark file", "space"),
+	bind(ctxTorrentFiles, actionFileMenu, "m", "file menu", "m"),
+
+	// Settings window — owns tab and up/down itself, per vision.md.
+	bind(ctxSettings, actionSettingsPrevTab, "[", "previous tab", "["),
+	bind(ctxSettings, actionSettingsNextTab, "]", "next tab", "]"),
+	bind(ctxSettings, actionSettingsNextField, "tab", "next field", "tab"),
+	bind(ctxSettings, actionSettingsPrevField, "shift+tab", "previous field", "shift+tab"),
+	bind(ctxSettings, actionSettingsEdit, "enter", "edit field", "enter"),
+	bind(ctxSettings, actionSettingsFieldUp, "↑", "field up", "up"),
+	bind(ctxSettings, actionSettingsFieldDown, "↓", "field down", "down"),
+
+	// Text input — the only two keys that escape a focused input.
+	bind(ctxTextInput, actionInputBlur, "esc", "blur", "esc"),
+	bind(ctxTextInput, actionInputSubmit, "enter", "submit", "enter"),
+
+	// Confirm overlay — modal: nothing global resolves under it. esc is listed
+	// so help shows it, but the router sends it to the ladder, whose "close
+	// overlay" rung is what cancels.
+	bind(ctxConfirm, actionConfirmYes, "y/enter", "yes", "y", "enter"),
+	bind(ctxConfirm, actionConfirmNo, "n", "no", "n"),
+	bind(ctxConfirm, actionEscape, "esc", "cancel", "esc"),
+
+	// Server picker — modal, like the confirm overlay. S closes it as it opened
+	// it, and esc goes to the ladder's "close overlay" rung.
+	bind(ctxPicker, actionPickerUp, "↑/k", "up", "up", "k"),
+	bind(ctxPicker, actionPickerDown, "↓/j", "down", "down", "j"),
+	bind(ctxPicker, actionPickerSelect, "enter", "switch", "enter"),
+	bind(ctxPicker, actionServerPicker, "S", "close", "S"),
+	bind(ctxPicker, actionEscape, "esc", "cancel", "esc"),
+
+	// Sort modal — o closes it as it opened it, like S and the picker.
+	bind(ctxSort, actionSortUp, "↑/k", "up", "up", "k"),
+	bind(ctxSort, actionSortDown, "↓/j", "down", "down", "j"),
+	bind(ctxSort, actionSortReverse, "r", "reverse", "r"),
+	bind(ctxSort, actionSortSelect, "enter", "apply", "enter"),
+	bind(ctxSort, actionTorrentSort, "o", "close", "o"),
+	bind(ctxSort, actionEscape, "esc", "cancel", "esc"),
+
+	// Columns modal — J/K reorder, because client.list_columns is ordered.
+	// Its help line is the longest of the modals, so the keys that change
+	// something lead it and the navigation keys everyone guesses come last.
+	bind(ctxColumns, actionColumnsToggle, "space", "show/hide", "space"),
+	bind(ctxColumns, actionColumnsApply, "enter", "apply", "enter"),
+	bind(ctxColumns, actionColumnsMoveUp, "K", "move up", "K"),
+	bind(ctxColumns, actionColumnsMoveDown, "J", "move down", "J"),
+	bind(ctxColumns, actionColumnsUp, "↑/k", "up", "up", "k"),
+	bind(ctxColumns, actionColumnsDown, "↓/j", "down", "down", "j"),
+	bind(ctxColumns, actionTorrentColumns, "c", "close", "c"),
+	bind(ctxColumns, actionEscape, "esc", "cancel", "esc"),
+
+	// Filter modal — the sidebar's rows, for when the sidebar is closed.
+	bind(ctxFilterPick, actionFilterPickUp, "↑/k", "up", "up", "k"),
+	bind(ctxFilterPick, actionFilterPickDown, "↓/j", "down", "down", "j"),
+	bind(ctxFilterPick, actionFilterPickSelect, "enter", "apply", "enter"),
+	bind(ctxFilterPick, actionTorrentFilter, "f", "close", "f"),
+	bind(ctxFilterPick, actionEscape, "esc", "cancel", "esc"),
+
+	// Form — tab moves rows and up/down stay unbound, the settings window's rule:
+	// a row's widget owns its own keys.
+	bind(ctxForm, actionFormNext, "tab", "next row", "tab"),
+	bind(ctxForm, actionFormPrev, "shift+tab", "previous row", "shift+tab"),
+	bind(ctxForm, actionFormEnter, "enter", "edit/press", "enter"),
+	bind(ctxForm, actionFormToggle, "space", "toggle", "space"),
+	bind(ctxForm, actionEscape, "esc", "cancel", "esc"),
+
+	// Action menu — m closes it as it opened it, and esc goes back one level.
+	// Each leaf runs the same handler as its key.
+	bind(ctxMenu, actionMenuUp, "↑/k", "up", "up", "k"),
+	bind(ctxMenu, actionMenuDown, "↓/j", "down", "down", "j"),
+	bind(ctxMenu, actionMenuSelect, "enter", "select", "enter"),
+	bind(ctxMenu, actionMenuOpen, "m", "close", "m"),
+	bind(ctxMenu, actionEscape, "esc", "back", "esc"),
+
+	// Command palette — only the cursor keys, above the palette's input: j, k,
+	// and every other key type into the query.
+	bind(ctxPalette, actionPaletteUp, "↑", "up", "up"),
+	bind(ctxPalette, actionPaletteDown, "↓", "down", "down"),
+	bind(ctxPalette, actionPalettePageUp, "pgup", "page up", "pgup"),
+	bind(ctxPalette, actionPalettePageDown, "pgdn", "page down", "pgdown"),
+
+	// Help overlay.
+	bind(ctxHelp, actionHelpScrollUp, "↑/k", "scroll up", "up", "k"),
+	bind(ctxHelp, actionHelpScrollDown, "↓/j", "scroll down", "down", "j"),
+	bind(ctxHelp, actionHelpPageUp, "pgup", "page up", "pgup"),
+	bind(ctxHelp, actionHelpPageDown, "pgdn", "page down", "pgdown"),
+
+	// The y chord's second key.
+	bind(ctxChordYank, actionYankMagnet, "m", "magnet link", "m"),
+	bind(ctxChordYank, actionYankHash, "h", "info hash", "h"),
+	bind(ctxChordYank, actionYankName, "n", "name", "n"),
+	bind(ctxChordYank, actionYankPath, "p", "download path", "p"),
+
+	// The ctrl+w chord's second key.
+	bind(ctxChordWindow, actionFocusLeft, "h", "focus left", "h"),
+	bind(ctxChordWindow, actionFocusDown, "j", "focus down", "j"),
+	bind(ctxChordWindow, actionFocusUp, "k", "focus up", "k"),
+	bind(ctxChordWindow, actionFocusRight, "l", "focus right", "l"),
+}
+
+// bannedKeys are the key spellings no binding may use, whatever the context.
+// These are terminal constraints, not preferences (vision.md, "Terminal
+// constraints"): legacy terminals send ctrl+j/i/m/h as Enter/Tab/Enter/
+// Backspace, ctrl+s and ctrl+q are XOFF/XON flow control, ctrl+l is the
+// universal redraw, and alt chords need "use Option as Meta" on macOS and
+// misbehave even then.
+var bannedKeys = []string{
+	"ctrl+j", "ctrl+i", "ctrl+m", "ctrl+h",
+	"ctrl+s", "ctrl+q",
+	"ctrl+l",
+}
+
+// bannedPrefix is the modifier no binding may use at all. tea spells modifiers
+// in a fixed ctrl+alt+shift order, so a prefix scan of the whole string catches
+// "alt+x" and "ctrl+alt+x" alike.
+const bannedPrefix = "alt+"
+
+// isBannedKey reports whether k is a key no binding may use.
+func isBannedKey(k string) bool {
+	if strings.Contains(k, bannedPrefix) {
+		return true
+	}
+
+	for _, banned := range bannedKeys {
+		if k == banned {
+			return true
+		}
+	}
+
+	return false
+}
+
+// bindingFor returns the binding registered for action in ctx. It is how a
+// bubbles component's KeyMap is built: the component is handed the registry's
+// own key.Binding, so a component's live keymap cannot drift from the registry
+// the help view and the collision test read.
+//
+// A missing row is a programming error — the action constants and the registry
+// are both in this file — so the zero Binding is returned rather than panicking,
+// and keymap_test.go asserts every wired field is non-empty.
+func bindingFor(ctx Context, action Action) key.Binding {
+	for _, b := range registry {
+		if b.Context == ctx && b.Action == action {
+			return b.Key
+		}
+	}
+
+	return key.Binding{}
+}
+
+// lookup resolves a key press against an ordered stack of contexts and returns
+// the action it runs. The first context that binds the key wins, which is what
+// makes a stack "most specific first" meaningful: the filter pane's enter
+// shadows nothing, but the list pane's d would shadow a global d if one existed.
+func lookup(stack []Context, msg interface{ String() string }) (Action, bool) {
+	for _, ctx := range stack {
+		for _, b := range registry {
+			if b.Context == ctx && key.Matches(msg, b.Key) {
+				return b.Action, true
+			}
+		}
+	}
+
+	return "", false
+}
+
+// Pane names one focusable region of the UI. A window decides which panes are
+// open (see openPanes); this enum is the whole set across all windows.
+type Pane int
+
+// The panes, in the order they are cycled within their window.
+const (
+	// paneFilter is the torrents window's filter sidebar (left).
+	paneFilter Pane = iota
+
+	// paneList is the torrents window's torrent table (main).
+	paneList
+
+	// paneDetail is the torrents window's detail pane (bottom).
+	paneDetail
+
+	// paneSettings is the settings window's single pane.
+	paneSettings
+)
+
+// String names a Pane for test failures and the ctrl+w chord's status line.
+func (p Pane) String() string {
+	switch p {
+	case paneFilter:
+		return "filter"
+	case paneList:
+		return "list"
+	case paneDetail:
+		return "detail"
+	case paneSettings:
+		return "settings"
+	}
+
+	return "unknown"
+}
+
+// allPanes is every Pane, for tests that must iterate the whole set rather than
+// a list that can silently fall behind the enum.
+var allPanes = []Pane{paneFilter, paneList, paneDetail, paneSettings}
+
+// paneContexts is the static context stack for each pane, most specific first.
+// It is the table the collision test iterates: every stack a key press can be
+// resolved against is either one of these or one of the overlay and chord
+// stacks below, and no key may resolve twice within any of them.
+func paneContexts(p Pane) []Context {
+	switch p {
+	case paneFilter:
+		return []Context{ctxTorrentFilter, ctxTorrents, ctxNav, ctxGlobal}
+	case paneList:
+		return []Context{ctxTorrentList, ctxTorrents, ctxNav, ctxGlobal}
+	case paneDetail:
+		return []Context{ctxTorrentDetail, ctxTorrents, ctxNav, ctxGlobal}
+	case paneSettings:
+		// Settings owns tab, enter, and up/down itself (vision.md: "up/down
+		// belong to the focused field"), so it does not sit on top of ctxNav.
+		return []Context{ctxSettings, ctxGlobal}
+	}
+
+	return []Context{ctxGlobal}
+}
+
+// modalStacks are the context stacks that replace a pane's stack rather than
+// extending it: an open overlay, a pending chord, and a focused text input each
+// swallow everything they do not bind. They are listed here so the collision
+// test iterates every reachable stack, not only the per-pane ones.
+var modalStacks = [][]Context{
+	{ctxHelp, ctxGlobal},
+	{ctxConfirm},
+	{ctxPicker},
+	{ctxSort},
+	{ctxColumns},
+	{ctxFilterPick},
+	{ctxForm},
+	{ctxMenu},
+	{ctxPalette, ctxTextInput},
+	{ctxChordYank},
+	{ctxChordWindow},
+	{ctxTextInput},
+}
+
+// detailContexts is the detail pane's stack for a tab. The files tab puts its own
+// context on top; every other tab is the pane's static stack.
+func detailContexts(tab int) []Context {
+	if tab == tabFiles {
+		return append([]Context{ctxTorrentFiles}, paneContexts(paneDetail)...)
+	}
+
+	return paneContexts(paneDetail)
+}
+
+// tabStacks are the stacks a pane's tab adds to paneContexts, listed so the
+// collision test iterates them too.
+var tabStacks = [][]Context{detailContexts(tabFiles)}

@@ -39,7 +39,10 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 //
 // Two more override client settings for an invocation — SNATCHER_THEME and
 // SNATCHER_NO_NERD_FONT — and would otherwise make "config list" report a source
-// of "env" for a key the test staged in a config file.
+// of "env" for a key the test staged in a config file. NO_COLOR joins them: it
+// is read by isTTY and reported by ResolveClientSettings, so a developer with it
+// exported would see a different table contract and a different ClientSettings
+// than CI does.
 //
 // XDG_STATE_HOME is pointed at a throwaway directory for the same reason, as the
 // belt to the unset variable's braces: no test — including one written later
@@ -52,7 +55,7 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 // keyring state still call keyring.MockInit or mockStoreUnavailable themselves;
 // this only decides what an unprepared test gets.
 func TestMain(m *testing.M) {
-	for _, key := range []string{envSecretStore, envPassword, envAPIKey, envServer, envTheme, envNoNerdFont} {
+	for _, key := range []string{envSecretStore, envPassword, envAPIKey, envServer, envTheme, envNoNerdFont, envNoColor} {
 		if err := os.Unsetenv(key); err != nil {
 			fmt.Fprintf(os.Stderr, "commands: unsetting %s: %v\n", key, err)
 			os.Exit(1)
