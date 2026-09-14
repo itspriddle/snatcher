@@ -528,13 +528,63 @@ server, and no action can hit more torrents than the confirmation stated.
 
 ## T7. Command palette
 
-- `:` opens a fuzzy list of every registered action, including the long tail
+- ~~`:` opens a fuzzy list of every registered action, including the long tail
   with no binding (switch server, test port, reset a setting, obscure
-  `torrent update` flags)
-- Runs against the current selection, so palette actions obey the same
-  marks-or-cursor rule
-- Fed by the T1 keymap registry plus a table of unbound actions, so it cannot
-  drift out of sync with what the TUI can actually do
+  `torrent update` flags)~~ — the actions live beneath it, less the hidden
+  navigation keys; the `torrent update` fields also got the action menu's
+  "other" submenu
+- ~~Runs against the current selection, so palette actions obey the same
+  marks-or-cursor rule~~
+- ~~Fed by the T1 keymap registry plus a table of unbound actions, so it cannot
+  drift out of sync with what the TUI can actually do~~ — `unboundActions`,
+  pinned two ways by the drift tests
+
+**Met.**
+
+### Decisions
+
+- **The palette is context-aware, like help.** It lists the actions live in the
+  pane stack beneath it — registry order within a context, most specific
+  context first — less `paletteHidden` (navigation, and keys that only make
+  sense as keys), with the `y` chord flattened in after the list pane
+  (`yank magnet link`, `y m`). `unboundActions` replaces `menuOnlyActions` and
+  names the context each unbound action needs. The drift tests fail on a pane
+  action that is neither listed nor hidden, on a stale hidden entry, and on a
+  menu leaf that is neither bound nor unbound.
+- **Fuzzy matching is hand-rolled:** a greedy, case-insensitive scored
+  subsequence (`fuzzy.go`) that rewards word starts and runs and charges for a
+  late start. Ties go to the shorter label, so `speed-limit-down` finds itself
+  before `speed-limit-down-enabled`; an empty query keeps the base order.
+  `sahilm/fuzzy` stays out of the module graph.
+- **An overlay that holds the focused input decides the stack.** The palette's
+  stack is `ctxPalette` over `ctxTextInput`: up/down/pgup/pgdn move, enter runs,
+  and every other key — `j`, `q`, `:` itself — is a lookup miss forwarded to the
+  query, never swallowed. The form's `contexts()` became honest (`ctxTextInput`
+  while a row is edited) so the rule changed nothing that existed.
+- **One esc, no new rung.** The ladder's close-overlay rung pops the palette and
+  `pop` releases its input, as for a prompt. `:` from help closes help first, so
+  the palette describes the pane help described.
+- **The reset chooser is the same overlay** with different entries: every
+  writable setting by key, its description as a searchable note, then a confirm
+  naming the default. A reset re-reads the session, and reloads the settings
+  window only when it is loaded and clean — a dirty window's draft wins, and
+  `R`'s discard prompt is the way to refresh it.
+- **One `mutateUpdate` kind, the ask on the mutation.** The thirteen
+  `torrent update` leaves share one RPC and the CLI's `Updated` wording, so they
+  are one kind carrying their own ask (`Set download limit on`), which still
+  names a failure the way T6's separate tracker kinds do. Fixed leaves confirm
+  above one torrent; prompt leaves use the counted title as the confirmation.
+- **`torrent update`'s value parsers were promoted** to
+  `internal/transmission` (`BandwidthPriority`, `RateLimitChanges`,
+  `SeedRatioChanges`, `SeedIdleChanges`), as T3 promoted `SettingDefs`. Their
+  errors name the value; the CLI wraps them with the flag, so its messages are
+  unchanged.
+- **No other CLI long tail belongs.** `server port set`, bandwidth, and
+  `config set` are settings tabs; `free-space` and `stats` are the status bar;
+  `--queue-position` is `J`/`K`/top/bottom; `server add/remove/default` write
+  `config.json`, which the picker only reads; Prowlarr is T8.
+- **Still deferred:** the sidebar's Trackers group, which changes the domain
+  model and the `list --json` contract, gets its own milestone.
 
 ## T8. Prowlarr window
 

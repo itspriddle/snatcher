@@ -103,7 +103,11 @@ Layers, outermost to innermost:
   responds to is one row of it, components are constructed from those rows
   rather than from their own defaults, and the collision test asserts no key
   resolves twice in any focus context a user can be in. Adding a binding means
-  adding a registry row, not a `switch` case.
+  adding a registry row, not a `switch` case. The `:` command palette
+  (`palette.go`) is fed by that registry plus `unboundActions`, the table of
+  actions no key is bound to, filtered to the live pane stack less
+  `paletteHidden`; drift tests fail on an action that is neither listed nor
+  hidden. Adding an unbound action means adding a table row.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list

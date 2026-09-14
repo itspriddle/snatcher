@@ -111,6 +111,12 @@ The spine is a focus router: which pane owns input → which `key.Map` is active
 → which keymap feeds the `bubbles/help` view. Root model orchestrates focus and
 routes messages; each window/pane is a sub-model with its own `Update`/`View`.
 
+A focused input's stack is not always `ctxTextInput` alone. An overlay that
+holds the focused input decides it, and may bind keys above the input's two
+escapes — the `:` palette binds the arrow and page keys over its query. A
+registry miss in that stack must be forwarded to the input, never swallowed, or
+`j`, `q`, and `:` stop typing.
+
 **Theme/styles is a substrate, not a phase.** Lip Gloss v2 has no global
 renderer and no root `AdaptiveColor`; every component is handed its styles
 explicitly. A `Theme`/`Styles` struct, light/dark detection
