@@ -111,6 +111,27 @@ func TestLabelFilterMatchesTheRawLabel(t *testing.T) {
 	assert.Equal(t, []int64{2}, rowIDs(m.applyFilterItem(filterItemNamed(t, m, "tag")).torrents.rows))
 }
 
+// TestActiveCountGoesByRate checks the sidebar counts an idle seeder as
+// inactive rather than active, and that each row filters to what it counts.
+func TestActiveCountGoesByRate(t *testing.T) {
+	deps := testDeps()
+	deps.Torrents = []transmission.Torrent{
+		{ID: 1, Name: "idle", Status: transmission.StatusSeeding},
+		{ID: 2, Name: "busy", Status: transmission.StatusSeeding, RateUpload: 10},
+		{ID: 3, Name: "paused", Status: transmission.StatusStopped},
+	}
+
+	m := New(deps).applyTheme(true).resize(120, 40)
+
+	active := filterItemNamed(t, m, "Active")
+	inactive := filterItemNamed(t, m, "Inactive")
+
+	assert.Equal(t, 1, active.count)
+	assert.Equal(t, 1, inactive.count)
+	assert.Equal(t, []int64{2}, rowIDs(m.applyFilterItem(active).torrents.rows))
+	assert.Equal(t, []int64{1}, rowIDs(m.applyFilterItem(inactive).torrents.rows))
+}
+
 // TestNoLabelRow checks the catch-all row keeps exactly the unlabeled torrents.
 func TestNoLabelRow(t *testing.T) {
 	m := newTestModel(120, 40)

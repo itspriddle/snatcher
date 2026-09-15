@@ -4,6 +4,7 @@
 │  Downloading        1│┃  !    3 alpine.iso         Error        50% 200.0 MiB       0 B/s       0 B/s   0.00       - ┃
 │  Seeding            1│┃  v    1 ubuntu-24.04.iso   Downloading  50%   2.0 GiB   1.5 MiB/s 512.0 KiB/s   0.50      1h ┃
 │  Active             2│┃                                                                                              ┃
+│  Inactive           0│┃                                                                                              ┃
 │  Stopped            0│┃                                                                                              ┃
 │  Verifying          0│┃                                                                                              ┃
 │  Queued to download 0│┃                                                                                              ┃
@@ -12,10 +13,9 @@
 │  Error              1│┃                                                                                              ┃
 │Labels                │┃                                                                                              ┃
 │  linux              1│┃                                                                                              ┃
-│  No label           2│┃                                                                                              ┃
-│Trackers              │┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
-│  (none yet)          │┃   │ Switch server                                                │                           ┃
-│                      │┃   │                                                              │                           ┃
+│  No label           2│┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
+│Trackers              │┃   │ Switch server                                                │                           ┃
+│  (none yet)          │┃   │                                                              │                           ┃
 │                      │┃   │ > home     nas:9091         (current)                        │                           ┃
 │                      │┃   │   office   10.0.0.5:9091                                     │                           ┃
 │                      │┃   │   seedbox  sb.example:9091  (default)                        │                           ┃

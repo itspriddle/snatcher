@@ -4,18 +4,18 @@
 │  Downloading        │ Reset setting                                                            │0 B/s   0.00       - ┃
 │  Seeding            │ :                                                                        │KiB/s   0.50      1h ┃
 │  Active             │                                                                          │                     ┃
-│  Stopped            │ > download-dir                Default directory for completed downloads  │                     ┃
-│  Verifying          │   start-added-torrents        Start torrents automatically when added    │                     ┃
-│  Queued to download │   rename-partial-files        Append .part to incomplete files           │                     ┃
-│  Queued to seed     │   incomplete-dir-enabled      Keep incomplete downloads in a separate d… │                     ┃
-│  Queued to verify   │   incomplete-dir              Directory for incomplete downloads (when … │                     ┃
-│  Error              │   seed-ratio-limited          Stop seeding at the global seed-ratio lim… │                     ┃
-│Labels               │   seed-ratio-limit            Global seed ratio to stop seeding at (whe… │                     ┃
-│  linux              │   idle-seeding-limit-enabled  Stop seeding torrents that have been idle… │                     ┃
-│  No label           │   idle-seeding-limit          Idle time in minutes before stopping seed… │                     ┃
-│Trackers             │   cache-size-mib              Disk cache size in MiB                     │                     ┃
-│  (none yet)         │   peer-port                   Port to listen for incoming peer connecti… │                     ┃
-│                     │   peer-port-random-on-start   Pick a random peer port on each start      │                     ┃
+│  Inactive           │ > download-dir                Default directory for completed downloads  │                     ┃
+│  Stopped            │   start-added-torrents        Start torrents automatically when added    │                     ┃
+│  Verifying          │   rename-partial-files        Append .part to incomplete files           │                     ┃
+│  Queued to download │   incomplete-dir-enabled      Keep incomplete downloads in a separate d… │                     ┃
+│  Queued to seed     │   incomplete-dir              Directory for incomplete downloads (when … │                     ┃
+│  Queued to verify   │   seed-ratio-limited          Stop seeding at the global seed-ratio lim… │                     ┃
+│  Error              │   seed-ratio-limit            Global seed ratio to stop seeding at (whe… │                     ┃
+│Labels               │   idle-seeding-limit-enabled  Stop seeding torrents that have been idle… │                     ┃
+│  linux              │   idle-seeding-limit          Idle time in minutes before stopping seed… │                     ┃
+│  No label           │   cache-size-mib              Disk cache size in MiB                     │                     ┃
+│Trackers             │   peer-port                   Port to listen for incoming peer connecti… │                     ┃
+│  (none yet)         │   peer-port-random-on-start   Pick a random peer port on each start      │                     ┃
 │                     │   port-forwarding-enabled     Request UPnP/NAT-PMP port forwarding       │                     ┃
 │                     │   encryption                  Peer encryption mode (allowed, preferred,… │                     ┃
 │                     │   peer-limit-global           Maximum peer connections across all torre… │                     ┃

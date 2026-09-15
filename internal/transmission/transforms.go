@@ -7,18 +7,25 @@ import (
 	"strings"
 )
 
-// Filter is a named selection over a torrent's status, used by the list
-// command's --filter flag. Filters are coarser than Status: some (active,
-// downloading, seeding) match a group of related statuses.
+// Filter is a named selection over a torrent's state, used by the list
+// command's --filter flag and the TUI sidebar. Most filters are coarser than
+// Status (downloading and seeding match a group of related statuses), but
+// active and inactive go by current transfer rate instead: a seeding torrent
+// with no peers pulling from it is not active, whatever its status says.
 type Filter string
 
 const (
 	// FilterAll matches every torrent (the default; no filtering).
 	FilterAll Filter = "all"
 
-	// FilterActive matches torrents that are downloading or seeding, including
-	// their queued variants.
+	// FilterActive matches torrents transferring data right now: a non-zero
+	// download or upload rate, whatever the status.
 	FilterActive Filter = "active"
+
+	// FilterInactive matches torrents that could transfer but are not: both
+	// rates zero, and neither stopped nor errored. Idle seeders, stalled
+	// downloads, and queued or verifying torrents all land here.
+	FilterInactive Filter = "inactive"
 
 	// FilterDownloading matches downloading torrents and those queued to
 	// download.
@@ -51,6 +58,7 @@ const (
 var filters = []Filter{
 	FilterAll,
 	FilterActive,
+	FilterInactive,
 	FilterDownloading,
 	FilterSeeding,
 	FilterStopped,
@@ -72,18 +80,16 @@ func ParseFilter(s string) (Filter, error) {
 	return "", fmt.Errorf("invalid filter %q: valid filters are %s", s, joinFilters())
 }
 
-// matches reports whether a torrent's status satisfies the filter.
+// matches reports whether a torrent satisfies the filter.
 func (f Filter) matches(t Torrent) bool {
 	switch f {
 	case FilterAll:
 		return true
 	case FilterActive:
-		switch t.Status {
-		case StatusDownloading, StatusQueuedToDownload, StatusSeeding, StatusQueuedToSeed:
-			return true
-		default:
-			return false
-		}
+		return t.RateDownload > 0 || t.RateUpload > 0
+	case FilterInactive:
+		return t.RateDownload == 0 && t.RateUpload == 0 &&
+			t.Status != StatusStopped && t.Status != StatusError
 	case FilterDownloading:
 		return t.Status == StatusDownloading || t.Status == StatusQueuedToDownload
 	case FilterSeeding:
@@ -115,8 +121,9 @@ func joinFilters() string {
 }
 
 // FilterByStatus returns a new slice containing the torrents that satisfy the
-// filter, preserving their input order. The input is never mutated. The result
-// is non-nil even when empty so callers can rely on a stable slice.
+// filter, preserving their input order. Despite the name, active and inactive
+// read the transfer rates rather than the status. The input is never mutated,
+// and the result is non-nil even when empty.
 func FilterByStatus(torrents []Torrent, f Filter) []Torrent {
 	out := make([]Torrent, 0, len(torrents))
 	for _, t := range torrents {

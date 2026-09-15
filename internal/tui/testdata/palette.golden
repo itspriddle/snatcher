@@ -4,18 +4,18 @@
 │  Downloading        │ Command palette                                                          │0 B/s   0.00       - ┃
 │  Seeding            │ :                                                                        │KiB/s   0.50      1h ┃
 │  Active             │                                                                          │                     ┃
-│  Stopped            │ > open detail                torrent list                          enter │                     ┃
-│  Verifying          │   start                      torrent list                              s │                     ┃
-│  Queued to download │   pause                      torrent list                              p │                     ┃
-│  Queued to seed     │   verify                     torrent list                              v │                     ┃
-│  Queued to verify   │   reannounce                 torrent list                              r │                     ┃
-│  Error              │   delete                     torrent list                              d │                     ┃
-│Labels               │   queue down                 torrent list                              J │                     ┃
-│  linux              │   queue up                   torrent list                              K │                     ┃
-│  No label           │   labels                     torrent list                              L │                     ┃
-│Trackers             │   move                       torrent list                              M │                     ┃
-│  (none yet)         │   force start                torrent list                                │                     ┃
-│                     │   rename torrent…            torrent list                                │                     ┃
+│  Inactive           │ > open detail                torrent list                          enter │                     ┃
+│  Stopped            │   start                      torrent list                              s │                     ┃
+│  Verifying          │   pause                      torrent list                              p │                     ┃
+│  Queued to download │   verify                     torrent list                              v │                     ┃
+│  Queued to seed     │   reannounce                 torrent list                              r │                     ┃
+│  Queued to verify   │   delete                     torrent list                              d │                     ┃
+│  Error              │   queue down                 torrent list                              J │                     ┃
+│Labels               │   queue up                   torrent list                              K │                     ┃
+│  linux              │   labels                     torrent list                              L │                     ┃
+│  No label           │   move                       torrent list                              M │                     ┃
+│Trackers             │   force start                torrent list                                │                     ┃
+│  (none yet)         │   rename torrent…            torrent list                                │                     ┃
 │                     │   queue top                  torrent list                                │                     ┃
 │                     │   queue bottom               torrent list                                │                     ┃
 │                     │   add tracker…               torrent list                                │                     ┃

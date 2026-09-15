@@ -34,6 +34,7 @@ func TestParseFilter(t *testing.T) {
 	cases := map[string]transmission.Filter{
 		"all":         transmission.FilterAll,
 		"ACTIVE":      transmission.FilterActive,
+		"inactive":    transmission.FilterInactive,
 		"downloading": transmission.FilterDownloading,
 		"error":       transmission.FilterError,
 	}
@@ -67,7 +68,8 @@ func TestFilterByStatus(t *testing.T) {
 		want   []int64
 	}{
 		{transmission.FilterAll, []int64{1, 2, 3, 4, 5}},
-		{transmission.FilterActive, []int64{1, 2, 4}},
+		{transmission.FilterActive, []int64{1, 2, 4, 5}},
+		{transmission.FilterInactive, []int64{}},
 		{transmission.FilterDownloading, []int64{1, 4}},
 		{transmission.FilterSeeding, []int64{2}},
 		{transmission.FilterStopped, []int64{3}},
@@ -82,6 +84,27 @@ func TestFilterByStatus(t *testing.T) {
 			assert.Equal(t, tc.want, ids(got))
 		})
 	}
+}
+
+// TestFilterActiveGoesByRate checks active and inactive read the transfer
+// rates rather than the status: an idle seeder is inactive, not active, and a
+// stopped or errored torrent with no transfer is neither.
+func TestFilterActiveGoesByRate(t *testing.T) {
+	t.Parallel()
+
+	in := []transmission.Torrent{
+		{ID: 1, Status: transmission.StatusSeeding},
+		{ID: 2, Status: transmission.StatusSeeding, RateUpload: 1},
+		{ID: 3, Status: transmission.StatusDownloading},
+		{ID: 4, Status: transmission.StatusDownloading, RateDownload: 1},
+		{ID: 5, Status: transmission.StatusQueuedToSeed},
+		{ID: 6, Status: transmission.StatusVerifying, RateUpload: 1},
+		{ID: 7, Status: transmission.StatusStopped},
+		{ID: 8, Status: transmission.StatusError},
+	}
+
+	assert.Equal(t, []int64{2, 4, 6}, ids(transmission.FilterByStatus(in, transmission.FilterActive)))
+	assert.Equal(t, []int64{1, 3, 5}, ids(transmission.FilterByStatus(in, transmission.FilterInactive)))
 }
 
 func TestFilterByStatusDoesNotMutate(t *testing.T) {

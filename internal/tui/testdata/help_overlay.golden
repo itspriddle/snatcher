@@ -4,19 +4,19 @@
 │  D╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ - ┃
 │  S│ torrent list                                                                                                 │ - ┃
 │  A│   space  mark                                                                                                │ - ┃
-│  S│   enter  open detail                                                                                         │ - ┃
-│  V│   y      yank…                                                                                               │ - ┃
-│  Q│   s      start                                                                                               │ - ┃
+│  I│   enter  open detail                                                                                         │ - ┃
+│  S│   y      yank…                                                                                               │ - ┃
+│  V│   s      start                                                                                               │ - ┃
 │  Q│   p      pause                                                                                               │ - ┃
 │  Q│   v      verify                                                                                              │0s ┃
-│  E│   r      reannounce                                                                                          │ - ┃
-│Lab│   d      delete                                                                                              │ - ┃
-│  l│   J      queue down                                                                                          │9s ┃
-│  s│   K      queue up                                                                                            │   ┃
-│  N│   L      labels                                                                                              │   ┃
-│Tra│   M      move                                                                                                │   ┃
-│  (│   m      action menu                                                                                         │   ┃
-│   │                                                                                                              │   ┃
+│  Q│   r      reannounce                                                                                          │ - ┃
+│  E│   d      delete                                                                                              │ - ┃
+│Lab│   J      queue down                                                                                          │9s ┃
+│  l│   K      queue up                                                                                            │   ┃
+│  s│   L      labels                                                                                              │   ┃
+│  N│   M      move                                                                                                │   ┃
+│Tra│   m      action menu                                                                                         │   ┃
+│  (│                                                                                                              │   ┃
 │   │ torrents                                                                                                     │   ┃
 │   │   {  toggle filter pane                                                                                      │   ┃
 │   │   1  detail: overview                                                                                        │   ┃

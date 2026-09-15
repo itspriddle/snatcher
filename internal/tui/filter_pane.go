@@ -86,6 +86,7 @@ var statusFilters = []transmission.Filter{
 	transmission.FilterDownloading,
 	transmission.FilterSeeding,
 	transmission.FilterActive,
+	transmission.FilterInactive,
 	transmission.FilterStopped,
 	transmission.FilterVerifying,
 	transmission.FilterQueuedToDownload,
