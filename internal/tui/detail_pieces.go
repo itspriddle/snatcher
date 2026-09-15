@@ -7,16 +7,17 @@ import (
 	"github.com/itspriddle/snatcher/internal/output"
 )
 
-// pieceGlyphs shade a grid cell by the fraction of its pieces that are complete:
+// pieceGlyphs fill a grid cell by the fraction of its pieces that are complete:
 // none, up to a third, up to two thirds, more, and all. They are plain Unicode
-// block elements, which every terminal font draws, rather
-// than Nerd Font glyphs, and they read without color.
+// pie circles rather than Nerd Font glyphs, and they read without color. Unlike
+// block elements, each leaves a margin around itself, so neighboring cells stay
+// distinct instead of fusing into a solid bar.
 const (
-	pieceNone  = "·"
-	pieceThird = "░"
-	pieceHalf  = "▒"
-	pieceMost  = "▓"
-	pieceAll   = "█"
+	pieceNone  = "○"
+	pieceThird = "◔"
+	pieceHalf  = "◑"
+	pieceMost  = "◕"
+	pieceAll   = "●"
 )
 
 // pieceLines is the pieces tab in exactly h lines of w cells: a summary line,
