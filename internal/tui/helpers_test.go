@@ -9,7 +9,7 @@ import (
 // mock torrents as static rows (which also keeps the refresh spine quiet), and a
 // fixed version string so a golden does not change with the build.
 func testDeps() Deps {
-	return Deps{Theme: "default", NerdFont: false, Version: "v1.2.3", Torrents: mockTorrents()}
+	return Deps{Theme: "default", NerdFont: false, Torrents: mockTorrents()}
 }
 
 // newTestModel builds a model sized to a terminal, with the dark palette pinned

@@ -10,7 +10,6 @@ import (
 	"github.com/itspriddle/snatcher/internal/clipboard"
 	"github.com/itspriddle/snatcher/internal/commands"
 	"github.com/itspriddle/snatcher/internal/tui"
-	"github.com/itspriddle/snatcher/internal/version"
 )
 
 // isTerminal reports whether v is an interactive terminal.
@@ -50,7 +49,6 @@ func launchTUI(cmd *cobra.Command) error {
 		NerdFont:     settings.NerdFont,
 		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,
-		Version:      "v" + version.Version,
 		Clipboard:    nativeClipboard(),
 	})
 }

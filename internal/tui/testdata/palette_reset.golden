@@ -1,8 +1,8 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
-│  All                ╭──────────────────────────────────────────────────────────────────────────╮KiB/s   2.50       - ┃
+│  All                ╭──────────────────────────────────────────────────────────────────────────╮ KB/s   2.50       - ┃
 │  Downloading        │ Reset setting                                                            │0 B/s   0.00       - ┃
-│  Seeding            │ :                                                                        │KiB/s   0.50      1h ┃
+│  Seeding            │ :                                                                        │ KB/s   0.50      1h ┃
 │  Active             │                                                                          │                     ┃
 │  Inactive           │ > download-dir                Default directory for completed downloads  │                     ┃
 │  Stopped            │   start-added-torrents        Start torrents automatically when added    │                     ┃
@@ -37,4 +37,4 @@
 │                     │ ↑/↓ move • enter run • esc cancel                                        │                     ┃
 ╰─────────────────────╰──────────────────────────────────────────────────────────────────────────╯━━━━━━━━━━━━━━━━━━━━━┛
 ↑/↓ move • enter run • esc cancel                                                                                       
-snatcher v1.2.3 │ home@nas:9091 │ Transmission 4.0.6 │ ↓ 2.0 MiB/s │ ↑ 1.0 MiB/s │ free 120.0 GiB │ used 2.1 GiB        
+home (v4.0.6) │ ↓ 2.0 MB/s │ ↑ 1.0 MB/s │ free 120.0 GB │ used 2.1 GB                                                   

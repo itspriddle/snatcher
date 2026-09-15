@@ -136,7 +136,7 @@ func TestPickerSwitchesServers(t *testing.T) {
 	assert.Empty(t, m.torrents.rows)
 	assert.Zero(t, m.torrents.sel.markCount())
 	assert.False(t, m.live.loaded)
-	assert.Contains(t, ansi.Strip(m.render()), "seedbox@sb.example:9091")
+	assert.Contains(t, ansi.Strip(m.render()), "\nseedbox ", "the status bar names the new alias")
 
 	m, cmd = runCmd(t, m, cmd)
 	m = settle(t, m, cmd)

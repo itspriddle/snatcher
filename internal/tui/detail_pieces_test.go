@@ -54,7 +54,7 @@ func TestPieceBucketsShadeByFraction(t *testing.T) {
 	lines := pieceLines(pieces, 20, 1<<20, 1, 5, 2)
 
 	require.Len(t, lines, 2)
-	assert.Equal(t, "10 of 20 pieces (50%) · 1.0 MiB each", lines[0])
+	assert.Equal(t, "10 of 20 pieces (50%) · 1.0 MB each", lines[0])
 	assert.Equal(t, pieceNone+pieceThird+pieceHalf+pieceMost+pieceAll, lines[1])
 }
 

@@ -124,15 +124,17 @@ func TestViewIsAnAltScreen(t *testing.T) {
 	assert.NotEmpty(t, v.Content)
 }
 
-// TestStatusBarShowsTheHost checks the status bar reports a host rather than a
-// full RPC URL, whose path is identical on every Transmission server.
-func TestStatusBarShowsTheHost(t *testing.T) {
+// TestStatusBarShowsTheAlias checks the status bar reports the alias alone:
+// neither the host beside it nor a full RPC URL, whose path is identical on
+// every Transmission server.
+func TestStatusBarShowsTheAlias(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.serverURL = "http://seedbox.example:9091/transmission/rpc"
 	m.serverName = "home"
 
 	bar := m.statusBarView(120)
 
-	assert.Contains(t, bar, "home@seedbox.example:9091")
+	assert.Contains(t, bar, "home")
+	assert.NotContains(t, bar, "seedbox.example")
 	assert.NotContains(t, bar, "/transmission/rpc")
 }

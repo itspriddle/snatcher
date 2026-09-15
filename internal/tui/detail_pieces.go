@@ -9,7 +9,7 @@ import (
 
 // pieceGlyphs shade a grid cell by the fraction of its pieces that are complete:
 // none, up to a third, up to two thirds, more, and all. They are plain Unicode
-// block elements — what the sparkline already draws unconditionally — rather
+// block elements, which every terminal font draws, rather
 // than Nerd Font glyphs, and they read without color.
 const (
 	pieceNone  = "·"

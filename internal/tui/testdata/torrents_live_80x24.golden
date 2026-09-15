@@ -1,8 +1,8 @@
 ╭──────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status            │┃      ID Name                  Status      Done      Size ┃
-│  All            3│┃  ^    2 debian.iso            Seeding     100%   1.0 GiB ┃
-│  Downloading    1│┃  !    3 alpine.iso            Error        50% 200.0 MiB ┃
-│  Seeding        1│┃  v    1 ubuntu-24.04.iso      Downloading  50%   2.0 GiB ┃
+│  All            3│┃  ^    2 debian.iso            Seeding     100%    1.0 GB ┃
+│  Downloading    1│┃  !    3 alpine.iso            Error        50%  200.0 MB ┃
+│  Seeding        1│┃  v    1 ubuntu-24.04.iso      Downloading  50%    2.0 GB ┃
 │  Active         2│┃                                                          ┃
 │  Inactive       0│┃                                                          ┃
 │  Stopped        0│┃                                                          ┃
@@ -21,4 +21,4 @@
 │                  │┃                                                          ┃
 ╰──────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 space mark • enter open detail • y yank… • s start • p pause • v verify …       
-snatcher v1.2.3 │ home@nas:9091 │ ↓ 2.0 MiB/s       ██ │ ↑ 1.0 MiB/s       ██   
+home (v4.0.6) │ ↓ 2.0 MB/s │ ↑ 1.0 MB/s │ free 120.0 GB │ used 2.1 GB           

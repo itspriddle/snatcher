@@ -54,9 +54,6 @@ type Deps struct {
 	// tick is scheduled, so a saved interval applies from the next one.
 	PollInterval time.Duration
 
-	// Version is the string the status bar shows.
-	Version string
-
 	// Torrents is a static set of rows for tests. A non-nil value disables
 	// polling; nil means the rows come from the server, or that there are none
 	// when no client was dialed.

@@ -119,10 +119,10 @@ func TestStatsPlaintextJSONRPC(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "5 total, 3 active, 2 paused")
-	assert.Contains(t, out, "Download speed:  1.5 MiB/s")
-	assert.Contains(t, out, "Upload speed:    512.0 KiB/s")
+	assert.Contains(t, out, "Download speed:  1.5 MB/s")
+	assert.Contains(t, out, "Upload speed:    512.0 KB/s")
 	assert.Contains(t, out, "Cumulative:")
-	assert.Contains(t, out, "10.0 GiB")
+	assert.Contains(t, out, "10.0 GB")
 	assert.Contains(t, out, "Current session:")
 }
 
@@ -134,8 +134,8 @@ func TestStatsPlaintextBespoke(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "5 total, 1 active, 4 paused")
-	assert.Contains(t, out, "Download speed:  2.0 MiB/s")
-	assert.Contains(t, out, "Upload speed:    1.0 MiB/s")
+	assert.Contains(t, out, "Download speed:  2.0 MB/s")
+	assert.Contains(t, out, "Upload speed:    1.0 MB/s")
 }
 
 func TestStatsJSON(t *testing.T) {

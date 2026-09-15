@@ -134,9 +134,9 @@ func TestListPipedTabSeparated(t *testing.T) {
 	assert.Equal(t, "ubuntu-24.04.iso", first[1])
 	assert.Equal(t, "Downloading", first[2])
 	assert.Equal(t, "50%", first[3])
-	assert.Equal(t, "2.0 GiB", first[4])
-	assert.Equal(t, "1.5 MiB/s", first[5])
-	assert.Equal(t, "512.0 KiB/s", first[6])
+	assert.Equal(t, "2.0 GB", first[4])
+	assert.Equal(t, "1.5 MB/s", first[5])
+	assert.Equal(t, "512.0 KB/s", first[6])
 	assert.Equal(t, "0.50", first[7])
 	assert.Equal(t, "1h", first[8])
 
@@ -225,9 +225,9 @@ func TestWriteListTableAligned(t *testing.T) {
 	// under their own right-aligned headers, text columns left-aligned, and no
 	// line carrying a tail of trailing spaces.
 	want := "" +
-		" ID  Name    Status       Done     Size       Down       Up  Ratio  ETA\n" +
-		"  1  ubuntu  Downloading   50%  2.0 KiB  1.0 KiB/s  512 B/s   0.50   1m\n" +
-		"200  debian  Seeding      100%  4.0 KiB      0 B/s  256 B/s   2.00    -\n"
+		" ID  Name    Status       Done    Size      Down       Up  Ratio  ETA\n" +
+		"  1  ubuntu  Downloading   50%  2.0 KB  1.0 KB/s  512 B/s   0.50   1m\n" +
+		"200  debian  Seeding      100%  4.0 KB     0 B/s  256 B/s   2.00    -\n"
 
 	assert.Equal(t, want, buf.String())
 }
@@ -841,11 +841,11 @@ func TestListTopComposesWithSortAndReverse(t *testing.T) {
 
 	biggest, _, err := runList(t, "--config", cfgPath, "--sort", "size", "--reverse", "--top", "1")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"ubuntu-24.04.iso"}, listNames(t, biggest), "the 2 GiB torrent")
+	assert.Equal(t, []string{"ubuntu-24.04.iso"}, listNames(t, biggest), "the 2 GB torrent")
 
 	smallest, _, err := runList(t, "--config", cfgPath, "--sort", "size", "--top", "1")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"debian.iso"}, listNames(t, smallest), "the 1 GiB torrent")
+	assert.Equal(t, []string{"debian.iso"}, listNames(t, smallest), "the 1 GB torrent")
 }
 
 func TestListTopAppliesToStructuredOutput(t *testing.T) {
