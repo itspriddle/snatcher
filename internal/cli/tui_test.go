@@ -115,3 +115,15 @@ func TestClientConfigAdapterCarriesEveryField(t *testing.T) {
 func TestRootLongMentionsTheTUI(t *testing.T) {
 	assert.Contains(t, NewRootCmd().Long, "TUI")
 }
+
+// TestNativeClipboardIsOffOverSSH checks a TUI launched over SSH never shells
+// out to a clipboard tool, which would write the remote machine's clipboard.
+func TestNativeClipboardIsOffOverSSH(t *testing.T) {
+	t.Setenv("SSH_TTY", "")
+	t.Setenv("SSH_CONNECTION", "x")
+	assert.Nil(t, nativeClipboard())
+
+	t.Setenv("SSH_CONNECTION", "")
+	t.Setenv("SSH_TTY", "/dev/ttys001")
+	assert.Nil(t, nativeClipboard())
+}

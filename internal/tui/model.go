@@ -238,6 +238,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.added(msg)
 	case magnetMsg:
 		return m.magnetFetched(msg)
+	case clipboardMsg:
+		return m.clipboardWritten(msg)
 	case detailMsg:
 		return m.detailFetched(msg)
 	case detailTickMsg:

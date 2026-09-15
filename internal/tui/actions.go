@@ -294,8 +294,9 @@ func (m Model) cursorField(f torrentField) (string, bool) {
 
 // yankHandler copies a field of the cursor torrent to the clipboard.
 //
-// The clipboard is write-only over OSC 52 (vision.md, "Terminal constraints"),
-// and not every terminal implements even that, so the toast reports what was
+// The clipboard is write-only (vision.md, "Terminal constraints"): OSC 52, plus
+// a native tool when the launcher wired one. Not every terminal implements OSC
+// 52 and the native tool is not always present, so the toast reports what was
 // sent rather than claiming it arrived.
 func yankHandler(what string, value func(Model) (string, bool)) handler {
 	return func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
@@ -308,7 +309,7 @@ func yankHandler(what string, value func(Model) (string, bool)) handler {
 
 		m.toast = "yanked " + what
 
-		return m, tea.SetClipboard(output.SanitizeTerminal(v))
+		return m, m.yank(output.SanitizeTerminal(v))
 	}
 }
 
