@@ -38,13 +38,13 @@ func TestBytes(t *testing.T) {
 		want string
 	}{
 		{"zero", 0, "0 B"},
-		{"sub kib", 512, "512 B"},
-		{"one kib", 1024, "1.0 KiB"},
-		{"one and a half kib", 1536, "1.5 KiB"},
-		{"one mib", 1024 * 1024, "1.0 MiB"},
-		{"one and a half gib", 1024 * 1024 * 1024 * 3 / 2, "1.5 GiB"},
-		{"one tib", 1024 * 1024 * 1024 * 1024, "1.0 TiB"},
-		{"negative", -1536, "-1.5 KiB"},
+		{"sub kb", 512, "512 B"},
+		{"one kb", 1024, "1.0 KB"},
+		{"one and a half kb", 1536, "1.5 KB"},
+		{"one mb", 1024 * 1024, "1.0 MB"},
+		{"one and a half gb", 1024 * 1024 * 1024 * 3 / 2, "1.5 GB"},
+		{"one tb", 1024 * 1024 * 1024 * 1024, "1.0 TB"},
+		{"negative", -1536, "-1.5 KB"},
 	}
 
 	for _, tt := range tests {
@@ -62,7 +62,7 @@ func TestSpeed(t *testing.T) {
 	}{
 		{"zero", 0, "0 B/s"},
 		{"bytes", 900, "900 B/s"},
-		{"one and a half mib", 1024 * 1024 * 3 / 2, "1.5 MiB/s"},
+		{"one and a half mb", 1024 * 1024 * 3 / 2, "1.5 MB/s"},
 	}
 
 	for _, tt := range tests {
@@ -193,7 +193,7 @@ func TestSanitizeTerminalDefeatsBidiRowSpoofing(t *testing.T) {
 	const hostileClient = "qBittorrent 4.6\u202e"
 
 	row := func(client string) string {
-		return strings.Join([]string{"10.0.0.5", "51413", client, "42%", "1.5 MiB/s", "0 B/s", "yes"}, "\t")
+		return strings.Join([]string{"10.0.0.5", "51413", client, "42%", "1.5 MB/s", "0 B/s", "yes"}, "\t")
 	}
 
 	// The fixture must really carry the override, or the assertions below hold
@@ -202,7 +202,7 @@ func TestSanitizeTerminalDefeatsBidiRowSpoofing(t *testing.T) {
 
 	got := row(SanitizeTerminal(hostileClient))
 
-	assert.Equal(t, "10.0.0.5\t51413\tqBittorrent 4.6\t42%\t1.5 MiB/s\t0 B/s\tyes", got)
+	assert.Equal(t, "10.0.0.5\t51413\tqBittorrent 4.6\t42%\t1.5 MB/s\t0 B/s\tyes", got)
 
 	for _, r := range []rune{'\u200b', '\u200e', '\u200f', '\u202a', '\u202e', '\u2066', '\u2069'} {
 		assert.NotContains(t, got, string(r), "no bidi control reaches the rendered row")

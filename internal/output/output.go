@@ -85,23 +85,24 @@ func toJQInput(v any) (any, error) {
 	return input, nil
 }
 
-// byteUnits are the IEC binary unit suffixes used by Bytes and Speed.
-var byteUnits = [...]string{"B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"}
+// byteUnits are the unit suffixes used by Bytes and Speed. The math is binary
+// (1024 per step, like `df -h`), but the labels are the familiar KB, MB, GB.
+var byteUnits = [...]string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
 
-// Bytes formats n bytes as an IEC binary-prefixed string (e.g. "1.5 GiB").
-// Values below 1 KiB are reported in whole bytes (e.g. "512 B").
+// Bytes formats n bytes as a human-readable string (e.g. "1.5 GB").
+// Values below 1 KB are reported in whole bytes (e.g. "512 B").
 func Bytes(n int64) string {
-	return formatIEC(n) + " " + iecUnit(n)
+	return formatHuman(n) + " " + humanUnit(n)
 }
 
-// Speed formats n bytes/second as an IEC binary rate (e.g. "1.5 MiB/s").
+// Speed formats n bytes/second as a human-readable rate (e.g. "1.5 MB/s").
 func Speed(n int64) string {
 	return Bytes(n) + "/s"
 }
 
-// formatIEC returns the numeric part of an IEC-formatted byte count. Sub-KiB
+// formatHuman returns the numeric part of a formatted byte count. Sub-KB
 // values are whole numbers; larger values carry one decimal place.
-func formatIEC(n int64) string {
+func formatHuman(n int64) string {
 	abs := n
 	if abs < 0 {
 		abs = -abs
@@ -122,8 +123,8 @@ func formatIEC(n int64) string {
 	return fmt.Sprintf("%.1f", value)
 }
 
-// iecUnit returns the IEC unit suffix appropriate for n.
-func iecUnit(n int64) string {
+// humanUnit returns the unit suffix appropriate for n.
+func humanUnit(n int64) string {
 	abs := n
 	if abs < 0 {
 		abs = -abs
@@ -196,7 +197,7 @@ func Date(unix int64) string {
 //
 // The guarantee is scoped to format controls. A strong right-to-left run —
 // Arabic or Hebrew text carrying no controls at all — still reorders the
-// neutral characters beside it (digits, "%", "MiB/s") when a terminal lays out
+// neutral characters beside it (digits, "%", "MB/s") when a terminal lays out
 // an aligned row, and stripping RTL script is not an option. Sanitizing removes
 // every way an *invisible* character can reorder a row; it does not make every
 // row visually unambiguous. Nor does it keep every row aligned: a kept

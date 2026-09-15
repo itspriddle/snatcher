@@ -22,10 +22,10 @@ const segmentSeparator = " │ "
 // form first. Rank zero never degrades: the server, an error, alt-speed, and
 // the mark, unsaved, and chord counts are each the answer to "why did that do
 // something I did not expect", and a bar that hid one at 80 columns would be
-// hiding the thing it exists to say.
+// hiding the thing it exists to say. The server segment degrades only as far as
+// its bare name.
 const (
 	rankNever         = 0
-	rankVersion       = 2
 	rankRates         = 3
 	rankFree          = 4
 	rankUsed          = 5
@@ -44,8 +44,7 @@ func fixed(s string) barSegment {
 	return barSegment{forms: []string{s}, rank: rankNever}
 }
 
-// statusBarView renders the bottom line: what snatcher this is, what it is
-// pointed at, what that server is doing, and the transient facts a user needs to
+// statusBarView renders the bottom line: what snatcher is pointed at, what that server is doing, and the transient facts a user needs to
 // understand what the next key will do. It fits the segments to the width left
 // of the toast, degrading the least important first.
 func (m Model) statusBarView(width int) string {
@@ -61,35 +60,34 @@ func (m Model) statusBarView(width int) string {
 
 // barSegments are the status bar's segments, in display order.
 func (m Model) barSegments() []barSegment {
-	segs := []barSegment{
-		{forms: []string{"snatcher " + m.deps.Version, ""}, rank: rankVersion},
-		fixed(m.hostLabel()),
-	}
-
-	segs = append(segs, m.serverSegments()...)
+	segs := m.serverSegments()
 	segs = append(segs, m.transferSegments()...)
 	segs = append(segs, m.diskSegments()...)
 
 	return append(segs, m.stateSegments()...)
 }
 
-// serverSegments are the last reply's error and the Transmission version.
+// serverSegments are the server's name with its Transmission version, then the
+// last reply's error. The version is the first thing to go; the name never is.
 func (m Model) serverSegments() []barSegment {
-	var segs []barSegment
+	name := m.serverLabel()
+	server := fixed(name)
+
+	if v := serverVersion(m.live.info.Version); m.live.err == nil && m.live.hasSession && v != "" {
+		server = barSegment{forms: []string{name + " (v" + v + ")", name}, rank: rankServerVersion}
+	}
+
+	segs := []barSegment{server}
 
 	if m.live.err != nil {
 		segs = append(segs, fixed(m.styles.Toast.Render("! "+errorShort(m.live.err))))
 	}
 
-	if v := serverVersion(m.live.info.Version); m.live.hasSession && v != "" {
-		segs = append(segs, barSegment{forms: []string{"Transmission " + v, ""}, rank: rankServerVersion})
-	}
-
 	return segs
 }
 
-// transferSegments are the two rates, each with its sparkline and the limit in
-// force, and the alt-speed marker.
+// transferSegments are the two rates, each with the limit in force, and the
+// alt-speed marker.
 func (m Model) transferSegments() []barSegment {
 	var segs []barSegment
 
@@ -97,8 +95,8 @@ func (m Model) transferSegments() []barSegment {
 		downLimit, upLimit := m.limits()
 
 		segs = append(segs,
-			rateSegment("↓", m.live.stats.DownloadSpeed, m.live.down, downLimit),
-			rateSegment("↑", m.live.stats.UploadSpeed, m.live.up, upLimit),
+			rateSegment("↓", m.live.stats.DownloadSpeed, downLimit),
+			rateSegment("↑", m.live.stats.UploadSpeed, upLimit),
 		)
 	}
 
@@ -159,26 +157,20 @@ func (m Model) stateSegments() []barSegment {
 	return segs
 }
 
-// rateSegment is one direction's rate: full, without the sparkline, the rate
-// alone, and dropped. Forms that come out identical — no sparkline yet, no limit
-// in force — are collapsed, so each degrade step changes what is drawn.
-func rateSegment(arrow string, rate int64, ring rateRing, limit string) barSegment {
+// rateSegment is one direction's rate: with its limit, the rate alone, and
+// dropped. With no limit in force the first two forms are identical and
+// collapse, so each degrade step changes what is drawn.
+func rateSegment(arrow string, rate int64, limit string) barSegment {
 	head := arrow + " " + output.Speed(rate)
-	spark := sparkline(ring.values(), sparkSamples)
 
-	forms := slices.Compact([]string{
-		joinNonEmpty(head, spark, limit),
-		joinNonEmpty(head, limit),
-		head,
-		"",
-	})
+	full := head
+	if limit != "" {
+		full += " " + limit
+	}
+
+	forms := slices.Compact([]string{full, head, ""})
 
 	return barSegment{forms: forms, rank: rankRates}
-}
-
-// joinNonEmpty joins the non-empty parts with single spaces.
-func joinNonEmpty(parts ...string) string {
-	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), " ")
 }
 
 // limits are the download and upload limits in force, as labels, or empty when
@@ -205,11 +197,10 @@ func (m Model) limits() (down, up string) {
 	return down, up
 }
 
-// limitLabel renders a limit raw, in the KB/s Transmission stores it in, exactly
-// as `server bandwidth show` does. output.Speed is IEC over bytes and would
-// misstate it.
+// limitLabel renders a limit, stored by Transmission in KB/s, in the same units
+// as the rate beside it, so 5120 KB/s reads as 5.0 MB/s.
 func limitLabel(kbps int64) string {
-	return fmt.Sprintf("(%d KB/s)", kbps)
+	return "(" + output.Speed(kbps*1024) + ")"
 }
 
 // serverVersion is the version number off Transmission's long version string,
@@ -287,7 +278,7 @@ func joinSegments(segs []barSegment, level []int) string {
 }
 
 // nextToDegrade picks the segment to take one step terser: the highest rank,
-// then the least degraded within it — so the two rates lose their sparklines
+// then the least degraded within it — so the two rates lose their limits
 // together before either is dropped — then the rightmost. It returns -1 when no
 // segment can degrade further.
 func nextToDegrade(segs []barSegment, level []int) int {
@@ -306,21 +297,18 @@ func nextToDegrade(segs []barSegment, level []int) int {
 	return best
 }
 
-// hostLabel is the server the TUI is pointed at, as alias@host rather than a
-// full RPC URL: the path is the same on every Transmission server and spends
-// status bar width saying nothing, and the alias is what the picker lists.
-func (m Model) hostLabel() string {
-	if m.serverURL == "" {
+// serverLabel is the server the TUI is pointed at: its alias, which is what the
+// picker lists, or the URL's host when it has none. Never the full RPC URL: the
+// path is the same on every Transmission server and spends width saying nothing.
+func (m Model) serverLabel() string {
+	switch {
+	case m.serverURL == "":
 		return noServerLabel
+	case m.serverName != "":
+		return output.SanitizeTerminal(m.serverName)
 	}
 
-	host := hostOf(m.serverURL)
-
-	if m.serverName != "" {
-		host = output.SanitizeTerminal(m.serverName) + "@" + host
-	}
-
-	return host
+	return hostOf(m.serverURL)
 }
 
 // helpLineView renders the one-line short help above the status bar, listing the

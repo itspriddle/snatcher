@@ -156,11 +156,11 @@ func TestSearchPipedTabSeparated(t *testing.T) {
 	require.Len(t, lines, 2, "piped output is header-less, one row per release")
 
 	assert.Equal(t, strings.Join([]string{
-		"1", "12d", "Ubuntu 24.04 LTS", "Example Tracker", "2.0 GiB", "42", "120", "7",
+		"1", "12d", "Ubuntu 24.04 LTS", "Example Tracker", "2.0 GB", "42", "120", "7",
 	}, "\t"), lines[0])
 
 	assert.Equal(t, strings.Join([]string{
-		"2", "3d", "Debian 13", "Example Usenet", "1.0 GiB", "-", "-", "-",
+		"2", "3d", "Debian 13", "Example Usenet", "1.0 GB", "-", "-", "-",
 	}, "\t"), lines[1], "counts the indexer does not publish render as a dash")
 }
 

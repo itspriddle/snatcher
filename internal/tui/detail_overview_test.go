@@ -32,7 +32,7 @@ func TestOverviewMirrorsShow(t *testing.T) {
 	}
 
 	assert.Contains(t, lines[19], "10", "Pieces renders the count")
-	assert.Contains(t, lines[20], "4.0 MiB", "Piece Size renders bytes")
+	assert.Contains(t, lines[20], "4.0 MB", "Piece Size renders bytes")
 	assert.Contains(t, lines[18], "yes", "Private renders yes/no")
 	assert.Contains(t, lines[25], "1h 23m 45s", "times render as durations")
 	assert.Equal(t, overviewLabelWidth, strings.Index(lines[25], "1h"), "the widest label keeps show's padding")

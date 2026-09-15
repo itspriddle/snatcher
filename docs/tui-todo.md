@@ -321,12 +321,9 @@ columns. **Met.**
   prints them, never through `output.Speed` (IEC over bytes). The limit shown is
   the one in force: alt-speed's while it is on, otherwise a global limit only
   while it is enabled. Rates use `output.Speed`.
-- **Sparklines are hand-rolled:** eight samples per direction, scaled to that
-  ring's own maximum, blank until there are two, and left-padded to eight cells
-  so the segment does not jitter. No `ntcharts`.
 - **The status bar degrades by rank** when it does not fit: the Transmission
-  version first, then used, free, the two rates (sparkline, then limit, then
-  dropped, evenly between them), then snatcher's version. The server, an error
+  version first (the server segment keeps its bare alias), then used, free, the
+  two rates (limit, then dropped, evenly between them). The server, an error
   (`! unreachable`), `alt-speed`, and the mark/unsaved/chord counts are never
   dropped. Alt-speed is plain text rather than a glyph, so `Icons` stays
   status-only.

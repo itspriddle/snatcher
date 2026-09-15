@@ -1,17 +1,17 @@
 ╭──────────────────────╮╭──────────────────────────────────────────────────────────────────────────────────────────────╮
 │Status                ││      ID Name               Status      Done      Size        Down          Up  Ratio     ETA │
-│  All               12││  v    1 ubuntu-24.04.1-de… Downloading  42%   5.8 GiB   4.0 MiB/s 128.0 KiB/s   0.12 14m 18s │
-│  Downloading        4││  ^    2 debian-12.7.0-amd… Seeding     100% 631.0 MiB       0 B/s 512.0 KiB/s   3.41       - │
-│  Seeding            3││  x    3 archlinux-2026.09… Stopped      87%   1.1 GiB       0 B/s       0 B/s   0.00       - │
-│  Active             5││  %    4 fedora-workstatio… Verifying    99%   2.1 GiB       0 B/s       0 B/s   0.00       - │
-│  Inactive           4││  ~    5 nixos-minimal-25.… Queued to … 100%   1.0 GiB       0 B/s       0 B/s   0.00       - │
-│  Stopped            2││  ~    6 openbsd-7.6-amd64… Queued to …   0% 769.0 MiB       0 B/s       0 B/s   0.00       - │
-│  Verifying          1││  ~    7 freebsd-14.1-rele… Queued to … 100%   4.2 GiB       0 B/s       0 B/s   0.88       - │
-│  Queued to download 1││  !    8 alpine-standard-3… Error        31% 200.0 MiB       0 B/s       0 B/s   0.00       - │
-│  Queued to seed     1││  v    9 void-live-x86_64-… Downloading   5% 695.0 MiB 768.0 KiB/s       0 B/s   0.00 14m 40s │
-│  Queued to verify   1││  ^   10 gentoo-admincd-am… Seeding     100% 560.0 MiB       0 B/s  64.0 KiB/s   1.04       - │
-│  Error              1││  x   11 slackware64-15.0-… Stopped      50%   3.6 GiB       0 B/s       0 B/s   0.00       - │
-│Labels                ││  v   12 hostile[31mname[0… Downloading  17% 1000.0 M… 256.0 KiB/s       0 B/s   0.00 55m 19s │
+│  All               12││  v    1 ubuntu-24.04.1-de… Downloading  42%    5.8 GB    4.0 MB/s  128.0 KB/s   0.12 14m 18s │
+│  Downloading        4││  ^    2 debian-12.7.0-amd… Seeding     100%  631.0 MB       0 B/s  512.0 KB/s   3.41       - │
+│  Seeding            3││  x    3 archlinux-2026.09… Stopped      87%    1.1 GB       0 B/s       0 B/s   0.00       - │
+│  Active             5││  %    4 fedora-workstatio… Verifying    99%    2.1 GB       0 B/s       0 B/s   0.00       - │
+│  Inactive           4││  ~    5 nixos-minimal-25.… Queued to … 100%    1.0 GB       0 B/s       0 B/s   0.00       - │
+│  Stopped            2││  ~    6 openbsd-7.6-amd64… Queued to …   0%  769.0 MB       0 B/s       0 B/s   0.00       - │
+│  Verifying          1││  ~    7 freebsd-14.1-rele… Queued to … 100%    4.2 GB       0 B/s       0 B/s   0.88       - │
+│  Queued to download 1││  !    8 alpine-standard-3… Error        31%  200.0 MB       0 B/s       0 B/s   0.00       - │
+│  Queued to seed     1││  v    9 void-live-x86_64-… Downloading   5%  695.0 MB  768.0 KB/s       0 B/s   0.00 14m 40s │
+│  Queued to verify   1││  ^   10 gentoo-admincd-am… Seeding     100%  560.0 MB       0 B/s   64.0 KB/s   1.04       - │
+│  Error              1││  x   11 slackware64-15.0-… Stopped      50%    3.6 GB       0 B/s       0 B/s   0.00       - │
+│Labels                ││  v   12 hostile[31mname[0… Downloading  17% 1000.0 MB  256.0 KB/s       0 B/s   0.00 55m 19s │
 │  linux              3││                                                                                              │
 │  seed               3││                                                                                              │
 │  No label           7││                                                                                              │
@@ -25,8 +25,8 @@
 ┃ Overview  Files  Trackers  Peers  Pieces                                                                             ┃
 ┃──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┃
 ┃Address                Port Client                                Progress        Down          Up Encrypted Status   ┃
-┃203.0.113.7           51413 Transmission 4.0.6                        100%   1.0 MiB/s       0 B/s yes       TDEI     ┃
-┃198.51.100.23          6881 evil]0;pwnedclient                         25%       0 B/s  64.0 KiB/s no        u[2JX    ┃
+┃203.0.113.7           51413 Transmission 4.0.6                        100%    1.0 MB/s       0 B/s yes       TDEI     ┃
+┃198.51.100.23          6881 evil]0;pwnedclient                         25%       0 B/s   64.0 KB/s no        u[2JX    ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
@@ -37,4 +37,4 @@
 ┃                                                                                                                      ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 [/h previous tab • ]/l next tab • ? help • q quit                                                                       
-snatcher v1.2.3 │ no server                                                                                             
+no server                                                                                                               

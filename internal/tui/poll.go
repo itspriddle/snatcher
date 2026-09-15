@@ -93,10 +93,8 @@ type liveData struct {
 	// err is the last reply's error, cleared by the next successful poll.
 	err error
 
-	// stats is the last fast poll's session stats, and down and up the recent
-	// rates the status bar's sparklines draw.
-	stats    transmission.Stats
-	down, up rateRing
+	// stats is the last fast poll's session stats.
+	stats transmission.Stats
 
 	// info and session are the last slow refresh; hasSession says there was one.
 	info       transmission.ServerInfo
@@ -259,8 +257,6 @@ func (m Model) polled(msg pollMsg) (Model, tea.Cmd) {
 	m.live.err = nil
 	m.live.loaded = true
 	m.live.stats = msg.stats
-	m.live.down = m.live.down.push(msg.stats.DownloadSpeed)
-	m.live.up = m.live.up.push(msg.stats.UploadSpeed)
 	m = m.refreshTorrents(msg.torrents)
 
 	// A poll can take the cursor's torrent away, which moves the detail's want.

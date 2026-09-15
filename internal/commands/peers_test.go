@@ -132,8 +132,8 @@ func TestPeersPipedTabSeparated(t *testing.T) {
 	assert.Equal(t, "51413", first[1])
 	assert.Equal(t, "Transmission 4.0.6", first[2])
 	assert.Equal(t, "50%", first[3])
-	assert.Equal(t, "1.0 MiB/s", first[4])
-	assert.Equal(t, "2.0 KiB/s", first[5])
+	assert.Equal(t, "1.0 MB/s", first[4])
+	assert.Equal(t, "2.0 KB/s", first[5])
 	assert.Equal(t, "yes", first[6])
 	assert.Equal(t, "UDEI", first[7])
 

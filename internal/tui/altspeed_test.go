@@ -26,7 +26,7 @@ func TestAltSpeedToggles(t *testing.T) {
 	assert.Equal(t, "alt-speed on", m.toast)
 	assert.True(t, m.live.session.AltSpeedEnabled, "the bar changes before the re-read lands")
 	assert.Contains(t, barText(m, 200), "alt-speed")
-	assert.Contains(t, barText(m, 200), "(50 KB/s)")
+	assert.Contains(t, barText(m, 200), "(50.0 KB/s)")
 
 	stub.respond("session-get", strings.Replace(bespokeSessionResponse, `"alt-speed-enabled": false`, `"alt-speed-enabled": true`, 1))
 
