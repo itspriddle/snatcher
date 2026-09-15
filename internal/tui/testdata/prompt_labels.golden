@@ -4,6 +4,7 @@
 │  Downloading        0│┃* x    2 two.iso            Stopped       0%       0 B       0 B/s       0 B/s   0.00      0s ┃
 │  Seeding            0│┃  x    3 three[31m.iso      Stopped       0%       0 B       0 B/s       0 B/s   0.00      0s ┃
 │  Active             0│┃                                                                                              ┃
+│  Inactive           0│┃                                                                                              ┃
 │  Stopped            3│┃                                                                                              ┃
 │  Verifying          0│┃                                                                                              ┃
 │  Queued to download 0│┃                                                                                              ┃
@@ -13,10 +14,9 @@
 │Labels                │┃                                                                                              ┃
 │  a                  2│┃                                                                                              ┃
 │  b                  2│┃                                                                                              ┃
-│  No label           1│┃                                                                                              ┃
-│Trackers              │┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
-│  (none yet)          │┃   │ Set labels on 2 torrents                                     │                           ┃
-│                      │┃   │                                                              │                           ┃
+│  No label           1│┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
+│Trackers              │┃   │ Set labels on 2 torrents                                     │                           ┃
+│  (none yet)          │┃   │                                                              │                           ┃
 │                      │┃   │ > a, b                                                       │                           ┃
 │                      │┃   │                                                              │                           ┃
 │                      │┃   │ comma-separated; empty clears                                │                           ┃

@@ -337,7 +337,7 @@ func NewListCmd() *cobra.Command {
 	addServerFlag(cmd, &server)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of plaintext")
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
-	cmd.Flags().StringVar(&filterFlag, "filter", "all", "filter by status (all, active, downloading, seeding, stopped, verifying, queued-to-verify, queued-to-download, queued-to-seed, error)")
+	cmd.Flags().StringVar(&filterFlag, "filter", "all", "filter by state (all, active, inactive, downloading, seeding, stopped, verifying, queued-to-verify, queued-to-download, queued-to-seed, error)")
 	cmd.Flags().StringVar(&sortFlag, "sort", "queue", "sort by field (queue, name, added, size, progress, ratio, speed)")
 	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to torrents whose name contains this text (case-insensitive)")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "reverse the sort order")

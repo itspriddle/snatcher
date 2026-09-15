@@ -1181,12 +1181,20 @@ scripting contract. Besides the common options:
 .RS
 .TP
 .BR \-\-filter " " \fIstatus\fR
-Filter by status (default
+Filter by state (default
 .BR all ).
 One of
-.BR all ", " active ", " downloading ", " seeding ", " stopped ,
-.BR verifying ", " queued\-to\-verify ", " queued\-to\-download ,
+.BR all ", " active ", " inactive ", " downloading ", " seeding ,
+.BR stopped ", " verifying ", " queued\-to\-verify ", " queued\-to\-download ,
 .BR queued\-to\-seed ", " error .
+.B active
+and
+.B inactive
+go by current transfer rate rather than status:
+.B active
+is any torrent with a non-zero download or upload rate, and
+.B inactive
+is one with neither that is not stopped or errored.
 .TP
 .BR \-\-search " " \fItext\fR
 Show only torrents whose name contains
