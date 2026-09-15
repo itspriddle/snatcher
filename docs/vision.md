@@ -224,8 +224,9 @@ then quits. It never discards edits silently.
   them as Enter/Tab/Enter/Backspace.
 - Never bind `ctrl-s` / `ctrl-q` - XOFF/XON flow control.
 - Never bind `ctrl-l` - universal redraw/clear.
-- Clipboard is **write-only** (OSC 52). Yanking works; reading the clipboard
-  does not. Pasting is the terminal's own paste (bracketed paste enabled).
+- Clipboard is **write-only** (OSC 52, plus `pbcopy`/`wl-copy`/`xclip`/`xsel`
+  when present and not over SSH). Yanking works; reading the clipboard does
+  not. Pasting is the terminal's own paste (bracketed paste enabled).
 
 #### Global
 

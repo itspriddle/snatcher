@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"os"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/itspriddle/snatcher/internal/clipboard"
 	"github.com/itspriddle/snatcher/internal/commands"
 	"github.com/itspriddle/snatcher/internal/tui"
 	"github.com/itspriddle/snatcher/internal/version"
@@ -49,7 +51,28 @@ func launchTUI(cmd *cobra.Command) error {
 		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,
 		Version:      "v" + version.Version,
+		Clipboard:    nativeClipboard(),
 	})
+}
+
+// nativeClipboard returns the native clipboard writer yanks use beside OSC 52,
+// or nil for OSC 52 only.
+//
+// Over SSH it is always nil: a native tool would write the remote machine's
+// clipboard rather than the user's, and xclip with no DISPLAY would raise a
+// failure toast for a copy OSC 52 already carried home. The environment is read
+// here, with the launcher's other decisions, so internal/tui reads none.
+func nativeClipboard() func(context.Context, string) error {
+	if os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != "" {
+		return nil
+	}
+
+	w := clipboard.Detect()
+	if w == nil {
+		return nil
+	}
+
+	return w.Write
 }
 
 // dialer adapts commands.Dialer to the TUI's own DialResult.

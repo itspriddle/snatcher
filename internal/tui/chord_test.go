@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -113,4 +115,57 @@ func TestChordLabelsAreDistinct(t *testing.T) {
 	assert.Empty(t, chordNone.label())
 	assert.False(t, chordNone.pending())
 	assert.True(t, chordWindow.pending())
+}
+
+// TestYankAlsoCopiesNatively checks a wired native writer receives the same
+// sanitized string OSC 52 sends, alongside it rather than instead of it.
+func TestYankAlsoCopiesNatively(t *testing.T) {
+	var got []string
+
+	deps := testDeps()
+	deps.Clipboard = func(_ context.Context, s string) error {
+		got = append(got, s)
+
+		return nil
+	}
+
+	m := New(deps).applyTheme(true).resize(120, 40)
+	m.torrents.sel = m.torrents.sel.setCursor(len(m.torrents.rows) - 1)
+
+	_, cmd := pressCmd(press(m, "y"), "n")
+	require.NotNil(t, cmd)
+
+	batch, ok := cmd().(tea.BatchMsg)
+	require.True(t, ok, "a wired writer must batch OSC 52 with the native copy")
+	require.Len(t, batch, 2)
+
+	var osc52 string
+
+	natives := 0
+
+	for _, c := range batch {
+		switch msg := c().(type) {
+		case clipboardMsg:
+			natives++
+
+			require.NoError(t, msg.err)
+		default:
+			osc52 = fmt.Sprint(msg)
+		}
+	}
+
+	assert.Equal(t, 1, natives)
+	assert.Contains(t, osc52, "hostile")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "hostile")
+	assert.NotContains(t, got[0], "\x1b")
+}
+
+// TestNativeCopyFailureToasts checks a failed native copy says so, naming the
+// tool, rather than leaving "yanked …" on screen.
+func TestNativeCopyFailureToasts(t *testing.T) {
+	m, _ := newTestModel(120, 40).update(clipboardMsg{err: errors.New("pbcopy: exit status 1")})
+
+	assert.Contains(t, m.toast, "pbcopy")
 }

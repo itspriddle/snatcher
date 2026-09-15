@@ -57,9 +57,37 @@ func (m Model) yankMagnet() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// clipboardMsg is the answer to the native copy; only a failure is reported.
+type clipboardMsg struct{ err error }
+
+// yank copies s over OSC 52 and, when a native writer is wired, through it
+// too. With no writer the command is exactly tea.SetClipboard, so tests keep
+// reading the payload back the way chord_test.go does.
+func (m Model) yank(s string) tea.Cmd {
+	if m.deps.Clipboard == nil {
+		return tea.SetClipboard(s)
+	}
+
+	write, ctx := m.deps.Clipboard, m.ctx
+
+	return tea.Batch(tea.SetClipboard(s), func() tea.Msg {
+		return clipboardMsg{err: write(ctx, s)}
+	})
+}
+
+// clipboardWritten settles the native copy. A success changes nothing — the
+// "yanked …" toast already stands — and a failure replaces it.
+func (m Model) clipboardWritten(msg clipboardMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		m.toast = "yank: " + msg.err.Error()
+	}
+
+	return m, nil
+}
+
 // magnetFetched settles y m. Like every yank it reports what was sent rather
-// than claiming it arrived: OSC 52 is write-only and not every terminal honors
-// it.
+// than claiming it arrived: OSC 52 is not honored by every terminal, and the
+// native fallback is not always present.
 func (m Model) magnetFetched(msg magnetMsg) (Model, tea.Cmd) {
 	if msg.gen != m.live.gen {
 		return m, nil
@@ -78,5 +106,5 @@ func (m Model) magnetFetched(msg magnetMsg) (Model, tea.Cmd) {
 
 	m.toast = "yanked magnet link"
 
-	return m, tea.SetClipboard(output.SanitizeTerminal(msg.link))
+	return m, m.yank(output.SanitizeTerminal(msg.link))
 }

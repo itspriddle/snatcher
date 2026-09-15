@@ -157,8 +157,9 @@ the man page.
 - **Light/dark is explicit** — detect once, pick with
   `lipgloss.LightDark(hasDark)`. No root `AdaptiveColor` (it's in the `compat`
   subpackage if ever needed).
-- **Clipboard via OSC52** isn't universal across terminals; consider a fallback
-  for copy actions.
+- **Clipboard via OSC52** isn't universal across terminals. Done: yanks also
+  write through a native tool (`internal/clipboard`) when one is on PATH and
+  the session is not over SSH.
 - **The color profile arrives as a message, like the background color.**
   bubbletea detects it with `colorprofile.Detect` unless
   `tea.WithColorProfile` forced one, then sends `tea.ColorProfileMsg`. A

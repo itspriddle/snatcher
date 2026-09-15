@@ -66,6 +66,10 @@ type Deps struct {
 	// window. It is nil in tests and whenever the launcher did not wire one, in
 	// which case the General and Polling tabs are shown read-only.
 	Config ClientConfig
+
+	// Clipboard copies a yank to the OS clipboard through a native tool, beside
+	// the OSC 52 write every yank already makes. nil means OSC 52 only.
+	Clipboard func(ctx context.Context, s string) error
 }
 
 // DialResult is one dial: the client, the alias and URL it resolved to, and a
