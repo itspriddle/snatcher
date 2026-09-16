@@ -118,7 +118,7 @@ func TestTrackerFilterMatchesTheRawHost(t *testing.T) {
 	deps := testDeps()
 	deps.Torrents = []transmission.Torrent{
 		{ID: 1, Name: "one", Trackers: []transmission.TorrentTracker{{Host: "evil\x1b[31m.host"}}},
-		{ID: 2, Name: "two", Trackers: []transmission.TorrentTracker{{Host: "evil.host"}, {Host: "b.example"}}},
+		{ID: 2, Name: "two", Trackers: []transmission.TorrentTracker{{Host: "b.example"}, {Host: "fallback.example", Tier: 1}}},
 		{ID: 3, Name: "three"},
 	}
 
@@ -142,6 +142,10 @@ func TestTrackerFilterMatchesTheRawHost(t *testing.T) {
 	byHost := m.applyFilterItem(filterItemNamed(t, m, "b.example"))
 	assert.Equal(t, []int64{2}, rowIDs(byHost.torrents.rows))
 	assert.Equal(t, "tracker b.example", byHost.torrents.listView.filter.text())
+
+	for _, item := range m.torrents.filter.items {
+		assert.NotEqual(t, "fallback.example", item.raw, "a fallback tracker gets no row")
+	}
 }
 
 // TestAppliedTrackerSurvivesRebuild checks the applied tracker row is carried
@@ -302,13 +306,13 @@ func TestGroupSelectorNeverUsesAll(t *testing.T) {
 }
 
 // TestGroupSelectorForATracker checks a tracker row's group is the torrents
-// announcing to that host.
+// whose main tracker is that host.
 func TestGroupSelectorForATracker(t *testing.T) {
 	m := newTestModel(120, 40)
 
 	sel := groupSelector(filterItemNamed(t, m, "tracker.example.net"), m.torrents.all)
 	assert.False(t, sel.All)
-	assert.ElementsMatch(t, []int64{2, 3}, sel.IDs)
+	assert.Equal(t, []int64{3}, sel.IDs, "torrent 2 lists the host only as a fallback")
 }
 
 // TestGroupDeleteAsksAboutData checks d in the sidebar removes the group through

@@ -681,12 +681,17 @@ Decisions, recorded:
   somewhere. The host is derived at decode time (lowercased, port dropped); an
   announce URL with no parsable host is dropped whole. `torrent trackers` still
   shows full URLs, as it did.
-- **A torrent counts once per host,** however many tiers name it
-  (`transmission.TrackerHosts`). Rows sort by host, like labels.
+- **A torrent is grouped under its main tracker only**
+  (`transmission.MainTracker`: the first tracker in its lowest tier), as
+  TrguiNG does. Transmission announces to one tracker per tier and keeps the
+  rest as fallbacks; counting every listed host put each torrent under its
+  fallbacks too, so the counts stopped adding up. `trackers` in `--json` still
+  lists every host. Rows sort by host, like labels.
 - **No "No tracker" catch-all row.** `--tracker` cannot select it, so the TUI
   does not offer it; a session with no trackers shows a muted `none` note.
 - **One matcher.** The sidebar's `filterByTracker` and `list --tracker` both go
-  through `transmission.FilterByTracker` (case-insensitive exact host). Group
+  through `transmission.FilterByTracker` (case-insensitive exact match on the
+  main tracker's host). Group
   actions, the `f` modal, and clear-marks-on-apply come for free through
   `filterItem.view()`.
 

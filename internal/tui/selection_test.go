@@ -178,8 +178,8 @@ func TestFilterPaneLabelsComeFromTheRows(t *testing.T) {
 }
 
 // TestFilterPaneTrackersComeFromTheRows checks the tracker section is derived
-// from the rows, sorted by host, counting a torrent once however many tiers
-// name its host, and with no catch-all row.
+// from each torrent's main tracker, sorted by host, with no row for a fallback
+// tracker and no catch-all row.
 func TestFilterPaneTrackersComeFromTheRows(t *testing.T) {
 	var hosts []string
 
@@ -194,7 +194,7 @@ func TestFilterPaneTrackersComeFromTheRows(t *testing.T) {
 
 	assert.Equal(t, []string{"bttracker.debian.org", "evil\x1b[31m.host", "torrent.ubuntu.com", "tracker.example.net"}, hosts)
 	assert.Equal(t, 1, counts["torrent.ubuntu.com"], "two tiers on one host count once")
-	assert.Equal(t, 2, counts["tracker.example.net"])
+	assert.Equal(t, 1, counts["tracker.example.net"], "torrent 2's fallback is not counted")
 }
 
 // TestFilterPaneTrackersEmptyIsANote checks a session with no trackers gets an

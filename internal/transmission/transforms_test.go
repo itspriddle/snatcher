@@ -294,17 +294,30 @@ func TestTransformsCompose(t *testing.T) {
 	assert.Equal(t, []int64{1}, ids(sorted))
 }
 
-func TestTrackerHostsDedupesAndSorts(t *testing.T) {
+func TestMainTracker(t *testing.T) {
 	t.Parallel()
 
-	tor := transmission.Torrent{Trackers: []transmission.TorrentTracker{
-		{Host: "b.example", Tier: 0},
-		{Host: "a.example", Tier: 1},
-		{Host: "b.example", Tier: 2},
-	}}
+	tests := []struct {
+		name     string
+		trackers []transmission.TorrentTracker
+		want     string
+	}{
+		{name: "none", want: ""},
+		{name: "first in order", trackers: []transmission.TorrentTracker{
+			{Host: "a.example"}, {Host: "b.example"},
+		}, want: "a.example"},
+		{name: "lowest tier wins", trackers: []transmission.TorrentTracker{
+			{Host: "b.example", Tier: 1}, {Host: "a.example", Tier: 0}, {Host: "c.example", Tier: 0},
+		}, want: "a.example"},
+	}
 
-	assert.Equal(t, []string{"a.example", "b.example"}, transmission.TrackerHosts(tor))
-	assert.NotNil(t, transmission.TrackerHosts(transmission.Torrent{}))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, transmission.MainTracker(transmission.Torrent{Trackers: tt.trackers}))
+		})
+	}
 }
 
 func TestFilterByTracker(t *testing.T) {
@@ -312,7 +325,7 @@ func TestFilterByTracker(t *testing.T) {
 
 	in := []transmission.Torrent{
 		{ID: 1, Trackers: []transmission.TorrentTracker{{Host: "a.example"}}},
-		{ID: 2, Trackers: []transmission.TorrentTracker{{Host: "b.example"}, {Host: "a.example"}}},
+		{ID: 2, Trackers: []transmission.TorrentTracker{{Host: "b.example"}, {Host: "a.example", Tier: 1}}},
 		{ID: 3},
 	}
 
@@ -321,7 +334,7 @@ func TestFilterByTracker(t *testing.T) {
 		host string
 		want []int64
 	}{
-		{name: "exact host", host: "a.example", want: []int64{1, 2}},
+		{name: "main tracker only", host: "a.example", want: []int64{1}},
 		{name: "case-insensitive", host: "B.EXAMPLE", want: []int64{2}},
 		{name: "no substring match", host: "example", want: []int64{}},
 		{name: "empty matches all", host: "", want: []int64{1, 2, 3}},

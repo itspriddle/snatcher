@@ -221,14 +221,15 @@ func labelItems(rows []transmission.Torrent) []filterItem {
 const noTrackers = "none"
 
 // trackerItems builds the tracker section from the torrents themselves: one row
-// per host, sorted, counting each torrent once however many of its tiers name
-// the host. There is no catch-all row for torrents with no tracker, because the
-// CLI's --tracker cannot select them; an empty section gets a note instead.
+// per main tracker host, sorted, so each torrent counts once and fallback
+// trackers get no row of their own. There is no catch-all row for torrents with
+// no tracker, because the CLI's --tracker cannot select them; an empty section
+// gets a note instead.
 func trackerItems(rows []transmission.Torrent) []filterItem {
 	counts := map[string]int{}
 
 	for _, t := range rows {
-		for _, host := range transmission.TrackerHosts(t) {
+		if host := transmission.MainTracker(t); host != "" {
 			counts[host]++
 		}
 	}

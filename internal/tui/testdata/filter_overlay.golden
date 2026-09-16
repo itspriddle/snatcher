@@ -19,7 +19,7 @@
 │  bttracker.debian.… 1│┃   │   Queued to seed                                           1 │                           ┃
 │  evil[31m.host      1│┃   │   Queued to verify                                         1 │                           ┃
 │  torrent.ubuntu.com 1│┃   │   Error                                                    1 │                           ┃
-│  tracker.example.n… 2│┃   │ Labels                                                       │                           ┃
+│  tracker.example.n… 1│┃   │ Labels                                                       │                           ┃
 │                      │┃   │   linux                                                    3 │                           ┃
 │                      │┃   │   seed                                                     3 │                           ┃
 │                      │┃   │   No label                                                 7 │                           ┃
@@ -27,7 +27,7 @@
 │                      │┃   │   bttracker.debian.org                                     1 │                           ┃
 │                      │┃   │   evil[31m.host                                            1 │                           ┃
 │                      │┃   │   torrent.ubuntu.com                                       1 │                           ┃
-│                      │┃   │   tracker.example.net                                      2 │                           ┃
+│                      │┃   │   tracker.example.net                                      1 │                           ┃
 │                      │┃   │                                                              │                           ┃
 │                      │┃   │ ↑/k up • ↓/j down • enter apply • f close • esc cancel       │                           ┃
 │                      │┃   ╰──────────────────────────────────────────────────────────────╯                           ┃

@@ -155,24 +155,31 @@ func SearchByName(torrents []Torrent, query string) []Torrent {
 	return out
 }
 
-// TrackerHosts returns the distinct hosts a torrent announces to, sorted. A
-// torrent listing one host in several tiers names it once, so a count of
-// torrents per host counts each torrent once. The result is non-nil.
-func TrackerHosts(t Torrent) []string {
-	hosts := make([]string, 0, len(t.Trackers))
-	for _, tr := range t.Trackers {
-		hosts = append(hosts, tr.Host)
+// MainTracker returns the host of the tracker a torrent is grouped under: the
+// first tracker in its lowest tier, or "" when it has none. Transmission
+// announces to one tracker per tier and keeps the rest as fallbacks, so
+// grouping by every listed host would count a torrent under each fallback too,
+// and the group counts would no longer add up to the torrents.
+func MainTracker(t Torrent) string {
+	if len(t.Trackers) == 0 {
+		return ""
 	}
 
-	slices.Sort(hosts)
+	main := t.Trackers[0]
+	for _, tr := range t.Trackers[1:] {
+		if tr.Tier < main.Tier {
+			main = tr
+		}
+	}
 
-	return slices.Compact(hosts)
+	return main.Host
 }
 
-// FilterByTracker returns a new slice containing the torrents announcing to
-// host, compared case-insensitively against TrackerHosts, preserving input
-// order. An empty host matches everything. The input is never mutated, and the
-// result is non-nil even when empty.
+// FilterByTracker returns a new slice containing the torrents whose
+// MainTracker is host, compared case-insensitively, preserving input order. A
+// torrent that merely lists host as a fallback does not match. An empty host
+// matches everything. The input is never mutated, and the result is non-nil
+// even when empty.
 func FilterByTracker(torrents []Torrent, host string) []Torrent {
 	if host == "" {
 		return slices.Clone(torrents)
@@ -180,7 +187,7 @@ func FilterByTracker(torrents []Torrent, host string) []Torrent {
 
 	out := make([]Torrent, 0, len(torrents))
 	for _, t := range torrents {
-		if slices.ContainsFunc(TrackerHosts(t), func(h string) bool { return strings.EqualFold(h, host) }) {
+		if main := MainTracker(t); main != "" && strings.EqualFold(main, host) {
 			out = append(out, t)
 		}
 	}

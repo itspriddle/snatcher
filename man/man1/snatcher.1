@@ -1197,14 +1197,15 @@ is any torrent with a non-zero download or upload rate, and
 is one with neither that is not stopped or errored.
 .TP
 .BR \-\-tracker " " \fIhost\fR
-Show only torrents announcing to the tracker
+Show only torrents whose main tracker is
 .I host
 (case-insensitive, exact match, no port), as named in the TUI sidebar's
-Trackers section. Each torrent's
+Trackers section. A torrent's main tracker is the first one in its lowest
+tier; a host it lists only as a fallback does not match. Each torrent's
 .B trackers
 field in
 .BR \-\-json " and " \-\-jq
-output carries its tracker hosts, never the announce URLs, which on a private
+output carries all of its tracker hosts, never the announce URLs, which on a private
 tracker embed a passkey.
 .TP
 .BR \-\-search " " \fItext\fR
