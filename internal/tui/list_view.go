@@ -65,7 +65,8 @@ type listView struct {
 	// columns are CLI field keys, in display order.
 	columns []string
 
-	// search is the `/` query. It jumps the cursor; it never hides a row.
+	// search is the `/` query. It filters the rows, exactly as the CLI's
+	// --search does, and applies after the filter and before the sort.
 	search string
 }
 
@@ -75,8 +76,10 @@ func defaultListView() listView {
 	return listView{sort: transmission.SortQueue, columns: slices.Clone(defaultColumnKeys)}
 }
 
-// apply filters and then sorts, the order `snatcher list` applies them in. The
-// search does not filter, so it is not applied here.
+// apply filters, searches, and then sorts — the order `snatcher list` applies
+// them in, so the sidebar narrows the set and `/` narrows what is left.
+// SearchByName returns everything for an empty query, so no search needs no
+// branch here.
 func (v listView) apply(all []transmission.Torrent) []transmission.Torrent {
 	rows := make([]transmission.Torrent, 0, len(all))
 
@@ -85,6 +88,8 @@ func (v listView) apply(all []transmission.Torrent) []transmission.Torrent {
 			rows = append(rows, t)
 		}
 	}
+
+	rows = transmission.SearchByName(rows, v.search)
 
 	return transmission.SortTorrents(rows, v.sort, v.reverse)
 }
@@ -180,8 +185,6 @@ func listHandlers() map[Action]handler {
 		actionFilterPickSelect: plain(Model.applyFilterPick),
 
 		actionTorrentSearch: func(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) { return m.beginSearch() },
-		actionSearchNext:    plain(func(m Model) Model { return m.searchStep(1) }),
-		actionSearchPrev:    plain(func(m Model) Model { return m.searchStep(-1) }),
 	}
 }
 

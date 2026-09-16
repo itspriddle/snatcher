@@ -162,7 +162,7 @@ func (m Model) listPlaceholder() placeholder {
 	case len(m.torrents.rows) > 0:
 		return placeholder{}
 	case len(m.torrents.all) > 0:
-		return placeholder{lines: []string{"no torrents match", "filter: " + m.torrents.listView.filter.text()}}
+		return placeholder{lines: []string{"no torrents match", m.torrents.narrowedBy()}}
 	case m.deps.Torrents != nil:
 		return placeholder{}
 	case m.client == nil:

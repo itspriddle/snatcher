@@ -147,11 +147,12 @@ them (see the ladder). This is what makes bulk actions explicit instead of
 focus-dependent, and it maps 1:1 onto `transmission.Selector`
 (ids/hashes/`--all`), so every TUI action has an exact CLI equivalent.
 
-Marks survive a sort change and a `/` search, and are **cleared when the
-filter changes** (`f`, or `enter` in the filter pane). A mark hidden by a
-filter would otherwise be acted on invisibly - and with exactly one hidden
-mark, an action would skip the cursor row without any confirmation to say so.
-The status bar's mark count is the only other tell, and it is not enough.
+Marks survive a sort change, and are **cleared whenever the visible set is
+narrowed**: a filter change (`f`, or `enter` in the filter pane) and a `/`
+search both do it. A mark hidden by either would otherwise be acted on
+invisibly - and with exactly one hidden mark, an action would skip the cursor
+row without any confirmation to say so. The status bar's mark count is the only
+other tell, and it is not enough.
 
 **A focused text input owns the keyboard.** While a text input has focus (the
 search fields, a settings field, a form in a modal) every key goes to the
@@ -282,7 +283,10 @@ Navigation (`j`/`k`, `g`/`G`, paging, `tab`/`shift-tab`, `ctrl-w`, `}`,
 - `space` - toggle mark on the cursor row (the cursor does not move)
 - `f` - filter torrents shown (modal, saves state), shown in the UI. Clears
   marks (Selection principle)
-- `/` - search/filter torrents by name; `n` / `N` - next / previous match
+- `/` - filter the torrents shown to those whose name matches, live as you
+  type. It narrows whatever the sidebar filter left, so the two compose; `enter`
+  blurs the field keeping the filter in force, and `esc` clears it (ladder rung
+  4). There is no `n`/`N`: with only matches on screen, "next match" is `j`
 - `o` - sort: fields and direction, nothing else
 - `c` - configure visible columns in list pane, nothing else
 - `a` - add torrent (file, URL, magnet link); `A` - add with options (download

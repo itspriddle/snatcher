@@ -408,10 +408,15 @@ server, and no action can hit more torrents than the confirmation stated.
   `TestColumnKeysMirrorTheCLI` rather than importing them. Right alignment is
   padding in the cell, and columns drop right to left over the user's own set,
   never the prefix cells or the name.
-- **`/` jumps, never hides.** Typing jumps to the first match; `enter` and `esc`
-  both blur keeping the text; `n`/`N` wrap; a second esc clears. The search and
-  the filter share a one-line footer inside the list pane, with a `(k/n)` match
-  count. Marks survive a search.
+- **`/` filters, never jumps.** Typing narrows the rows live, through the same
+  `listView.apply` seam the sidebar filter uses and in the CLI's own order
+  (filter, search, sort), so `transmission.SearchByName` decides a match for
+  both. `enter` and `esc` both blur keeping the text; a second esc clears. The
+  search and the filter share a one-line footer inside the list pane, with a
+  `(n)` row count. Editing the query clears marks, as a filter change does;
+  clearing the search keeps them, since widening the rows can hide nothing and
+  the ladder's next rung is what drops them. `n`/`N` are retired and left
+  unbound.
 - **One filter at a time, and it clears marks.** A status or a label (including
   "No label"), from the sidebar or the `f` modal, which is the sidebar's own pane
   in a box. Counts and used space come from the unfiltered set, and a label row
@@ -619,9 +624,11 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
 - Does `space` advance the cursor after marking? Spec says no (k9s-style);
   revisit if bulk marking feels slow in practice.
 - ~~Do marks survive a filter or sort change, or are they cleared?~~
-  **Decided** in `docs/vision.md` (Selection principle): marks survive sort
-  and `/` search, and clear on a filter change - a single hidden mark would
-  otherwise silently displace the cursor row with no confirmation.
+  **Decided** in `docs/vision.md` (Selection principle): marks survive sort, and
+  clear whenever the visible set is narrowed - a filter change or a `/` search -
+  since a single hidden mark would otherwise silently displace the cursor row
+  with no confirmation. **Revised** when `/` became a filter: it hides rows now,
+  so it clears marks too.
 - ~~Poll cadence vs. server load: one interval for everything, or a cheap
   `PollFields` tick for the list plus a slower full refresh?~~
   **Decided** in T4: the full record and stats every tick, the session and

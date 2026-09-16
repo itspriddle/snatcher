@@ -14,8 +14,8 @@ import (
 // footerGap separates the footer's filter and search parts.
 const footerGap = "   "
 
-// matchCountWidth is room for the widest match count the search input's width
-// leaves space for, " (999/999)".
+// matchCountWidth is room for the widest row count the search input's width
+// leaves space for, " (999999)".
 const matchCountWidth = 10
 
 // newSearchInput builds the `/` field with the same readline keymap as the
@@ -29,50 +29,32 @@ func newSearchInput(st Styles) textinput.Model {
 	return input
 }
 
-// matchIndexes are the rows whose name contains the search, case-insensitively,
-// in row order. The search never hides a row; these are the rows it jumps
-// between.
-func (w torrentsWindow) matchIndexes() []int {
-	if w.listView.search == "" {
-		return nil
-	}
-
-	query := strings.ToLower(w.listView.search)
-
-	var out []int
-
-	for i, t := range w.rows {
-		if strings.Contains(strings.ToLower(t.Name), query) {
-			out = append(out, i)
-		}
-	}
-
-	return out
-}
-
-// matchCount is "(k/n)": the cursor row's place among the matches, 0 when the
-// cursor is not on one, or "(0)" when nothing matches.
-func (w torrentsWindow) matchCount() string {
-	matches := w.matchIndexes()
-	if len(matches) == 0 {
-		return "(0)"
-	}
-
-	ordinal := 0
-
-	for k, i := range matches {
-		if w.sel.active && i == w.sel.cursor {
-			ordinal = k + 1
-		}
-	}
-
-	return fmt.Sprintf("(%d/%d)", ordinal, len(matches))
+// rowCount is "(12)": how many rows the search left. The rows are already the
+// searched set, so this is simply their number.
+func (w torrentsWindow) rowCount() string {
+	return fmt.Sprintf("(%d)", len(w.rows))
 }
 
 // searchStatus is the search as the footer reads while the field is blurred:
-// "search: foo (2/7)".
+// "search: foo (7)".
 func (w torrentsWindow) searchStatus() string {
-	return "search: " + output.SanitizeTerminal(w.listView.search) + " " + w.matchCount()
+	return "search: " + output.SanitizeTerminal(w.listView.search) + " " + w.rowCount()
+}
+
+// narrowedBy names whatever emptied the list — the filter, the search, or both
+// — so the empty table can say why it is empty rather than just that it is.
+func (w torrentsWindow) narrowedBy() string {
+	var parts []string
+
+	if w.listView.filter.set() {
+		parts = append(parts, "filter: "+w.listView.filter.text())
+	}
+
+	if w.listView.search != "" {
+		parts = append(parts, "search: "+output.SanitizeTerminal(w.listView.search))
+	}
+
+	return strings.Join(parts, footerGap)
 }
 
 // footerView draws the footer: the filter, and the search as a live input while
@@ -88,7 +70,7 @@ func (w torrentsWindow) footerView(st Styles) string {
 
 	switch {
 	case w.searching:
-		parts = append(parts, st.Muted.Render(w.matchCount()+" ")+w.searchInput.View())
+		parts = append(parts, st.Muted.Render(w.rowCount()+" ")+w.searchInput.View())
 	case w.listView.search != "":
 		parts = append(parts, st.Muted.Render(w.searchStatus()))
 	}
@@ -126,7 +108,9 @@ func (m Model) searchInputWidth() int {
 }
 
 // searchForward hands a message to the field. When it changes the text, the
-// cursor jumps to the first match from the top.
+// rows are narrowed to the matches as they are typed. A key that leaves the
+// text alone — a cursor move inside the field — changes nothing, so it does not
+// disturb the marks.
 func (m Model) searchForward(msg tea.Msg) (Model, tea.Cmd) {
 	input, cmd := m.torrents.searchInput.Update(msg)
 	m.torrents.searchInput = input
@@ -135,13 +119,28 @@ func (m Model) searchForward(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	m.torrents.listView.search = input.Value()
+	// Editing the query narrows the rows, so it clears marks for the reason
+	// applyFilterItem does: a mark the search has hidden would be acted on
+	// invisibly, and with exactly one hidden mark an action would skip the cursor
+	// row with nothing to say so.
+	m.torrents.sel = m.torrents.sel.clearMarks()
 
-	if matches := m.torrents.matchIndexes(); len(matches) > 0 {
-		m = m.jumpTo(matches[0])
-	}
+	return m.setSearch(input.Value()), cmd
+}
 
-	return m, cmd
+// setSearch installs a query and rederives the rows through setView, so the
+// cursor follows its torrent by ID and the sidebar's counts stay on the
+// unfiltered set.
+//
+// It leaves marks alone: clearing them belongs to whoever narrows the rows, and
+// widening them can hide nothing.
+func (m Model) setSearch(query string) Model {
+	v := m.torrents.listView
+	v.search = query
+
+	m.torrents = m.torrents.setView(v, m.icons)
+
+	return m
 }
 
 // searchBlur blurs the field, keeping its text: the search is the text, and n
@@ -153,63 +152,14 @@ func (m Model) searchBlur() Model {
 	return m.resize(m.width, m.height)
 }
 
-// clearSearch is the ladder's "clear search" rung.
+// clearSearch is the ladder's "clear search" rung: the rows widen back to the
+// filtered set. It resizes because an empty search leaves no footer.
+//
+// Marks survive it. Widening hides nothing, so the rule that clears them does
+// not apply, and marks made while the search was narrow are exactly what the
+// next rung ("clear marks") is there to drop.
 func (m Model) clearSearch() Model {
-	m.torrents.listView.search = ""
 	m.torrents.searchInput.SetValue("")
 
-	return m.syncTorrents().resize(m.width, m.height)
-}
-
-// jumpTo moves the cursor to a row, keeping the table and the selection in step.
-func (m Model) jumpTo(i int) Model {
-	m.torrents.sel = m.torrents.sel.setCursor(i)
-	m.torrents.list.table.SetCursor(i)
-
-	return m.syncTorrents()
-}
-
-// searchStep is n (delta 1) and N (delta -1): the next or previous match from
-// the cursor, wrapping.
-func (m Model) searchStep(delta int) Model {
-	w := m.torrents
-
-	if w.listView.search == "" {
-		m.toast = "no search"
-
-		return m
-	}
-
-	matches := w.matchIndexes()
-	if len(matches) == 0 {
-		m.toast = "no match for " + w.listView.search
-
-		return m
-	}
-
-	return m.jumpTo(nextMatch(matches, w.sel.cursor, w.sel.active, delta))
-}
-
-// nextMatch picks the match after (or before) the cursor, wrapping. With no
-// cursor it starts from the matching end.
-func nextMatch(matches []int, cursor int, active bool, delta int) int {
-	first, last := matches[0], matches[len(matches)-1]
-
-	if delta > 0 {
-		for _, i := range matches {
-			if active && i > cursor {
-				return i
-			}
-		}
-
-		return first
-	}
-
-	for k := len(matches) - 1; k >= 0; k-- {
-		if active && matches[k] < cursor {
-			return matches[k]
-		}
-	}
-
-	return last
+	return m.setSearch("").resize(m.width, m.height)
 }
