@@ -18,7 +18,8 @@ import (
 // one theme name and one light/dark answer — and the resulting Styles are passed
 // explicitly into every view function.
 //
-// Three palettes fill these slots, behind themeFor: default, dracula, and nord.
+// Four palettes fill these slots, behind themeFor: default, dracula, nord, and
+// solarized.
 type Theme struct {
 	// Text is the default foreground.
 	Text color.Color
@@ -67,19 +68,22 @@ func themeFor(name string, isDark bool) Theme {
 		return draculaTheme(isDark)
 	case themeNord:
 		return nordTheme(isDark)
+	case themeSolarized:
+		return solarizedTheme(isDark)
 	default:
 		// "default", and any name the validator somehow let through.
 		return defaultTheme()
 	}
 }
 
-// The two named palettes, matching config's clientThemes. They are spelled here
+// The named palettes, matching config's clientThemes. They are spelled here
 // rather than imported because internal/tui imports neither internal/config nor
 // internal/commands; the name arrives through Deps already validated. "default"
 // needs no constant — it is themeFor's fallthrough.
 const (
-	themeDracula = "dracula"
-	themeNord    = "nord"
+	themeDracula   = "dracula"
+	themeNord      = "nord"
+	themeSolarized = "solarized"
 )
 
 // defaultTheme is the terminal's own ANSI-16 palette, identical for light and
@@ -89,8 +93,8 @@ const (
 // is one of the sixteen colors the terminal already resolves to whatever the
 // user's color scheme says. That is why it needs no light/dark pick: the
 // terminal has already made both decisions, consistently with every other
-// program the user runs. dracula and nord are the opt-in fixed looks, for a
-// user who wants snatcher to look like snatcher.
+// program the user runs. dracula, nord, and solarized are the opt-in fixed
+// looks, for a user who wants snatcher to look like snatcher.
 func defaultTheme() Theme {
 	return Theme{
 		Text:       lipgloss.NoColor{},
@@ -141,6 +145,27 @@ func nordTheme(isDark bool) Theme {
 		StatusBar:  pick(lipgloss.Color("#e5e9f0"), lipgloss.Color("#3b4252")),
 		StatusText: pick(lipgloss.Color("#2e3440"), lipgloss.Color("#d8dee9")),
 		Warn:       pick(lipgloss.Color("#d08770"), lipgloss.Color("#ebcb8b")),
+	}
+}
+
+// solarizedTheme is Ethan Schoonover's Solarized, dark and light. Text is one
+// step brighter than Solarized's canonical body tone (base1 over base0 on dark,
+// base01 over base00 on light), and Muted one step brighter than its canonical
+// comment tone, so help text and table headers stay legible on base03.
+func solarizedTheme(isDark bool) Theme {
+	pick := lipgloss.LightDark(isDark)
+
+	return Theme{
+		Text:       pick(lipgloss.Color("#586e75"), lipgloss.Color("#93a1a1")),
+		Muted:      pick(lipgloss.Color("#839496"), lipgloss.Color("#657b83")),
+		Accent:     lipgloss.Color("#268bd2"),
+		Loud:       lipgloss.Color("#dc322f"),
+		Cursor:     pick(lipgloss.Color("#eee8d5"), lipgloss.Color("#073642")),
+		CursorText: pick(lipgloss.Color("#073642"), lipgloss.Color("#eee8d5")),
+		Border:     pick(lipgloss.Color("#93a1a1"), lipgloss.Color("#586e75")),
+		StatusBar:  pick(lipgloss.Color("#eee8d5"), lipgloss.Color("#073642")),
+		StatusText: pick(lipgloss.Color("#586e75"), lipgloss.Color("#93a1a1")),
+		Warn:       pick(lipgloss.Color("#cb4b16"), lipgloss.Color("#b58900")),
 	}
 }
 

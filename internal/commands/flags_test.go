@@ -72,7 +72,7 @@ func TestAddGlobalFlagsRegistersAppearanceFlagsPersistently(t *testing.T) {
 
 	// The usage text names the accepted themes, so --help answers what --theme
 	// takes without a trip to the man page.
-	assert.Equal(t, "color theme (default, dracula, nord)", root.PersistentFlags().Lookup(flagTheme).Usage)
+	assert.Equal(t, "color theme (default, dracula, nord, solarized)", root.PersistentFlags().Lookup(flagTheme).Usage)
 }
 
 // globalFlagCmd builds a standalone command carrying the tree-wide flags and
@@ -209,15 +209,15 @@ func TestOverridesRejectInvalidValues(t *testing.T) {
 		{
 			name:     "flag theme",
 			override: themeOverride,
-			args:     []string{"--theme", "solarized"},
-			wantErr:  []string{"--theme", `"solarized"`, "not a known theme", "dracula"},
+			args:     []string{"--theme", "monokai"},
+			wantErr:  []string{"--theme", `"monokai"`, "not a known theme", "dracula"},
 		},
 		{
 			name:     "env theme",
 			override: themeOverride,
 			envName:  envTheme,
-			envValue: "solarized",
-			wantErr:  []string{envTheme, `"solarized"`, "not a known theme", "dracula"},
+			envValue: "monokai",
+			wantErr:  []string{envTheme, `"monokai"`, "not a known theme", "dracula"},
 		},
 		{
 			name:     "env nerd font",

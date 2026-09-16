@@ -102,7 +102,7 @@ func TestClientConfigAdapterCarriesEveryField(t *testing.T) {
 
 	assert.Equal(t, tui.ClientEntry{
 		Key: "client.theme", Value: "nord", Source: "env",
-		Allowed: []string{"default", "dracula", "nord"}, SetBy: envTheme,
+		Allowed: []string{"default", "dracula", "nord", "solarized"}, SetBy: envTheme,
 	}, byKey["client.theme"])
 	assert.Equal(t, tui.ClientEntry{Key: "client.poll_interval", Value: "30s", Source: "config"}, byKey["client.poll_interval"])
 

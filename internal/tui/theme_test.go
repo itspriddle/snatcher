@@ -3,6 +3,7 @@ package tui
 import (
 	"image/color"
 	"regexp"
+	"strings"
 	"testing"
 	"unicode"
 	"unicode/utf8"
@@ -19,9 +20,9 @@ import (
 
 // themeNames is every name --theme and client.theme accept, plus one that is
 // neither, since themeFor must draw something for a name it does not know.
-var themeNames = []string{"default", themeDracula, themeNord}
+var themeNames = []string{"default", themeDracula, themeNord, themeSolarized}
 
-// TestEveryThemeNameIsADistinctPalette checks the three names actually differ.
+// TestEveryThemeNameIsADistinctPalette checks the names actually differ.
 //
 // This is the assertion T1 could not make: all three names resolved to one
 // placeholder palette, so "--theme nord" was accepted, stored, and resolved and
@@ -45,7 +46,7 @@ func TestEveryThemeNameIsADistinctPalette(t *testing.T) {
 // both arrangements, which is what stops a light terminal from rendering
 // Dracula's near-white text on its own near-white background.
 func TestNamedThemesDifferBetweenLightAndDark(t *testing.T) {
-	for _, name := range []string{themeDracula, themeNord} {
+	for _, name := range []string{themeDracula, themeNord, themeSolarized} {
 		assert.NotEqualf(t, themeFor(name, true), themeFor(name, false), "%q has one arrangement for both backgrounds", name)
 	}
 }
@@ -74,7 +75,7 @@ func TestDefaultThemeIsTheTerminalPalette(t *testing.T) {
 // catch draws rather than panicking or rendering an empty palette. The TUI must
 // not fail to draw over a config value.
 func TestUnknownThemeNameFallsBackToTheDefault(t *testing.T) {
-	for _, name := range []string{"", "DRACULA", "solarized"} {
+	for _, name := range []string{"", "DRACULA", "monokai"} {
 		assert.Equal(t, themeFor("default", true), themeFor(name, true))
 	}
 }
@@ -206,9 +207,34 @@ func TestMonochromeIsAProfileQuestion(t *testing.T) {
 	}
 }
 
-// reverseSGR matches the reverse-video attribute, which is what carries the
-// cursor row, the selected table row, and the status bar once color cannot.
-var reverseSGR = regexp.MustCompile(`\x1b\[(?:\d+;)*7(?:;\d+)*m`)
+// sgrSeq matches one SGR escape sequence and captures its parameters.
+var sgrSeq = regexp.MustCompile(`\x1b\[([\d;]*)m`)
+
+// hasReverse reports whether s sets the reverse-video attribute, which is what
+// carries the cursor row, the selected table row, and the status bar once color
+// cannot. It walks the SGR parameters rather than matching a bare 7, because a
+// truecolor argument such as 48;2;7;54;66 carries a 7 that is a color channel.
+func hasReverse(s string) bool {
+	for _, m := range sgrSeq.FindAllStringSubmatch(s, -1) {
+		params := strings.Split(m[1], ";")
+
+		for i := 0; i < len(params); i++ {
+			switch params[i] {
+			case "7":
+				return true
+			case "38", "48", "58":
+				// Skip the color's own arguments: 5;n or 2;r;g;b.
+				if i+1 < len(params) && params[i+1] == "5" {
+					i += 2
+				} else if i+1 < len(params) && params[i+1] == "2" {
+					i += 4
+				}
+			}
+		}
+	}
+
+	return false
+}
 
 // TestMonochromeStylesTradeColorForReverseVideo checks the three styles whose
 // whole job was a background color still say something when they cannot set
@@ -225,8 +251,8 @@ func TestMonochromeStylesTradeColorForReverseVideo(t *testing.T) {
 			"StatusBar":      {mono.StatusBar, colored.StatusBar},
 		} {
 			t.Run(name+"/"+label, func(t *testing.T) {
-				assert.Regexp(t, reverseSGR, pair[0].Render("x"), "monochrome must fall back to reverse video")
-				assert.NotRegexp(t, reverseSGR, pair[1].Render("x"), "reverse video is the monochrome fallback, not a color style")
+				assert.Truef(t, hasReverse(pair[0].Render("x")), "monochrome must fall back to reverse video: %q", pair[0].Render("x"))
+				assert.Falsef(t, hasReverse(pair[1].Render("x")), "%q: reverse video is the monochrome fallback, not a color style", pair[1].Render("x"))
 			})
 		}
 

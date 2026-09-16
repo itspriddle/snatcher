@@ -143,7 +143,7 @@ func TestSettingsSelect(t *testing.T) {
 	assert.Equal(t, "default", canceled.settings.current().value)
 
 	assert.Equal(t, themeDracula, press(m, "down").settings.current().value)
-	assert.Equal(t, themeNord, press(m, "up").settings.current().value, "up wraps")
+	assert.Equal(t, themeSolarized, press(m, "up").settings.current().value, "up wraps")
 
 	closedByTab := press(opened, "tab")
 	assert.Equal(t, modeNav, closedByTab.settings.mode)

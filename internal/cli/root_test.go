@@ -48,7 +48,7 @@ func emptyConfig(t *testing.T) string {
 func TestRootChecksAnAppearanceSettingOnlyWhereItIsRead(t *testing.T) {
 	cfgPath := emptyConfig(t)
 
-	t.Setenv(envTheme, "solarized")
+	t.Setenv(envTheme, "monokai")
 
 	t.Run("a command that never reads it", func(t *testing.T) {
 		_, err := runRoot(t, "server", "list", "--config", cfgPath)
@@ -67,7 +67,7 @@ func TestRootChecksAnAppearanceSettingOnlyWhereItIsRead(t *testing.T) {
 	})
 
 	t.Run("the flag rung is equally narrow", func(t *testing.T) {
-		_, err := runRoot(t, "server", "list", "--config", cfgPath, "--theme", "solarized")
+		_, err := runRoot(t, "server", "list", "--config", cfgPath, "--theme", "monokai")
 		assert.NoError(t, err)
 	})
 

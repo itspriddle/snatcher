@@ -24,7 +24,7 @@ const (
 
 // builtinThemes are the theme choices offered before Deps.Config has answered
 // with its own list.
-var builtinThemes = []string{"default", themeDracula, themeNord}
+var builtinThemes = []string{"default", themeDracula, themeNord, themeSolarized}
 
 // settingsMode is what the keyboard is doing inside the settings window.
 type settingsMode int
