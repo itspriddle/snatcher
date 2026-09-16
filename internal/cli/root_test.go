@@ -106,12 +106,55 @@ func TestRootChecksAnAppearanceSettingOnlyWhereItIsRead(t *testing.T) {
 	})
 }
 
-// TestRootAcceptsValidGlobalSettings checks the two appearance flags are
+// TestRootChecksColorDepthOnlyWhereItIsRead is the same blast-radius pin for
+// SNATCHER_COLOR_DEPTH and --color-depth.
+func TestRootChecksColorDepthOnlyWhereItIsRead(t *testing.T) {
+	cfgPath := emptyConfig(t)
+
+	t.Setenv(envColorDepth, "lots")
+
+	t.Run("a command that never reads it", func(t *testing.T) {
+		_, err := runRoot(t, "server", "list", "--config", cfgPath)
+		assert.NoError(t, err)
+	})
+
+	t.Run("the flag rung is equally narrow", func(t *testing.T) {
+		_, err := runRoot(t, "server", "list", "--config", cfgPath, "--color-depth", "lots")
+		assert.NoError(t, err)
+	})
+
+	t.Run("config set repairs the file", func(t *testing.T) {
+		_, err := runRoot(t, "config", "set", "client.color_depth", "256", "--config", cfgPath)
+		require.NoError(t, err)
+
+		stored, readErr := os.ReadFile(cfgPath)
+		require.NoError(t, readErr)
+		assert.Contains(t, string(stored), `"color_depth": "256"`)
+	})
+
+	t.Run("a command that does read it still rejects the value", func(t *testing.T) {
+		_, err := runRoot(t, "config", "get", "client.color_depth", "--config", cfgPath)
+		require.Error(t, err)
+
+		assert.Contains(t, err.Error(), envColorDepth)
+		assert.Contains(t, err.Error(), "not a color depth")
+	})
+
+	t.Run("and names the flag when the flag supplied it", func(t *testing.T) {
+		_, err := runRoot(t, "config", "list", "--config", cfgPath, "--color-depth", "8")
+		require.Error(t, err)
+
+		assert.Contains(t, err.Error(), "--color-depth")
+		assert.Contains(t, err.Error(), "not a color depth")
+	})
+}
+
+// TestRootAcceptsValidGlobalSettings checks the appearance flags are
 // accepted at every depth even though nothing renders them yet, so passing one
 // is never an error on a command that ignores it. Both environment companions
 // are already out of the way — TestMain unsets them for the whole package.
 func TestRootAcceptsValidGlobalSettings(t *testing.T) {
-	out, err := runRoot(t, "--theme", "dracula", "--no-nerd-font", "--version")
+	out, err := runRoot(t, "--theme", "dracula", "--no-nerd-font", "--color-depth", "16", "--version")
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, out)

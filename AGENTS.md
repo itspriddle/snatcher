@@ -37,6 +37,7 @@ internal/transmission/    # domain model (types, Selector, transforms, sentinels
 internal/transmission/rpc # typed Transmission RPC client (Client→Protocol→Transport)
 internal/prowlarr/        # typed Prowlarr REST client (Transport→Client→domain types)
 internal/config/          # non-secret config (named servers + types, JSON, XDG path)
+internal/theme/           # .theme file parser, embedded builtins, user theme registry
 internal/secrets/         # passwords and Prowlarr API keys (OS keyring, or file store)
 internal/clipboard/       # native clipboard writer (pbcopy/wl-copy/xclip/xsel) for TUI yanks
 internal/browser/         # native URL opener (open/xdg-open, http(s) only) for the TUI's O and P
@@ -80,14 +81,15 @@ Layers, outermost to innermost:
   functions `config list` and `config set` use.
 - **`internal/tui`** — the terminal UI, launched by `internal/cli` when
   `snatcher` is run bare on a terminal. It depends on `transmission`,
-  `prowlarr`, and `output` and **never imports `commands`**: everything it needs
-  arrives through `tui.Deps`, built from the `commands.Dialer` /
+  `prowlarr`, `output`, and `theme` and **never imports `commands`**:
+  everything it needs arrives through `tui.Deps`, built from the `commands.Dialer` /
   `commands.ProwlarrDialer` / `commands.Servers` / `commands.ProwlarrServers` /
   `commands.ResolveClientSettings` / `commands.ClientConfigStore` seam — the
   pickers' lists as `Deps.Servers` and `Deps.ProwlarrServers`, the Prowlarr
   dialer as `Deps.DialProwlarr`, the native clipboard and browser as
   `Deps.Clipboard` and `Deps.OpenURL` (both nil over SSH), the config store as
-  `Deps.Config`, the `tui.ClientConfig` store the settings window reads and
+  `Deps.Config`, the theme lookup (`commands.ThemeLookup`) as `Deps.Themes`,
+  the `tui.ClientConfig` store the settings window reads and
   writes client settings through (adapted in `internal/cli`, since neither
   package imports the other).
   It is handed the *dialer*, not a dialed client, so switching servers
@@ -209,10 +211,12 @@ per-invocation override is type-scoped: `SNATCHER_PASSWORD` applies only to a
 Transmission server and `SNATCHER_API_KEY` only to a Prowlarr one, and neither
 is ever consulted for the other.
 
-`config.json` is trusted, operator-owned input. The `validateURL` userinfo guard
-(rejecting embedded `user:pass@` credentials) applies only at `server add` time;
-URLs loaded from a hand-edited config are used as-is, with no load-time
-re-validation.
+`config.json` is trusted, operator-owned input, and so are the `themes/*.theme`
+files beside it (`internal/theme`, a leaf package both `commands` and `tui`
+import): a broken one is skipped with a warning unless it is the selected
+theme. The `validateURL` userinfo guard (rejecting embedded `user:pass@`
+credentials) applies only at `server add` time; URLs loaded from a hand-edited
+config are used as-is, with no load-time re-validation.
 
 Adding a command: create a file in `internal/commands`, register it in
 `internal/cli/root.go`, then regenerate `.surface` (see below).

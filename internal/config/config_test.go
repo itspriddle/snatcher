@@ -521,6 +521,7 @@ func TestSaveLoadRoundTripsEveryClientKey(t *testing.T) {
 
 	want := Client{
 		Theme:        ptr("dracula"),
+		ColorDepth:   ptr("16"),
 		NerdFont:     ptr(false),
 		PollInterval: ptr("1m30s"),
 		ListColumns:  ptr([]string{"id", "name", "ratio"}),
@@ -541,6 +542,7 @@ func TestSaveWritesClientKeysWithTheirNaturalJSONTypes(t *testing.T) {
 	cfg := Config{Client: Client{
 		Theme:        ptr("nord"),
 		NerdFont:     ptr(false),
+		ColorDepth:   ptr("256"),
 		PollInterval: ptr("5s"),
 		ListColumns:  ptr([]string{"id", "name"}),
 		ListSort:     ptr("queue"),
@@ -551,6 +553,7 @@ func TestSaveWritesClientKeysWithTheirNaturalJSONTypes(t *testing.T) {
 	client := clientObject(t, path)
 	assert.Equal(t, "nord", client["theme"])
 	assert.Equal(t, false, client["nerd_font"])
+	assert.Equal(t, "256", client["color_depth"])
 	assert.Equal(t, "5s", client["poll_interval"])
 	assert.Equal(t, []any{"id", "name"}, client["list_columns"])
 	assert.Equal(t, "queue", client["list_sort"])

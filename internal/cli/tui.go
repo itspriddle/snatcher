@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -42,11 +43,20 @@ func launchTUI(cmd *cobra.Command) error {
 		return err
 	}
 
+	// A theme file that does not parse, and is not the selected theme, is not
+	// worth refusing to start over. It is said here, before the alt screen,
+	// where it can be read and copied.
+	for _, w := range settings.Warnings {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+	}
+
 	return tui.Run(cmd.Context(), tui.Deps{
 		Dial:         dialer(commands.Dialer(cmd)),
 		Servers:      servers(commands.Servers(cmd)),
 		Config:       clientConfig{store: commands.ClientConfigStore(cmd)},
 		Theme:        settings.Theme,
+		Themes:       commands.ThemeLookup(cmd),
+		ColorDepth:   settings.ColorDepth,
 		NerdFont:     settings.NerdFont,
 		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,

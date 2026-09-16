@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -41,15 +44,21 @@ const (
 const (
 	keyTheme        = "client.theme"
 	keyNerdFont     = "client.nerd_font"
+	keyColorDepth   = "client.color_depth"
 	keyPollInterval = "client.poll_interval"
 	keyListColumns  = "client.list_columns"
 	keyListSort     = "client.list_sort"
 	keyListReverse  = "client.list_reverse"
 )
 
-// clientThemes lists every valid client.theme value. It comes from
-// docs/vision.md; a theme added by the TUI grows this list and nothing else.
-var clientThemes = []string{"default", "dracula", "nord", "solarized"}
+// colorDepths lists every valid client.color_depth value. auto keeps the
+// profile the terminal is detected as; the rest override it (see
+// tui.effectiveProfile, which spells the same four under a pinning test).
+var colorDepths = []string{"auto", "truecolor", "256", "16"}
+
+// themesDirName is the directory beside the config file that holds the
+// operator's own .theme files.
+const themesDirName = "themes"
 
 const (
 	// minPollInterval and maxPollInterval bound client.poll_interval. The floor
@@ -100,7 +109,11 @@ type clientKeyDef struct {
 	// nil — a key whose JSON type is its only constraint names alwaysValid, so
 	// that "nothing to check here" is a decision on the record rather than an
 	// omission.
-	validate func(any) error
+	//
+	// configPath is the --config value in force (empty for the default path).
+	// Only client.theme reads it: the valid themes include the files in the
+	// themes directory beside that config file.
+	validate func(configPath string, value any) error
 
 	// override resolves the key from the two rungs above the config file — a
 	// command-line flag, then an environment variable — for the invocation cmd
@@ -108,7 +121,7 @@ type clientKeyDef struct {
 	// the file (or the default) to settle the key.
 	//
 	// A nil override means the key has no rungs above the file at all, which is
-	// true of every key but the two the TUI's appearance depends on: a setting
+	// true of every key but the three the TUI's appearance depends on: a setting
 	// worth a global flag is one worth overriding for a single invocation, and
 	// the rest are changed with "config set".
 	override func(*cobra.Command) (*clientOverride, error)
@@ -134,6 +147,14 @@ var clientKeyRegistry = []clientKeyDef{
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.NerdFont, v) },
 		validate: alwaysValid,
 		override: nerdFontOverride,
+	},
+	{
+		key:      keyColorDepth,
+		def:      "auto",
+		accessor: func(c config.Client) (any, bool) { return clientValue(c.ColorDepth) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ColorDepth, v) },
+		validate: validateColorDepth,
+		override: colorDepthOverride,
 	},
 	{
 		key:      keyPollInterval,
@@ -257,24 +278,70 @@ func typedClientValue[T any](value any) (T, error) {
 // — the two bools, where Load has already rejected everything that is not one.
 // It is named explicitly rather than left nil so the registry cannot grow a key
 // that silently skips validation.
-func alwaysValid(any) error { return nil }
+func alwaysValid(string, any) error { return nil }
 
-// validateTheme accepts one of the known theme names.
-func validateTheme(value any) error {
+// validateTheme accepts a builtin theme or a theme file in the themes directory
+// beside the config file at configPath. Names match exactly, as the file
+// system's stems do. A selected theme file that does not parse is its parse
+// error, naming the file and line, rather than "not a known theme".
+func validateTheme(configPath string, value any) error {
 	name, err := typedClientValue[string](value)
 	if err != nil {
 		return err
 	}
 
-	if slices.Contains(clientThemes, name) {
+	reg, err := themeRegistry(configPath)
+	if err != nil {
+		return err
+	}
+
+	_, err = reg.Lookup(name)
+	if errors.Is(err, theme.ErrUnknown) {
+		return fmt.Errorf("%q is not a known theme: valid themes are %s", name, strings.Join(reg.Names(), ", "))
+	}
+
+	return err
+}
+
+// validateColorDepth accepts one of the colorDepths, exactly.
+func validateColorDepth(_ string, value any) error {
+	depth, err := typedClientValue[string](value)
+	if err != nil {
+		return err
+	}
+
+	if slices.Contains(colorDepths, depth) {
 		return nil
 	}
 
-	return fmt.Errorf("%q is not a known theme: valid themes are %s", name, strings.Join(clientThemes, ", "))
+	return fmt.Errorf("%q is not a color depth: valid depths are %s", depth, strings.Join(colorDepths, ", "))
+}
+
+// themesDir is the directory the operator's theme files live in: themes/ beside
+// the config file, so --config moves it along with the file.
+func themesDir(configPath string) (string, error) {
+	path, err := resolveConfigPath(configPath)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(filepath.Dir(path), themesDirName), nil
+}
+
+// themeRegistry loads the builtin themes and the theme files beside the config
+// file at configPath. It is read fresh on every call, so a file added
+// mid-session is seen by the next lookup.
+func themeRegistry(configPath string) (theme.Registry, error) {
+	dir, err := themesDir(configPath)
+	if err != nil {
+		return theme.Registry{}, err
+	}
+
+	return theme.Load(dir)
 }
 
 // validatePollInterval accepts Go duration syntax within the documented bounds.
-func validatePollInterval(value any) error {
+func validatePollInterval(_ string, value any) error {
 	raw, err := typedClientValue[string](value)
 	if err != nil {
 		return err
@@ -295,7 +362,7 @@ func validatePollInterval(value any) error {
 // validateListColumns accepts a non-empty list of distinct list columns. Keys
 // are matched case-insensitively after trimming, exactly as --fields matches
 // them, so a config value and a flag value accept the same spellings.
-func validateListColumns(value any) error {
+func validateListColumns(_ string, value any) error {
 	columns, err := typedClientValue[[]string](value)
 	if err != nil {
 		return err
@@ -323,7 +390,7 @@ func validateListColumns(value any) error {
 // validateListSort accepts any sort field the list command accepts. The error
 // comes from transmission.ParseSortField, which already names the value and the
 // valid set.
-func validateListSort(value any) error {
+func validateListSort(_ string, value any) error {
 	name, err := typedClientValue[string](value)
 	if err != nil {
 		return err
@@ -340,8 +407,8 @@ func validateListSort(value any) error {
 // and the config file so a rejection points at what to fix. A stored value that
 // fails is never quietly swapped for the default: an operator who typed a theme
 // wrong should hear about it, not wonder why their setting does nothing.
-func validateClientValue(def clientKeyDef, value any) error {
-	if err := def.validate(value); err != nil {
+func validateClientValue(def clientKeyDef, configPath string, value any) error {
+	if err := def.validate(configPath, value); err != nil {
 		return fmt.Errorf("invalid config value for %s: %w", def.key, err)
 	}
 
@@ -356,13 +423,13 @@ func validateClientValue(def clientKeyDef, value any) error {
 //
 // Both failures name the key, the offending value, and what is accepted, so a
 // typo is a message an operator can act on.
-func parseClientValue(def clientKeyDef, raw string) (any, error) {
+func parseClientValue(def clientKeyDef, configPath, raw string) (any, error) {
 	value, err := parseClientLiteral(def, raw)
 	if err != nil {
 		return nil, fmt.Errorf("invalid config value for %s: %w", def.key, err)
 	}
 
-	if err := validateClientValue(def, value); err != nil {
+	if err := validateClientValue(def, configPath, value); err != nil {
 		return nil, err
 	}
 
@@ -458,13 +525,13 @@ func formatClientValue(v any) string {
 // This is the bottom two rungs only. The write commands report through it
 // deliberately: "config set" describes the file it just wrote, so a --theme in
 // force for that invocation cannot be mistaken for something that was persisted.
-func resolveStoredClientKey(def clientKeyDef, cfg config.Config) (configEntry, error) {
+func resolveStoredClientKey(def clientKeyDef, cfg config.Config, configPath string) (configEntry, error) {
 	value, ok := def.accessor(cfg.Client)
 	if !ok {
 		return configEntry{Key: def.key, Value: def.def, Source: sourceDefault}, nil
 	}
 
-	if err := validateClientValue(def, value); err != nil {
+	if err := validateClientValue(def, configPath, value); err != nil {
 		return configEntry{}, err
 	}
 
@@ -487,7 +554,7 @@ func resolveClientSetting(cmd *cobra.Command, def clientKeyDef, cfg config.Confi
 		}
 	}
 
-	return resolveStoredClientKey(def, cfg)
+	return resolveStoredClientKey(def, cfg, configFlag(cmd))
 }
 
 // clientSetting resolves one registry key for this invocation and returns its
@@ -569,7 +636,7 @@ func writeClientKey(def clientKeyDef, configPath string, value any) (configEntry
 		return configEntry{}, err
 	}
 
-	return resolveStoredClientKey(def, cfg)
+	return resolveStoredClientKey(def, cfg, configPath)
 }
 
 // reportClientKey renders one written key in the mode the flags ask for, with
@@ -781,7 +848,7 @@ func newConfigSetCmd() *cobra.Command {
 				return err
 			}
 
-			value, err := parseClientValue(def, args[1])
+			value, err := parseClientValue(def, configFlag(cmd), args[1])
 			if err != nil {
 				return err
 			}

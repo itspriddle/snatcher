@@ -167,7 +167,7 @@ func TestSettingsLoadingKeepsClientTabsUsable(t *testing.T) {
 
 	require.Equal(t, stateLoading, m.settings.state)
 
-	assert.Equal(t, themeDracula, press(m, "down").settings.current().value)
+	assert.Equal(t, "dracula", press(m, "down").settings.current().value)
 
 	loading := networkTab(m)
 	assert.Contains(t, ansi.Strip(loading.render()), "loading settings…")
@@ -205,8 +205,8 @@ func TestSettingsSaveSendsExactlyTheChangedSettings(t *testing.T) {
 	assert.Equal(t, "saved 3 settings", m.toast)
 	assert.Equal(t, buttonSave, cursorKey(m), "a save leaves the cursor where it was")
 
-	assert.Equal(t, themeDracula, m.deps.Theme)
-	assert.Equal(t, themeFor(themeDracula, true).Accent, m.styles.Title.GetForeground(), "the saved theme applies live")
+	assert.Equal(t, "dracula", m.deps.Theme)
+	assert.Equal(t, themeFor(t, "dracula", true).Accent, m.styles.Title.GetForeground(), "the saved theme applies live")
 }
 
 // TestSettingsNothingToSave checks Save with no changes sends nothing.

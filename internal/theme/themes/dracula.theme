@@ -1,0 +1,39 @@
+# Dracula, with Alucard, Dracula's own official light arrangement, as its
+# light variant. https://draculatheme.com
+
+[dark]
+text      = #f8f8f2
+muted     = #6272a4
+accent    = #bd93f9
+loud      = #ff5555
+cursor_bg = #44475a
+cursor_fg = #f8f8f2
+border    = #6272a4
+status_bg = #44475a
+status_fg = #f8f8f2
+warn      = #ffb86c
+
+[light]
+text      = #1f1f1f
+muted     = #6c664b
+accent    = #644ac9
+loud      = #cb3a2a
+cursor_bg = #cfcfde
+cursor_fg = #1f1f1f
+border    = #6c664b
+status_bg = #cfcfde
+status_fg = #1f1f1f
+warn      = #a34d14
+
+# On a 16-color terminal running the Dracula scheme, whose blue is the purple.
+[ansi]
+text      = default
+muted     = bright-black
+accent    = blue
+loud      = red
+cursor_bg = bright-black
+cursor_fg = bright-white
+border    = bright-black
+status_bg = black
+status_fg = white
+warn      = yellow

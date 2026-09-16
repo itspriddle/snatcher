@@ -74,6 +74,7 @@ CMD snatcher torrent stop
 CMD snatcher torrent trackers
 CMD snatcher torrent update
 CMD snatcher torrent verify
+FLAG snatcher --color-depth type=string
 FLAG snatcher --config type=string
 FLAG snatcher --no-nerd-font type=bool
 FLAG snatcher --theme type=string

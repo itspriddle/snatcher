@@ -10,166 +10,11 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 
+	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// Theme is the named color slots every style is built from. Lip Gloss v2 has no
-// global renderer and no root adaptive color, so a theme is resolved once — for
-// one theme name and one light/dark answer — and the resulting Styles are passed
-// explicitly into every view function.
-//
-// Four palettes fill these slots, behind themeFor: default, dracula, nord, and
-// solarized.
-type Theme struct {
-	// Text is the default foreground.
-	Text color.Color
-
-	// Muted is for secondary text: headers, inactive tabs, help.
-	Muted color.Color
-
-	// Accent is the focused-pane border and the active tab.
-	Accent color.Color
-
-	// Loud is the filter pane's focused border. Its job is blast radius: the
-	// filter pane's group actions hit every torrent in a group, and vision.md
-	// requires focus alone never be the only warning.
-	Loud color.Color
-
-	// Cursor is the background of the cursor row.
-	Cursor color.Color
-
-	// CursorText is the foreground on the cursor row.
-	CursorText color.Color
-
-	// Border is an unfocused pane's border.
-	Border color.Color
-
-	// StatusBar is the status bar's background.
-	StatusBar color.Color
-
-	// StatusText is the status bar's foreground.
-	StatusText color.Color
-
-	// Warn is a toast or a not-implemented-yet notice.
-	Warn color.Color
-}
-
-// themeFor resolves a theme name and a light/dark answer into a palette.
-//
-// Every name ships both a light and a dark arrangement and goes through the
-// same lipgloss.LightDark pick, so no theme can render invisible text on a
-// terminal whose background it did not expect. An unknown name resolves to the
-// default rather than failing, because the name was already validated where it
-// was read (commands.ResolveClientSettings) and the TUI must not fail to draw
-// over it.
-func themeFor(name string, isDark bool) Theme {
-	switch name {
-	case themeDracula:
-		return draculaTheme(isDark)
-	case themeNord:
-		return nordTheme(isDark)
-	case themeSolarized:
-		return solarizedTheme(isDark)
-	default:
-		// "default", and any name the validator somehow let through.
-		return defaultTheme()
-	}
-}
-
-// The named palettes, matching config's clientThemes. They are spelled here
-// rather than imported because internal/tui imports neither internal/config nor
-// internal/commands; the name arrives through Deps already validated. "default"
-// needs no constant — it is themeFor's fallthrough.
-const (
-	themeDracula   = "dracula"
-	themeNord      = "nord"
-	themeSolarized = "solarized"
-)
-
-// defaultTheme is the terminal's own ANSI-16 palette, identical for light and
-// dark.
-//
-// Text is NoColor — the terminal's configured foreground — and every other slot
-// is one of the sixteen colors the terminal already resolves to whatever the
-// user's color scheme says. That is why it needs no light/dark pick: the
-// terminal has already made both decisions, consistently with every other
-// program the user runs. dracula, nord, and solarized are the opt-in fixed
-// looks, for a user who wants snatcher to look like snatcher.
-func defaultTheme() Theme {
-	return Theme{
-		Text:       lipgloss.NoColor{},
-		Muted:      lipgloss.BrightBlack,
-		Accent:     lipgloss.Blue,
-		Loud:       lipgloss.Red,
-		Cursor:     lipgloss.Blue,
-		CursorText: lipgloss.BrightWhite,
-		Border:     lipgloss.BrightBlack,
-		StatusBar:  lipgloss.BrightBlack,
-		StatusText: lipgloss.BrightWhite,
-		Warn:       lipgloss.Yellow,
-	}
-}
-
-// draculaTheme is the Dracula palette, with Alucard — Dracula's own official
-// light arrangement — as its light variant.
-func draculaTheme(isDark bool) Theme {
-	pick := lipgloss.LightDark(isDark)
-
-	return Theme{
-		Text:       pick(lipgloss.Color("#1f1f1f"), lipgloss.Color("#f8f8f2")),
-		Muted:      pick(lipgloss.Color("#6c664b"), lipgloss.Color("#6272a4")),
-		Accent:     pick(lipgloss.Color("#644ac9"), lipgloss.Color("#bd93f9")),
-		Loud:       pick(lipgloss.Color("#cb3a2a"), lipgloss.Color("#ff5555")),
-		Cursor:     pick(lipgloss.Color("#cfcfde"), lipgloss.Color("#44475a")),
-		CursorText: pick(lipgloss.Color("#1f1f1f"), lipgloss.Color("#f8f8f2")),
-		Border:     pick(lipgloss.Color("#6c664b"), lipgloss.Color("#6272a4")),
-		StatusBar:  pick(lipgloss.Color("#cfcfde"), lipgloss.Color("#44475a")),
-		StatusText: pick(lipgloss.Color("#1f1f1f"), lipgloss.Color("#f8f8f2")),
-		Warn:       pick(lipgloss.Color("#a34d14"), lipgloss.Color("#ffb86c")),
-	}
-}
-
-// nordTheme is the Nord palette. Its light variant follows Nord's own guidance
-// for bright interfaces: Polar Night for text, Snow Storm for surfaces.
-func nordTheme(isDark bool) Theme {
-	pick := lipgloss.LightDark(isDark)
-
-	return Theme{
-		Text:       pick(lipgloss.Color("#2e3440"), lipgloss.Color("#d8dee9")),
-		Muted:      lipgloss.Color("#4c566a"),
-		Accent:     pick(lipgloss.Color("#5e81ac"), lipgloss.Color("#88c0d0")),
-		Loud:       lipgloss.Color("#bf616a"),
-		Cursor:     pick(lipgloss.Color("#d8dee9"), lipgloss.Color("#434c5e")),
-		CursorText: pick(lipgloss.Color("#2e3440"), lipgloss.Color("#eceff4")),
-		Border:     lipgloss.Color("#4c566a"),
-		StatusBar:  pick(lipgloss.Color("#e5e9f0"), lipgloss.Color("#3b4252")),
-		StatusText: pick(lipgloss.Color("#2e3440"), lipgloss.Color("#d8dee9")),
-		Warn:       pick(lipgloss.Color("#d08770"), lipgloss.Color("#ebcb8b")),
-	}
-}
-
-// solarizedTheme is Ethan Schoonover's Solarized, dark and light. Text is one
-// step brighter than Solarized's canonical body tone (base1 over base0 on dark,
-// base01 over base00 on light), and Muted one step brighter than its canonical
-// comment tone, so help text and table headers stay legible on base03.
-func solarizedTheme(isDark bool) Theme {
-	pick := lipgloss.LightDark(isDark)
-
-	return Theme{
-		Text:       pick(lipgloss.Color("#586e75"), lipgloss.Color("#93a1a1")),
-		Muted:      pick(lipgloss.Color("#839496"), lipgloss.Color("#657b83")),
-		Accent:     lipgloss.Color("#268bd2"),
-		Loud:       lipgloss.Color("#dc322f"),
-		Cursor:     pick(lipgloss.Color("#eee8d5"), lipgloss.Color("#073642")),
-		CursorText: pick(lipgloss.Color("#073642"), lipgloss.Color("#eee8d5")),
-		Border:     pick(lipgloss.Color("#93a1a1"), lipgloss.Color("#586e75")),
-		StatusBar:  pick(lipgloss.Color("#eee8d5"), lipgloss.Color("#073642")),
-		StatusText: pick(lipgloss.Color("#586e75"), lipgloss.Color("#93a1a1")),
-		Warn:       pick(lipgloss.Color("#cb4b16"), lipgloss.Color("#b58900")),
-	}
-}
-
-// Styles is every style the TUI draws with, built once from a Theme and held on
+// Styles is every style the TUI draws with, built once from a theme.Theme and held on
 // the root model. Panes hold no styles of their own, so re-theming — a theme
 // change, or the background-color reply arriving after the first frame — is a
 // rebuild here plus one table.SetStyles, never a walk of the pane tree.
@@ -251,7 +96,7 @@ func monochrome(p colorprofile.Profile) bool {
 // alone carried meaning — the cursor row, the table's selected row, and the
 // status bar — switch to reverse video. Pane focus needs no fallback: it is a
 // border shape either way.
-func newStyles(t Theme, mono bool) Styles {
+func newStyles(t theme.Theme, mono bool) Styles {
 	// paint is where the monochrome branch lives, so every style below is
 	// written once rather than twice. A nil color is skipped, which is how a
 	// foreground-only style is spelled.
@@ -310,7 +155,7 @@ func newStyles(t Theme, mono bool) Styles {
 //
 // The virtual cursor is drawn in reverse video whatever its color, so under a
 // monochrome profile it keeps no color at all and is still visible.
-func inputStyles(t Theme, mono bool) textinput.Styles {
+func inputStyles(t theme.Theme, mono bool) textinput.Styles {
 	text := lipgloss.NewStyle()
 	placeholder := lipgloss.NewStyle()
 
@@ -350,7 +195,7 @@ func borderStyle(s lipgloss.Style, b lipgloss.Border, c color.Color, mono bool) 
 // helpStyles builds the help bubble's styles from the theme, replacing
 // help.DefaultStyles, whose hardcoded greys answer to neither the palette nor
 // the light/dark reply.
-func helpStyles(t Theme, mono bool) help.Styles {
+func helpStyles(t theme.Theme, mono bool) help.Styles {
 	key := lipgloss.NewStyle()
 	desc := lipgloss.NewStyle()
 

@@ -135,15 +135,15 @@ func TestSettingsSelect(t *testing.T) {
 
 	committed := press(opened, "down", "enter")
 	assert.Equal(t, modeNav, committed.settings.mode)
-	assert.Equal(t, themeDracula, committed.settings.current().value)
+	assert.Equal(t, "dracula", committed.settings.current().value)
 
 	canceled := press(opened, "down", "esc")
 	assert.Equal(t, modeNav, canceled.settings.mode)
 	assert.Equal(t, windowSettings, canceled.window, "esc closes the dropdown, not the window")
 	assert.Equal(t, "default", canceled.settings.current().value)
 
-	assert.Equal(t, themeDracula, press(m, "down").settings.current().value)
-	assert.Equal(t, themeSolarized, press(m, "up").settings.current().value, "up wraps")
+	assert.Equal(t, "dracula", press(m, "down").settings.current().value)
+	assert.Equal(t, "solarized", press(m, "up").settings.current().value, "up wraps")
 
 	closedByTab := press(opened, "tab")
 	assert.Equal(t, modeNav, closedByTab.settings.mode)
@@ -355,7 +355,7 @@ func TestSettingsReentryKeepsEdits(t *testing.T) {
 	m = press(m, "ctrl+t", ",")
 
 	assert.Equal(t, 1, m.settings.dirtyCount())
-	assert.Equal(t, themeDracula, m.settings.tabs[tabGeneral].fields[0].value)
+	assert.Equal(t, "dracula", m.settings.tabs[tabGeneral].fields[0].value)
 }
 
 // TestEscWithUnsavedChangesPrompts walks the leave prompt: esc asks, esc on the

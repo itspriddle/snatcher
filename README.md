@@ -34,11 +34,14 @@ the default Prowlarr server; `S` switches), and `esc` unwinds one step at a time
 without ever quitting — `q` or `ctrl-c` does that. The focused pane is drawn
 with a thicker border, so focus is never color alone.
 
-`--theme default|dracula|nord` picks the palette (`default` is your terminal's
-own sixteen colors; the other two ship a light and a dark arrangement, chosen
-from the terminal's background) and `--no-nerd-font` swaps the Nerd Font status
-glyphs for ASCII. Both have `SNATCHER_`-prefixed environment companions and
-`snatcher config` keys. `NO_COLOR` draws the whole UI without color, with focus
+`--theme default|dracula|nord|solarized` picks the palette (`default` is your
+terminal's own sixteen colors; the others ship a light and a dark arrangement,
+chosen from the terminal's background, plus a curated sixteen-color one), and
+any `name.theme` file in `~/.config/snatcher/themes/` adds a theme of your own —
+the format is in `man snatcher`, under THEMES. `--color-depth
+auto|truecolor|256|16` overrides the detected color depth, and `--no-nerd-font`
+swaps the Nerd Font status glyphs for ASCII. All three have
+`SNATCHER_`-prefixed environment companions and `snatcher config` keys. `NO_COLOR` draws the whole UI without color, with focus
 shown by border shape and the cursor row in reverse video.
 
 ## Highlights

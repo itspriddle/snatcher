@@ -1,0 +1,55 @@
+# Solarized, by Ethan Schoonover, dark and light. Text is one step brighter
+# than Solarized's canonical body tone (base1 over base0 on dark, base01 over
+# base00 on light), and muted one step brighter than its canonical comment
+# tone, so help text and table headers stay legible on base03.
+# https://ethanschoonover.com/solarized/
+
+[dark]
+text      = #93a1a1
+muted     = #657b83
+accent    = #268bd2
+loud      = #dc322f
+cursor_bg = #073642
+cursor_fg = #eee8d5
+border    = #586e75
+status_bg = #073642
+status_fg = #93a1a1
+warn      = #b58900
+
+[light]
+text      = #586e75
+muted     = #839496
+accent    = #268bd2
+loud      = #dc322f
+cursor_bg = #eee8d5
+cursor_fg = #073642
+border    = #93a1a1
+status_bg = #eee8d5
+status_fg = #586e75
+warn      = #cb4b16
+
+# On a 16-color terminal running the Solarized scheme, which maps the base
+# tones onto the bright colors: base03 bright-black, base02 black, base01
+# bright-green, base00 bright-yellow, base0 bright-blue, base1 bright-cyan,
+# base2 white, base3 bright-white, and orange bright-red.
+[ansi]
+text      = bright-cyan
+muted     = bright-yellow
+accent    = blue
+loud      = red
+cursor_bg = black
+cursor_fg = white
+border    = bright-green
+status_bg = black
+status_fg = bright-cyan
+warn      = yellow
+
+[ansi.light]
+text      = bright-green
+muted     = bright-blue
+cursor_bg = white
+cursor_fg = black
+border    = bright-cyan
+status_bg = white
+status_fg = bright-green
+warn      = bright-red

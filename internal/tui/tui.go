@@ -2,8 +2,8 @@
 // the focus router, the keymap registry, and the esc ladder.
 //
 // It sits beside internal/commands rather than under it. It depends on
-// internal/transmission, internal/prowlarr, internal/output, and nothing else of
-// snatcher's;
+// internal/transmission, internal/prowlarr, internal/output, internal/theme, and
+// nothing else of snatcher's;
 // internal/cli launches it and injects everything it needs through Deps, so the
 // dial precedence chain and the client-settings registry keep living in
 // internal/commands and this package never imports them.
@@ -22,6 +22,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 
 	"github.com/itspriddle/snatcher/internal/prowlarr"
+	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -40,6 +41,19 @@ type Deps struct {
 
 	// Theme is the resolved color theme name.
 	Theme string
+
+	// Themes looks a theme name up in the registry the command layer built,
+	// builtins plus the operator's theme files. It is called on every re-theme,
+	// so a file dropped into the themes directory mid-session applies at the
+	// next save. nil means the embedded builtins alone, which is what tests
+	// use.
+	Themes func(name string) (theme.Spec, error)
+
+	// ColorDepth is the resolved client.color_depth: auto, truecolor, 256, or
+	// 16. Anything but auto overrides the color profile bubbletea detects,
+	// except that a monochrome profile — NO_COLOR, a dumb terminal — is never
+	// upgraded. Empty means auto.
+	ColorDepth string
 
 	// NerdFont reports whether Nerd Font glyphs may be used.
 	NerdFont bool

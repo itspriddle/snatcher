@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -19,12 +21,13 @@ import (
 const (
 	clientKeyTheme        = "client.theme"
 	clientKeyNerdFont     = "client.nerd_font"
+	clientKeyColorDepth   = "client.color_depth"
 	clientKeyPollInterval = "client.poll_interval"
 )
 
 // builtinThemes are the theme choices offered before Deps.Config has answered
-// with its own list.
-var builtinThemes = []string{"default", themeDracula, themeNord, themeSolarized}
+// with its own list, which adds the operator's theme files.
+var builtinThemes = theme.Builtins().Names()
 
 // settingsMode is what the keyboard is doing inside the settings window.
 type settingsMode int
@@ -127,6 +130,8 @@ type settingsWindow struct {
 // newSettingsWindow builds the form. The client tabs start from the values this
 // process resolved; the server tabs start empty until a session is loaded.
 func newSettingsWindow(st Styles, deps Deps) settingsWindow {
+	depth := cmp.Or(deps.ColorDepth, colorDepthAuto)
+
 	general := settingsTab{name: "General", fields: []settingsField{
 		{
 			key: clientKeyTheme, label: clientKeyTheme, desc: "Color theme",
@@ -137,6 +142,11 @@ func newSettingsWindow(st Styles, deps Deps) settingsWindow {
 			key: clientKeyNerdFont, label: clientKeyNerdFont, desc: "Draw icons with Nerd Font glyphs",
 			kind: fieldToggle, source: sourceClient,
 			loaded: deps.NerdFont, value: deps.NerdFont,
+		},
+		{
+			key: clientKeyColorDepth, label: clientKeyColorDepth, desc: "Colors the terminal can draw (auto detects)",
+			kind: fieldSelect, source: sourceClient, options: builtinColorDepths,
+			loaded: depth, value: depth,
 		},
 	}}
 

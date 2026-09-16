@@ -173,6 +173,62 @@ draw a frame whose focus and cursor are still readable. **Met.**
   cell, so a marked row is a glyph, not a color. T5 adds a slot back if it finds
   a use.
 
+## T2a. Theme files and color depth — **done**
+
+Turns the four hardcoded palettes into data, and gives a sixteen-color terminal
+a real answer instead of a guess.
+
+- ~~`internal/theme`: a flat `.theme` file format, the four builtins embedded,
+  and a registry that adds `<config dir>/themes/*.theme`~~
+- ~~A curated `[ansi]` tier used under a sixteen-color profile~~
+- ~~`--color-depth` / `SNATCHER_COLOR_DEPTH` / `client.color_depth`
+  (`auto|truecolor|256|16`), applied live from the settings window~~
+- ~~User themes accepted by `--theme`, `client.theme`, and the settings select~~
+
+**Done when:** the builtin palettes resolve byte-for-byte to the Go values they
+replaced (pinned in `internal/theme/builtin_test.go`); `--color-depth 16` draws
+a theme's `[ansi]` section, or `default` without one; a theme file dropped into
+the themes directory is selectable everywhere a builtin is; and a broken file is
+a warning unless it is the one selected. **Met.**
+
+### Decisions
+
+- **Flat `key = value` files, hand-parsed, stdlib only.** Ten slots in four
+  sections needs no TOML dependency, and a parser that owns its grammar can
+  report every error as `file:line: message`. Comments are whole lines only,
+  because a hex value starts with `#`.
+- **One file carries both backgrounds** (`[dark]` plus an optional `[light]`),
+  and every slot falls back independently, so a light variant only spells what
+  differs. The `tea.BackgroundColorMsg` auto-pick stays.
+- **A sixteen-color terminal never sees a converted hex value.** The old path
+  (`ansi.Convert16`: hex → stock xterm-256 → fixed 256→16 table) never saw the
+  terminal's real palette, so Solarized on a Solarized-configured terminal came
+  out wrong. Under the ANSI profile only `[ansi]`/`[ansi.light]` are read, and
+  a theme without them draws as `default`, the terminal's own palette — btop's
+  hand-curated TTY theme, generalized.
+- **The fallback base is always the embedded `default.theme`,** never a user
+  file shadowing it, so a partial user `default` cannot leave a slot empty.
+- **256-color keeps colorprofile's automatic downsample.** It is a good
+  approximation at that depth, and a third palette tier per theme is not worth
+  the upkeep.
+- **Color depth is a forced profile, not a program option.** The model
+  computes the effective profile from the detected one and sends it back as a
+  `tea.ColorProfileMsg`; bubbletea sets its renderer's profile from that message
+  before `Update` sees it, so one message re-profiles renderer and palette, and
+  a saved depth applies without a restart. The echo is recognized by
+  `Model.forcedProfile`, and a monochrome detection is never upgraded, so
+  `NO_COLOR` still wins.
+- **Broken files warn; a broken *selected* file fails.** A typo in a theme
+  nobody is using must not stop the TUI from starting, so it is printed as
+  `warning:` before the alt screen. Selecting it — by flag, env, config, or
+  `config set` — is its parse error, not "unknown theme".
+- **The themes directory sits beside the config file,** so `--config` moves it,
+  and is re-read on every lookup, so a new file reaches the settings select on
+  `R` and the running UI on the next save.
+- **The `--theme` usage can no longer list every name:** it is built before
+  `--config` is parsed. It names the builtins and says "or a user theme"; the
+  rejection message lists everything the registry found.
+
 ## T3. Settings window — **done**
 
 First real backend round-trip, and the place the form pattern gets solved.

@@ -88,19 +88,52 @@ instead of the default location (see
 .TP
 .BR \-\-theme " " \fIname\fR
 Use the color theme
-.IR name ,
-one of
-.BR default ", " dracula ", " nord ", or " solarized ,
+.I name
 for this invocation only, overriding the
 .B client.theme
-setting. An unknown name is an error listing the valid ones.
+setting. A theme is a builtin \(em
+.BR default ", " dracula ", " nord ", or " solarized
+\(em or the stem of a
+.I .theme
+file in the themes directory beside the config file (see
+.BR THEMES ).
+Names match exactly, case included. An unknown name is an error listing the
+valid ones, and a theme file that does not parse is an error naming the file
+and line.
 .IP
 .B default
 is the terminal's own sixteen colors, so it follows whatever color scheme the
 terminal is configured with;
 .BR dracula ", " nord ", and " solarized
 are fixed palettes, each with a light and a dark arrangement chosen from the
-terminal's background color.
+terminal's background color, and a curated sixteen-color arrangement for a
+terminal that cannot draw more.
+.TP
+.BR \-\-color\-depth " " \fIdepth\fR
+Draw with
+.I depth
+colors for this invocation only, overriding the
+.B client.color_depth
+setting:
+.B auto
+(the depth the terminal is detected as),
+.BR truecolor ,
+.BR 256 ,
+or
+.BR 16 .
+At
+.B 16
+the TUI draws a theme's
+.B [ansi]
+arrangement, or the
+.B default
+theme when it has none, rather than approximating its palette; at
+.B 256
+the palette is approximated. A terminal detected as unable to draw color at
+all \(em
+.BR NO_COLOR ,
+.B TERM=dumb
+\(em is never given color by this option.
 .TP
 .B \-\-no\-nerd\-font
 Draw ASCII icons rather than Nerd Font glyphs for this invocation only,
@@ -113,12 +146,12 @@ means
 .B \-\-no\-nerd\-font=false
 asks for glyphs explicitly.
 .IP
-Both options are the TUI's: they choose the palette it draws with and whether
-it may use Nerd Font glyphs, and no other command's output changes. Their full
-precedence chain is
-.BR \-\-theme / \-\-no\-nerd\-font
+The three appearance options are the TUI's: they choose the palette it draws
+with, how many colors it assumes, and whether it may use Nerd Font glyphs, and
+no other command's output changes. Their full precedence chain is
+.BR \-\-theme / \-\-color\-depth / \-\-no\-nerd\-font
 over
-.BR SNATCHER_THEME / SNATCHER_NO_NERD_FONT
+.BR SNATCHER_THEME / SNATCHER_COLOR_DEPTH / SNATCHER_NO_NERD_FONT
 over the config file, over the built-in default;
 .B snatcher config list
 reports which rung supplied each value. An invalid value at any rung is an
@@ -1868,8 +1901,10 @@ fixable from the command line.
 The settings, with the defaults that apply when they are not set:
 .TP
 .B client.theme
-Color theme, one of
-.BR default ", " dracula ", " nord ", or " solarized .
+Color theme: a builtin
+.RB ( default ", " dracula ", " nord ", or " solarized )
+or a theme file's stem (see
+.BR THEMES ).
 Default:
 .BR default .
 .TP
@@ -1878,6 +1913,14 @@ Whether to draw Nerd Font glyphs rather than ASCII icons
 .RB ( true / false ).
 Default:
 .BR true .
+.TP
+.B client.color_depth
+How many colors the TUI draws with, one of
+.BR auto ", " truecolor ", " 256 ", or " 16
+(see
+.BR \-\-color\-depth ).
+Default:
+.BR auto .
 .TP
 .B client.poll_interval
 How often the interface refreshes its data, in Go duration syntax (e.g.\&
@@ -1909,11 +1952,11 @@ reverses its sort order by default
 Default:
 .BR false .
 .PP
-.BR client.theme " and " client.nerd_font
+.BR client.theme ", " client.color_depth ", and " client.nerd_font
 can also be overridden for a single invocation, without editing the file, with
-.BR \-\-theme " and " \-\-no\-nerd\-font
+.BR \-\-theme ", " \-\-color\-depth ", and " \-\-no\-nerd\-font
 or with
-.BR SNATCHER_THEME " and " SNATCHER_NO_NERD_FONT .
+.BR SNATCHER_THEME ", " SNATCHER_COLOR_DEPTH ", and " SNATCHER_NO_NERD_FONT .
 An override applies to what
 .BR "config list" " and " "config get"
 report and to nothing else:
@@ -1922,10 +1965,12 @@ write the file and are unaffected by whatever is in force, so a
 .B \-\-theme
 on the command line can never end up persisted.
 .PP
-.BR client.theme ", " client.nerd_font ", and " client.poll_interval
+.BR client.theme ", " client.color_depth ", " client.nerd_font ", and " client.poll_interval
 are the TUI's own settings, and no other command renders them:
 .B client.theme
 picks its palette,
+.B client.color_depth
+how many colors it draws with,
 .B client.nerd_font
 whether it draws Nerd Font glyphs or their ASCII fallbacks, and
 .B client.poll_interval
@@ -2522,6 +2567,195 @@ and supply the password per invocation with
 .BR SNATCHER_PASSWORD ,
 which leaves nothing at rest on disk.
 .RE
+.SH THEMES
+A theme is a plain-text file of color assignments. Four are built in:
+.BR default ", " dracula ", " nord ", and " solarized .
+Any file named
+.IR name .theme
+in the
+.I themes
+directory beside the config file (see
+.BR FILES )
+adds a theme called
+.IR name ,
+selected with
+.BR "\-\-theme " \fIname\fR,
+.BR SNATCHER_THEME ,
+or
+.BR "snatcher config set client.theme " \fIname\fR,
+and offered in the TUI's settings window. A file with the same name as a
+builtin replaces it. Dotfiles, subdirectories, and files without the
+.I .theme
+extension are ignored; symlinks are followed. The directory is read afresh
+each time a theme is looked up, so a file saved while the TUI is running is
+picked up at the next settings save or reload.
+.PP
+The format is line-based. Each line is blank, a comment, a
+.BI [ section ]
+header, or a
+.IB key " = " value
+pair. A comment is a whole line starting with
+.BR # ;
+there are no trailing comments, because a hex color starts with
+.BR # .
+A value may be wrapped in single or double quotes. CRLF line endings and a
+leading byte order mark are accepted. A line may be at most 512 bytes and a
+file at most 64 KiB.
+.PP
+The sections are:
+.TP
+.B [dark]
+The palette for a dark terminal background, and the fallback for a light one.
+.TP
+.B [light]
+The palette for a light background.
+.TP
+.B [ansi]
+The palette for a terminal limited to sixteen colors. It takes color names and
+indices only, so the terminal's own color scheme decides what each one looks
+like.
+.TP
+.B [ansi.light]
+The sixteen-color palette for a light background.
+.PP
+Every section is optional and may set any subset of the keys, but a file must
+have a
+.B [dark]
+or an
+.B [ansi]
+section. The background is asked of the terminal when the TUI starts.
+.PP
+The keys, one per color the TUI draws with:
+.TP
+.B text
+Default foreground.
+.TP
+.B muted
+Secondary text: headers, inactive tabs, help.
+.TP
+.B accent
+The focused pane's border, the active tab, titles.
+.TP
+.B loud
+The focused filter pane's border, whose group actions touch many torrents.
+.TP
+.BR cursor_bg ", " cursor_fg
+The cursor row's background and foreground.
+.TP
+.B border
+An unfocused pane's border.
+.TP
+.BR status_bg ", " status_fg
+The status bar's background and foreground.
+.TP
+.B warn
+Notices and unsaved-change markers.
+.PP
+Values are case-insensitive:
+.TP
+.BR # \fIrrggbb\fR ", " # \fIrgb\fR
+A hex color. Not accepted in the
+.B ansi
+sections.
+.TP
+.BR black ", " red ", " green ", " yellow ", " blue ", " magenta ", " cyan ", " white
+.TQ
+.BR bright\-black " \(en " bright\-white
+One of the terminal's sixteen colors.
+.TP
+.BR 0 " \(en " 15
+The same sixteen colors by index.
+.TP
+.B default
+The terminal's own foreground, or no background at all.
+.PP
+Each key is resolved on its own, taking the first section that sets it. On a
+terminal drawing 256 colors or more the order is
+.B [light]
+(light backgrounds only),
+.BR [dark] ,
+.B [ansi.light]
+(light only),
+.BR [ansi] ;
+256-color terminals receive an approximation of the hex values. On a
+sixteen-color terminal the order is
+.B [ansi.light]
+(light only), then
+.BR [ansi] ;
+.BR [dark] " and " [light]
+are never consulted, so a theme with no
+.B [ansi]
+section is drawn in the builtin
+.B default
+theme's colors. A key no section sets comes from the builtin
+.B default
+theme \(em always the built-in one, even when a user file replaces it. See
+.B \-\-color\-depth
+to choose the depth rather than detect it.
+.PP
+An unknown section or key, a key repeated in a section, a section repeated, a
+key before the first section, or a value that is not a color is an error of the
+form
+.IR file : line : " message" .
+A broken file that is not the selected theme is skipped: the TUI prints one
+.B warning:
+line for it on standard error and starts anyway. A broken file that
+.I is
+selected is an error from every command that reads the theme.
+.PP
+Solarized, as shipped:
+.PP
+.RS
+.EX
+# Comments are whole lines only.
+[dark]
+text      = #93a1a1
+muted     = #657b83
+accent    = #268bd2
+loud      = #dc322f
+cursor_bg = #073642
+cursor_fg = #eee8d5
+border    = #586e75
+status_bg = #073642
+status_fg = #93a1a1
+warn      = #b58900
+
+[light]
+text      = #586e75
+muted     = #839496
+accent    = #268bd2
+loud      = #dc322f
+cursor_bg = #eee8d5
+cursor_fg = #073642
+border    = #93a1a1
+status_bg = #eee8d5
+status_fg = #586e75
+warn      = #cb4b16
+
+# On a 16-color terminal running the Solarized scheme.
+[ansi]
+text      = bright\-cyan
+muted     = bright\-yellow
+accent    = blue
+loud      = red
+cursor_bg = black
+cursor_fg = white
+border    = bright\-green
+status_bg = black
+status_fg = bright\-cyan
+warn      = yellow
+
+[ansi.light]
+text      = bright\-green
+muted     = bright\-blue
+cursor_bg = white
+cursor_fg = black
+border    = bright\-cyan
+status_bg = white
+status_fg = bright\-green
+warn      = bright\-red
+.EE
+.RE
 .SH ENVIRONMENT
 .TP
 .B SNATCHER_SERVER
@@ -2637,11 +2871,9 @@ environment applies.
 .B SNATCHER_THEME
 Selects the color theme the TUI draws with for this invocation, equivalent to
 passing
-.BR \-\-theme .
-One of
-.BR default " (the terminal's own sixteen colors), " dracula ", " nord ", or " solarized ;
-each of the latter three has a light and a dark arrangement, chosen from the
-terminal's background color.
+.BR \-\-theme :
+a builtin, or a theme file's stem (see
+.BR THEMES ).
 The
 .B \-\-theme
 flag takes precedence; when neither is set, the
@@ -2649,6 +2881,22 @@ flag takes precedence; when neither is set, the
 setting is used, and failing that the built-in default. An unset or empty value
 expresses no opinion and falls through. An unknown theme is an error naming the
 variable and the valid names, never a silent fallback.
+.TP
+.B SNATCHER_COLOR_DEPTH
+Selects how many colors the TUI draws with for this invocation, equivalent to
+passing
+.BR \-\-color\-depth :
+.BR auto ", " truecolor ", " 256 ", or " 16 .
+The
+.B \-\-color\-depth
+flag takes precedence; when neither is set, the
+.B client.color_depth
+setting is used, and failing that
+.BR auto .
+An unset or empty value expresses no opinion and falls through. Any other value
+is an error naming the variable, never a silent fallback.
+.B NO_COLOR
+still wins.
 .TP
 .B SNATCHER_NO_NERD_FONT
 Draws ASCII icons rather than Nerd Font glyphs for this invocation, equivalent
@@ -2666,12 +2914,13 @@ falls through to the config file. The
 flag takes precedence. A value that is not a boolean is an error naming the
 variable, never a silent fallback.
 .IP
-Both variables are the TUI's: they change how it draws itself and nothing else.
+All three variables are the TUI's: they change how it draws itself and nothing
+else.
 They are resolved and checked by every command that reads them, and
 .B snatcher config list
 reports a setting they supply with the source
 .BR env .
-A command that reads neither ignores them entirely, invalid value and all.
+A command that reads none of them ignores them entirely, invalid value and all.
 .TP
 .B NO_COLOR
 When set to a non-empty value, forces
@@ -2689,7 +2938,9 @@ is drawn the same way without the variable.
 .TP
 .B XDG_CONFIG_HOME
 When set, the default config path is
-.IR $XDG_CONFIG_HOME/snatcher/config.json .
+.IR $XDG_CONFIG_HOME/snatcher/config.json ,
+and the themes directory
+.IR $XDG_CONFIG_HOME/snatcher/themes .
 .TP
 .B XDG_STATE_HOME
 When set, the default path of the
@@ -2749,6 +3000,18 @@ when
 is unset. Neither a server password nor a Prowlarr API key is ever written to
 this file; it holds only the name of the store each server's secret lives in
 .RB ( secret_store ).
+.TP
+.I $XDG_CONFIG_HOME/snatcher/themes/*.theme
+The operator's own color themes (see
+.BR THEMES ).
+The directory sits beside the config file, so
+.B \-\-config
+moves it: a config at
+.I /tmp/other.json
+reads its themes from
+.IR /tmp/themes .
+It is optional, never created by snatcher, and read, not written. Like the
+config file, its contents are operator-owned input.
 .TP
 .I $XDG_STATE_HOME/snatcher/secrets.json
 The

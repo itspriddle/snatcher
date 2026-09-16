@@ -57,7 +57,7 @@ func TestConfigFlagReadsAnInheritedValue(t *testing.T) {
 	assert.Equal(t, "/tmp/trailing.json", got)
 }
 
-// TestAddGlobalFlagsRegistersAppearanceFlagsPersistently pins the two
+// TestAddGlobalFlagsRegistersAppearanceFlagsPersistently pins the three
 // appearance flags alongside --config: they are global settings, so they belong
 // on the root and reach every subcommand, not on the handful of commands that
 // happen to read them today.
@@ -65,14 +65,16 @@ func TestAddGlobalFlagsRegistersAppearanceFlagsPersistently(t *testing.T) {
 	root := &cobra.Command{Use: "snatcher"}
 	AddGlobalFlags(root)
 
-	for _, name := range []string{flagTheme, flagNoNerdFont} {
+	for _, name := range []string{flagTheme, flagNoNerdFont, flagColorDepth} {
 		require.NotNil(t, root.PersistentFlags().Lookup(name), "--%s must be persistent", name)
 		assert.Nil(t, root.Flags().Lookup(name), "--%s must not also be a local flag", name)
 	}
 
-	// The usage text names the accepted themes, so --help answers what --theme
-	// takes without a trip to the man page.
-	assert.Equal(t, "color theme (default, dracula, nord, solarized)", root.PersistentFlags().Lookup(flagTheme).Usage)
+	// The usage text names the builtin themes and the accepted depths, so --help
+	// answers what each takes without a trip to the man page. User themes cannot
+	// be listed: the usage is built before --config is parsed.
+	assert.Equal(t, "color theme (default, dracula, nord, solarized, or a user theme)", root.PersistentFlags().Lookup(flagTheme).Usage)
+	assert.Equal(t, "color depth (auto, truecolor, 256, 16)", root.PersistentFlags().Lookup(flagColorDepth).Usage)
 }
 
 // globalFlagCmd builds a standalone command carrying the tree-wide flags and
@@ -220,6 +222,19 @@ func TestOverridesRejectInvalidValues(t *testing.T) {
 			wantErr:  []string{envTheme, `"monokai"`, "not a known theme", "dracula"},
 		},
 		{
+			name:     "flag color depth",
+			override: colorDepthOverride,
+			args:     []string{"--color-depth", "8"},
+			wantErr:  []string{"--color-depth", `"8"`, "not a color depth", "truecolor"},
+		},
+		{
+			name:     "env color depth",
+			override: colorDepthOverride,
+			envName:  envColorDepth,
+			envValue: "256color",
+			wantErr:  []string{envColorDepth, `"256color"`, "not a color depth", "auto"},
+		},
+		{
 			name:     "env nerd font",
 			override: nerdFontOverride,
 			envName:  envNoNerdFont,
@@ -253,6 +268,7 @@ func TestOverridesIgnoreUnregisteredFlags(t *testing.T) {
 	for name, override := range map[string]func(*cobra.Command) (*clientOverride, error){
 		flagTheme:      themeOverride,
 		flagNoNerdFont: nerdFontOverride,
+		flagColorDepth: colorDepthOverride,
 	} {
 		got, err := override(orphan)
 		require.NoError(t, err, "--%s must not fail on a command that never registered it", name)

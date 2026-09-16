@@ -77,6 +77,7 @@ type fakeConfig struct {
 // newFakeConfig reports every key at its default.
 func newFakeConfig() *fakeConfig {
 	return &fakeConfig{entries: []ClientEntry{
+		{Key: clientKeyColorDepth, Value: "auto", Source: "default", Allowed: slices.Clone(builtinColorDepths)},
 		{Key: clientKeyListColumns, Value: slices.Clone(defaultColumnKeys), Source: "default"},
 		{Key: clientKeyListReverse, Value: false, Source: "default"},
 		{Key: clientKeyListSort, Value: "queue", Source: "default"},
@@ -139,6 +140,12 @@ func (c *fakeConfig) Validate(key string, value any) error {
 		}
 
 		return fmt.Errorf("%v is not a known theme", value)
+	case clientKeyColorDepth:
+		if depth, _ := value.(string); slices.Contains(builtinColorDepths, depth) {
+			return nil
+		}
+
+		return fmt.Errorf("%v is not a color depth", value)
 	case clientKeyNerdFont:
 		if _, ok := value.(bool); ok {
 			return nil

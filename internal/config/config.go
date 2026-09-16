@@ -128,6 +128,7 @@ func (s Server) ResolvedType() string {
 type Client struct {
 	Theme        *string   `json:"theme,omitempty"`
 	NerdFont     *bool     `json:"nerd_font,omitempty"`
+	ColorDepth   *string   `json:"color_depth,omitempty"`
 	PollInterval *string   `json:"poll_interval,omitempty"`
 	ListColumns  *[]string `json:"list_columns,omitempty"`
 	ListSort     *string   `json:"list_sort,omitempty"`
@@ -143,7 +144,7 @@ type Client struct {
 // canonical spelling. Anything else found there — matched case-insensitively,
 // see unknownKeys — is preserved verbatim in Client.unknown.
 var clientKeys = []string{
-	"theme", "nerd_font", "poll_interval", "list_columns", "list_sort", "list_reverse",
+	"theme", "nerd_font", "color_depth", "poll_interval", "list_columns", "list_sort", "list_reverse",
 }
 
 // IsZero reports whether the client section holds nothing at all — no set key
@@ -153,6 +154,7 @@ var clientKeys = []string{
 func (c Client) IsZero() bool {
 	return c.Theme == nil &&
 		c.NerdFont == nil &&
+		c.ColorDepth == nil &&
 		c.PollInterval == nil &&
 		c.ListColumns == nil &&
 		c.ListSort == nil &&
@@ -223,6 +225,7 @@ func (c Client) MarshalJSON() ([]byte, error) {
 	if err := errors.Join(
 		putField(obj, "theme", c.Theme),
 		putField(obj, "nerd_font", c.NerdFont),
+		putField(obj, "color_depth", c.ColorDepth),
 		putField(obj, "poll_interval", c.PollInterval),
 		putField(obj, "list_columns", c.ListColumns),
 		putField(obj, "list_sort", c.ListSort),

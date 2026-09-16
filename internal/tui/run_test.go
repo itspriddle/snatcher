@@ -95,6 +95,11 @@ func TestNewDefaultsToATrueColorProfile(t *testing.T) {
 
 	assert.Equal(t, colorprofile.TrueColor, m.profile)
 	assert.False(t, monochrome(m.profile))
+
+	deps := testDeps()
+	deps.ColorDepth = colorDepth16
+
+	assert.Equal(t, colorprofile.ANSI, New(deps).profile, "a configured depth starts the model at its profile")
 }
 
 // TestProgramOptionsForcesAsciiUnderNoColor checks the NO_COLOR branch of the
@@ -112,6 +117,11 @@ func TestProgramOptionsForcesAsciiUnderNoColor(t *testing.T) {
 	deps.NoColor = true
 
 	assert.Len(t, programOptions(t.Context(), deps), len(plain)+1)
+
+	deps.NoColor = false
+	deps.ColorDepth = colorDepth16
+
+	assert.Len(t, programOptions(t.Context(), deps), len(plain), "a color depth is applied by the model, not a program option")
 }
 
 // TestViewIsAnAltScreen pins the two view fields that are program options in

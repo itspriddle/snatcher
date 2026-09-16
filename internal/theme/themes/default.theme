@@ -1,0 +1,17 @@
+# The terminal's own palette. Every slot is one of the sixteen colors the
+# terminal already resolves through the user's color scheme, and text is the
+# terminal's configured foreground, so this theme needs no [dark] or [light]
+# arrangement: the terminal has made both decisions already. It is also the
+# base every other theme falls back to, slot by slot.
+
+[ansi]
+text      = default
+muted     = bright-black
+accent    = blue
+loud      = red
+cursor_bg = blue
+cursor_fg = bright-white
+border    = bright-black
+status_bg = bright-black
+status_fg = bright-white
+warn      = yellow

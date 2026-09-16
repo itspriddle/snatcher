@@ -63,13 +63,14 @@ func configRows(t *testing.T, out string) [][]string {
 }
 
 // TestClientKeyRegistryMatchesDocumentedKeys pins the registry's key set — and
-// its order — to the six keys documented in the PRD's key table, so a key added
+// its order — to the seven keys documented in the PRD's key table, so a key added
 // later cannot skip the registry and land in the config with no validator,
 // default, or accessor.
 func TestClientKeyRegistryMatchesDocumentedKeys(t *testing.T) {
 	documented := []string{
 		"client.theme",
 		"client.nerd_font",
+		"client.color_depth",
 		"client.poll_interval",
 		"client.list_columns",
 		"client.list_sort",
@@ -84,6 +85,7 @@ func TestClientKeyRegistryMatchesDocumentedKeys(t *testing.T) {
 	assert.Equal(t, documented, keys)
 
 	sorted := []string{
+		"client.color_depth",
 		"client.list_columns",
 		"client.list_reverse",
 		"client.list_sort",
@@ -108,7 +110,7 @@ func TestClientKeyRegistryEntriesAreComplete(t *testing.T) {
 }
 
 // TestClientKeyRegistryOverridesMatchTheGlobalFlags pins which keys can be
-// overridden from outside the config file to exactly the two that have a global
+// overridden from outside the config file to exactly the three that have a global
 // flag and an environment companion. A key that grew an override without a flag
 // — or a flag without an override — would be a rung an operator cannot see.
 func TestClientKeyRegistryOverridesMatchTheGlobalFlags(t *testing.T) {
@@ -119,16 +121,25 @@ func TestClientKeyRegistryOverridesMatchTheGlobalFlags(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, []string{"client.theme", "client.nerd_font"}, overridable)
+	assert.Equal(t, []string{"client.theme", "client.nerd_font", "client.color_depth"}, overridable)
 }
 
 // TestClientKeyRegistryDefaultsAreValid checks every default against its own
 // validator, so a typo in a default is a failing test rather than an error the
 // operator sees on a config they never wrote.
 func TestClientKeyRegistryDefaultsAreValid(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
 	for _, def := range clientKeyRegistry {
-		assert.NoError(t, def.validate(def.def), "default for %s is invalid", def.key)
+		assert.NoError(t, def.validate(cfgPath, def.def), "default for %s is invalid", def.key)
 	}
+}
+
+// TestColorDepthsMatchTheTUI pins the depths the command layer accepts to the
+// ones the TUI understands, which spells them itself because it does not
+// import this package.
+func TestColorDepthsMatchTheTUI(t *testing.T) {
+	assert.Equal(t, []string{"auto", "truecolor", "256", "16"}, colorDepths)
 }
 
 // TestConfigListReportsDefaultsWithNoConfigFile pins the "fresh install" view:
@@ -140,6 +151,7 @@ func TestConfigListReportsDefaultsWithNoConfigFile(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, [][]string{
+		{"client.color_depth", "auto", "default"},
 		{"client.list_columns", "id,name,status,done,size,down,up,ratio,eta", "default"},
 		{"client.list_reverse", "false", "default"},
 		{"client.list_sort", "queue", "default"},
@@ -167,6 +179,7 @@ func TestConfigListReportsStoredValues(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, [][]string{
+		{"client.color_depth", "auto", "default"},
 		{"client.list_columns", "id,name,ratio", "config"},
 		{"client.list_reverse", "true", "config"},
 		{"client.list_sort", "queue", "default"},
@@ -363,8 +376,8 @@ func TestConfigGetRejectsInvalidStoredValue(t *testing.T) {
 	assert.Empty(t, out)
 	assert.Contains(t, err.Error(), "client.theme")
 	assert.Contains(t, err.Error(), `"bogus"`)
-	for _, theme := range clientThemes {
-		assert.Contains(t, err.Error(), theme)
+	for _, name := range []string{"default", "dracula", "nord", "solarized"} {
+		assert.Contains(t, err.Error(), name)
 	}
 }
 
@@ -393,6 +406,10 @@ func TestClientValidators(t *testing.T) {
 	}{
 		{name: "theme accepted", key: "client.theme", value: "nord"},
 		{name: "theme rejected", key: "client.theme", value: "monokai", wantErr: "not a known theme"},
+		{name: "theme is case-sensitive", key: "client.theme", value: "Nord", wantErr: "not a known theme"},
+		{name: "depth accepted", key: "client.color_depth", value: "256"},
+		{name: "depth rejected", key: "client.color_depth", value: "88", wantErr: "not a color depth"},
+		{name: "depth is exact", key: "client.color_depth", value: "TrueColor", wantErr: "not a color depth"},
 		{name: "nerd_font accepts either bool", key: "client.nerd_font", value: false},
 		{name: "list_reverse accepts either bool", key: "client.list_reverse", value: true},
 		{name: "poll interval accepted", key: "client.poll_interval", value: "1m30s"},
@@ -417,7 +434,7 @@ func TestClientValidators(t *testing.T) {
 			def, err := lookupClientKey(tt.key)
 			require.NoError(t, err)
 
-			err = def.validate(tt.value)
+			err = def.validate(filepath.Join(t.TempDir(), "config.json"), tt.value)
 			if tt.wantErr == "" {
 				assert.NoError(t, err)
 				return
@@ -436,7 +453,7 @@ func TestClientValidatorsRejectMismatchedTypes(t *testing.T) {
 	def, err := lookupClientKey("client.theme")
 	require.NoError(t, err)
 
-	require.ErrorContains(t, def.validate(42), "expected string")
+	require.ErrorContains(t, def.validate(filepath.Join(t.TempDir(), "config.json"), 42), "expected string")
 }
 
 // TestConfigGroupPrintsHelp checks the bare group is help, not an action.
@@ -620,6 +637,7 @@ func TestConfigSetRejectsInvalidValues(t *testing.T) {
 		wantErr string
 	}{
 		{name: "theme", key: "client.theme", value: "monokai", wantErr: "not a known theme"},
+		{name: "depth", key: "client.color_depth", value: "65536", wantErr: "not a color depth"},
 		{name: "bool", key: "client.nerd_font", value: "yes-please", wantErr: "not a boolean"},
 		{name: "duration unparseable", key: "client.poll_interval", value: "soon", wantErr: "not a duration"},
 		{name: "duration zero", key: "client.poll_interval", value: "0s", wantErr: "out of range"},
@@ -1006,6 +1024,7 @@ func TestConfigListReportsOverrideSources(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, [][]string{
+		{"client.color_depth", "auto", "default"},
 		{"client.list_columns", "id,name,status,done,size,down,up,ratio,eta", "default"},
 		{"client.list_reverse", "false", "default"},
 		{"client.list_sort", "added", "config"},

@@ -1,9 +1,9 @@
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ General  Polling  Download  Network  Bandwidth  Queue                                                                ┃
 ┃──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┃
-┃  client.theme       < default > (no config store)                                                                    ┃
-┃  client.nerd_font   [ ] (no config store)                                                                            ┃
-┃                                                                                                                      ┃
+┃  client.theme         < default > (no config store)                                                                  ┃
+┃  client.nerd_font     [ ] (no config store)                                                                          ┃
+┃  client.color_depth   < auto > (no config store)                                                                     ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
