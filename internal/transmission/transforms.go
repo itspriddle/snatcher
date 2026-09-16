@@ -155,9 +155,49 @@ func SearchByName(torrents []Torrent, query string) []Torrent {
 	return out
 }
 
+// MainTracker returns the host of the tracker a torrent is grouped under: the
+// first tracker in its lowest tier, or "" when it has none. Transmission
+// announces to one tracker per tier and keeps the rest as fallbacks, so
+// grouping by every listed host would count a torrent under each fallback too,
+// and the group counts would no longer add up to the torrents.
+func MainTracker(t Torrent) string {
+	if len(t.Trackers) == 0 {
+		return ""
+	}
+
+	main := t.Trackers[0]
+	for _, tr := range t.Trackers[1:] {
+		if tr.Tier < main.Tier {
+			main = tr
+		}
+	}
+
+	return main.Host
+}
+
+// FilterByTracker returns a new slice containing the torrents whose
+// MainTracker is host, compared case-insensitively, preserving input order. A
+// torrent that merely lists host as a fallback does not match. An empty host
+// matches everything. The input is never mutated, and the result is non-nil
+// even when empty.
+func FilterByTracker(torrents []Torrent, host string) []Torrent {
+	if host == "" {
+		return slices.Clone(torrents)
+	}
+
+	out := make([]Torrent, 0, len(torrents))
+	for _, t := range torrents {
+		if main := MainTracker(t); main != "" && strings.EqualFold(main, host) {
+			out = append(out, t)
+		}
+	}
+
+	return out
+}
+
 // Top returns a new slice holding at most the first n torrents, preserving
 // input order. It is meant to be the last transform applied — after
-// FilterByStatus, SearchByName, and SortTorrents — so "the first n" means the
+// FilterByStatus, FilterByTracker, SearchByName, and SortTorrents — so "the first n" means the
 // first n rows of the rendered order rather than of the server's own.
 //
 // A non-positive n means unlimited, so an unset --top is indistinguishable from

@@ -451,9 +451,8 @@ server, and no action can hit more torrents than the confirmation stated.
 - **Three wording helpers are duplicated, not promoted:** the mutation verbs,
   the torrent-count noun, and the counted prompt. `internal/tui` does not import
   `internal/commands`.
-- **Still deferred:** list-pane `h`/`l` horizontal scroll (T1), and the
-  sidebar's Trackers group, which needs a projected field that would change
-  `list --json` — T6's call.
+- **Still deferred:** list-pane `h`/`l` horizontal scroll (T1). The sidebar's
+  Trackers group, deferred here too, landed in T8a.
 
 ## T6. Detail pane
 
@@ -524,9 +523,7 @@ server, and no action can hit more torrents than the confirmation stated.
 - **File marks unwind first:** a `clear file marks` rung sits directly above
   `focus main pane`, making twelve rungs, and the status bar shows
   `file marks: N` apart from torrent marks.
-- **Still deferred:** the sidebar's Trackers group. It needs a tracker field
-  projected on `Torrent`, which changes `list --json`, so it gets its own
-  milestone.
+- ~~**Still deferred:** the sidebar's Trackers group~~ — landed in T8a.
 
 ## T7. Command palette
 
@@ -585,8 +582,7 @@ server, and no action can hit more torrents than the confirmation stated.
   `config set` are settings tabs; `free-space` and `stats` are the status bar;
   `--queue-position` is `J`/`K`/top/bottom; `server add/remove/default` write
   `config.json`, which the picker only reads; Prowlarr is T8.
-- **Still deferred:** the sidebar's Trackers group, which changes the domain
-  model and the `list --json` contract, gets its own milestone.
+- ~~**Still deferred:** the sidebar's Trackers group~~ — landed in T8a.
 
 ## T8. Prowlarr window — **done**
 
@@ -665,6 +661,39 @@ Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
 - **The results pane leads with the release verbs,** so its help line lists
   `a w O y m`; `enter` and `+` are in `?` and the palette.
 - **`notYet` is empty.** Every registered key has a handler.
+
+## T8a. Sidebar Trackers group — **done**
+
+Deferred from T5, T6, and T7 because it changes the domain model and the
+`list --json` contract.
+
+- ~~Trackers (dynamic): one row per host with its count; `enter` narrows the
+  list~~
+- ~~CLI parity: `snatcher torrent list --tracker <host>`~~
+
+Decisions, recorded:
+
+- **`Torrent` grows a public `trackers` field** of `{host, sitename, tier}`,
+  projected in `AllFields`, so `list --json` gains a key. It is decoded from
+  torrent-get's `trackers` array, which both wire schemes spell the same way.
+- **Hosts, never announce URLs.** A private tracker's announce URL embeds the
+  user's passkey, and `list --json` is the output most likely to be pasted
+  somewhere. The host is derived at decode time (lowercased, port dropped); an
+  announce URL with no parsable host is dropped whole. `torrent trackers` still
+  shows full URLs, as it did.
+- **A torrent is grouped under its main tracker only**
+  (`transmission.MainTracker`: the first tracker in its lowest tier), as
+  TrguiNG does. Transmission announces to one tracker per tier and keeps the
+  rest as fallbacks; counting every listed host put each torrent under its
+  fallbacks too, so the counts stopped adding up. `trackers` in `--json` still
+  lists every host. Rows sort by host, like labels.
+- **No "No tracker" catch-all row.** `--tracker` cannot select it, so the TUI
+  does not offer it; a session with no trackers shows a muted `none` note.
+- **One matcher.** The sidebar's `filterByTracker` and `list --tracker` both go
+  through `transmission.FilterByTracker` (case-insensitive exact match on the
+  main tracker's host). Group
+  actions, the `f` modal, and clear-marks-on-apply come for free through
+  `filterItem.view()`.
 
 ## T9. Hardening and release
 

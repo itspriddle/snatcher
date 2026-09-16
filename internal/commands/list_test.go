@@ -32,7 +32,11 @@ const bespokeListResponse = `{
 			"uploadRatio": 0.5,
 			"eta": 3600,
 			"queuePosition": 0,
-			"labels": ["linux"]
+			"labels": ["linux"],
+			"trackers": [
+				{"announce": "https://Tracker.Private.example:8443/SECRETPASSKEY/announce", "id": 0, "scrape": "", "sitename": "private", "tier": 0},
+				{"announce": "https://fallback.example/announce", "id": 1, "scrape": "", "sitename": "fallback", "tier": 1}
+			]
 		},
 		{
 			"id": 2,
@@ -538,6 +542,47 @@ func TestListSearchFiltersByName(t *testing.T) {
 	cells := strings.Split(lines[0], "\t")
 	assert.Equal(t, "ubuntu-24.04.iso", cells[nameCol])
 	assert.NotContains(t, out, "debian.iso", "non-matching torrent is excluded")
+}
+
+func TestListTrackerFiltersByHost(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	// --tracker matches the announce host case-insensitively, without its port.
+	out, _, err := runList(t, "--config", cfgPath, "--tracker", "TRACKER.private.example")
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	require.Len(t, lines, 1, "only the matching torrent is listed")
+	assert.Equal(t, "ubuntu-24.04.iso", strings.Split(lines[0], "\t")[defaultNameColumn(t)])
+
+	none, _, err := runList(t, "--config", cfgPath, "--tracker", "nope.example")
+	require.NoError(t, err)
+	assert.NotContains(t, none, ".iso", "an unknown host matches nothing")
+
+	fallback, _, err := runList(t, "--config", cfgPath, "--tracker", "fallback.example")
+	require.NoError(t, err)
+	assert.NotContains(t, fallback, ".iso", "a fallback tracker is not the main tracker")
+}
+
+func TestListJSONCarriesTrackerHostsNotURLs(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	out, _, err := runList(t, "--config", cfgPath, "--json", "--tracker", "tracker.private.example")
+	require.NoError(t, err)
+
+	// The announce URL embeds a passkey; only its host may reach the output.
+	assert.NotContains(t, out, "SECRETPASSKEY")
+	assert.NotContains(t, out, "announce")
+
+	var rows []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &rows))
+	require.Len(t, rows, 1)
+	assert.Equal(t, []any{
+		map[string]any{"host": "tracker.private.example", "sitename": "private", "tier": float64(0)},
+		map[string]any{"host": "fallback.example", "sitename": "fallback", "tier": float64(1)},
+	}, rows[0]["trackers"], "--json still lists every tracker")
 }
 
 func TestListReverseFlipsSortOrder(t *testing.T) {

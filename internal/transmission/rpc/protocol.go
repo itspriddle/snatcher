@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -421,6 +422,12 @@ type Torrent struct {
 	// Labels are the user-assigned labels on the torrent.
 	Labels []string `json:"labels"`
 
+	// Trackers are the torrent's trackers, one per announce URL, reduced to
+	// their hosts. The announce URL itself is never carried here: a private
+	// tracker's URL embeds the user's passkey, and this struct is what
+	// `list --json` emits.
+	Trackers []TorrentTracker `json:"trackers"`
+
 	// QueuePosition is the torrent's position in the server's queue.
 	QueuePosition int64 `json:"queue_position"`
 
@@ -429,6 +436,51 @@ type Torrent struct {
 
 	// IsStalled reports whether the torrent has stalled.
 	IsStalled bool `json:"is_stalled"`
+}
+
+// TorrentTracker is one of a torrent's trackers as the list read carries it:
+// the announce URL's host, never the URL.
+type TorrentTracker struct {
+	// Host is the announce URL's lowercased hostname, without a port.
+	Host string `json:"host"`
+
+	// Sitename is the tracker's short site name, as the server derives it.
+	Sitename string `json:"sitename"`
+
+	// Tier is the tracker's tier, per BEP 12.
+	Tier int `json:"tier"`
+}
+
+// wireTorrentTracker is one entry of torrent-get's "trackers" array. Both
+// schemes spell it, and its keys, the same way.
+type wireTorrentTracker struct {
+	Announce string `json:"announce"`
+	Sitename string `json:"sitename"`
+	Tier     int    `json:"tier"`
+}
+
+// torrentTrackers reduces the wire trackers to their hosts. An announce URL
+// that does not parse, or has no host, is dropped rather than carried whole,
+// so nothing past the host can reach the canonical struct. The result is
+// non-nil.
+func torrentTrackers(wire []wireTorrentTracker) []TorrentTracker {
+	out := make([]TorrentTracker, 0, len(wire))
+
+	for _, w := range wire {
+		u, err := url.Parse(w.Announce)
+		if err != nil {
+			continue
+		}
+
+		host := strings.ToLower(u.Hostname())
+		if host == "" {
+			continue
+		}
+
+		out = append(out, TorrentTracker{Host: host, Sitename: w.Sitename, Tier: w.Tier})
+	}
+
+	return out
 }
 
 // File is one file within a torrent, in a canonical TorrentDetail. Wanted and
@@ -943,31 +995,32 @@ type jsonrpcStatsResult struct {
 
 // jsonrpcTorrent is the snake_case torrent_get torrent shape.
 type jsonrpcTorrent struct {
-	ID                 int64    `json:"id"`
-	Hash               string   `json:"hash_string"`
-	Name               string   `json:"name"`
-	Status             int      `json:"status"`
-	PercentDone        float64  `json:"percent_done"`
-	TotalSize          int64    `json:"total_size"`
-	SizeWhenDone       int64    `json:"size_when_done"`
-	LeftUntilDone      int64    `json:"left_until_done"`
-	RateDownload       int64    `json:"rate_download"`
-	RateUpload         int64    `json:"rate_upload"`
-	UploadRatio        float64  `json:"upload_ratio"`
-	ETA                int64    `json:"eta"`
-	PeersConnected     int64    `json:"peers_connected"`
-	PeersSendingToUs   int64    `json:"peers_sending_to_us"`
-	PeersGettingFromUs int64    `json:"peers_getting_from_us"`
-	AddedDate          int64    `json:"added_date"`
-	DoneDate           int64    `json:"done_date"`
-	ActivityDate       int64    `json:"activity_date"`
-	DownloadDir        string   `json:"download_dir"`
-	ErrorCode          int      `json:"error"`
-	Error              string   `json:"error_string"`
-	Labels             []string `json:"labels"`
-	QueuePosition      int64    `json:"queue_position"`
-	IsFinished         bool     `json:"is_finished"`
-	IsStalled          bool     `json:"is_stalled"`
+	ID                 int64                `json:"id"`
+	Hash               string               `json:"hash_string"`
+	Name               string               `json:"name"`
+	Status             int                  `json:"status"`
+	PercentDone        float64              `json:"percent_done"`
+	TotalSize          int64                `json:"total_size"`
+	SizeWhenDone       int64                `json:"size_when_done"`
+	LeftUntilDone      int64                `json:"left_until_done"`
+	RateDownload       int64                `json:"rate_download"`
+	RateUpload         int64                `json:"rate_upload"`
+	UploadRatio        float64              `json:"upload_ratio"`
+	ETA                int64                `json:"eta"`
+	PeersConnected     int64                `json:"peers_connected"`
+	PeersSendingToUs   int64                `json:"peers_sending_to_us"`
+	PeersGettingFromUs int64                `json:"peers_getting_from_us"`
+	AddedDate          int64                `json:"added_date"`
+	DoneDate           int64                `json:"done_date"`
+	ActivityDate       int64                `json:"activity_date"`
+	DownloadDir        string               `json:"download_dir"`
+	ErrorCode          int                  `json:"error"`
+	Error              string               `json:"error_string"`
+	Labels             []string             `json:"labels"`
+	Trackers           []wireTorrentTracker `json:"trackers"`
+	QueuePosition      int64                `json:"queue_position"`
+	IsFinished         bool                 `json:"is_finished"`
+	IsStalled          bool                 `json:"is_stalled"`
 }
 
 // toCanonical converts a decoded JSON-RPC torrent into the canonical Torrent,
@@ -996,6 +1049,7 @@ func (t jsonrpcTorrent) toCanonical() Torrent {
 		DownloadDir:        t.DownloadDir,
 		Error:              t.Error,
 		Labels:             t.Labels,
+		Trackers:           torrentTrackers(t.Trackers),
 		QueuePosition:      t.QueuePosition,
 		IsFinished:         t.IsFinished,
 		IsStalled:          t.IsStalled,
@@ -1159,7 +1213,7 @@ var torrentGetCanonicalFields = []string{
 	"size_when_done", "left_until_done", "rate_download", "rate_upload",
 	"upload_ratio", "eta", "peers_connected", "peers_sending_to_us",
 	"peers_getting_from_us", "added_date", "done_date", "activity_date",
-	"download_dir", "error", "labels", "queue_position",
+	"download_dir", "error", "labels", "trackers", "queue_position",
 	"is_finished", "is_stalled",
 }
 
@@ -1190,6 +1244,7 @@ var torrentGetFieldsJSONRPCMap = map[string][]string{
 	"download_dir":          {"download_dir"},
 	"error":                 {"error", "error_string"},
 	"labels":                {"labels"},
+	"trackers":              {"trackers"},
 	"queue_position":        {"queue_position"},
 	"is_finished":           {"is_finished"},
 	"is_stalled":            {"is_stalled"},
@@ -2164,31 +2219,32 @@ type bespokeStatsArguments struct {
 
 // bespokeTorrent is the camelCase torrent-get torrent shape.
 type bespokeTorrent struct {
-	ID                 int64    `json:"id"`
-	Hash               string   `json:"hashString"`
-	Name               string   `json:"name"`
-	Status             int      `json:"status"`
-	PercentDone        float64  `json:"percentDone"`
-	TotalSize          int64    `json:"totalSize"`
-	SizeWhenDone       int64    `json:"sizeWhenDone"`
-	LeftUntilDone      int64    `json:"leftUntilDone"`
-	RateDownload       int64    `json:"rateDownload"`
-	RateUpload         int64    `json:"rateUpload"`
-	UploadRatio        float64  `json:"uploadRatio"`
-	ETA                int64    `json:"eta"`
-	PeersConnected     int64    `json:"peersConnected"`
-	PeersSendingToUs   int64    `json:"peersSendingToUs"`
-	PeersGettingFromUs int64    `json:"peersGettingFromUs"`
-	AddedDate          int64    `json:"addedDate"`
-	DoneDate           int64    `json:"doneDate"`
-	ActivityDate       int64    `json:"activityDate"`
-	DownloadDir        string   `json:"downloadDir"`
-	ErrorCode          int      `json:"error"`
-	Error              string   `json:"errorString"`
-	Labels             []string `json:"labels"`
-	QueuePosition      int64    `json:"queuePosition"`
-	IsFinished         bool     `json:"isFinished"`
-	IsStalled          bool     `json:"isStalled"`
+	ID                 int64                `json:"id"`
+	Hash               string               `json:"hashString"`
+	Name               string               `json:"name"`
+	Status             int                  `json:"status"`
+	PercentDone        float64              `json:"percentDone"`
+	TotalSize          int64                `json:"totalSize"`
+	SizeWhenDone       int64                `json:"sizeWhenDone"`
+	LeftUntilDone      int64                `json:"leftUntilDone"`
+	RateDownload       int64                `json:"rateDownload"`
+	RateUpload         int64                `json:"rateUpload"`
+	UploadRatio        float64              `json:"uploadRatio"`
+	ETA                int64                `json:"eta"`
+	PeersConnected     int64                `json:"peersConnected"`
+	PeersSendingToUs   int64                `json:"peersSendingToUs"`
+	PeersGettingFromUs int64                `json:"peersGettingFromUs"`
+	AddedDate          int64                `json:"addedDate"`
+	DoneDate           int64                `json:"doneDate"`
+	ActivityDate       int64                `json:"activityDate"`
+	DownloadDir        string               `json:"downloadDir"`
+	ErrorCode          int                  `json:"error"`
+	Error              string               `json:"errorString"`
+	Labels             []string             `json:"labels"`
+	Trackers           []wireTorrentTracker `json:"trackers"`
+	QueuePosition      int64                `json:"queuePosition"`
+	IsFinished         bool                 `json:"isFinished"`
+	IsStalled          bool                 `json:"isStalled"`
 }
 
 // toCanonical converts a decoded bespoke torrent into the canonical Torrent,
@@ -2217,6 +2273,7 @@ func (t bespokeTorrent) toCanonical() Torrent {
 		DownloadDir:        t.DownloadDir,
 		Error:              t.Error,
 		Labels:             t.Labels,
+		Trackers:           torrentTrackers(t.Trackers),
 		QueuePosition:      t.QueuePosition,
 		IsFinished:         t.IsFinished,
 		IsStalled:          t.IsStalled,
@@ -2423,6 +2480,7 @@ var torrentGetFieldsBespokeMap = map[string][]string{
 	"download_dir":          {"downloadDir"},
 	"error":                 {"error", "errorString"},
 	"labels":                {"labels"},
+	"trackers":              {"trackers"},
 	"queue_position":        {"queuePosition"},
 	"is_finished":           {"isFinished"},
 	"is_stalled":            {"isStalled"},

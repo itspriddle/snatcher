@@ -16,7 +16,7 @@
 │  b                  2│┃                                                                                              ┃
 │  No label           1│┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
 │Trackers              │┃   │ Set labels on 2 torrents                                     │                           ┃
-│  (none yet)          │┃   │                                                              │                           ┃
+│  none                │┃   │                                                              │                           ┃
 │                      │┃   │ > a, b                                                       │                           ┃
 │                      │┃   │                                                              │                           ┃
 │                      │┃   │ comma-separated; empty clears                                │                           ┃

@@ -16,10 +16,10 @@
 │  s│   L      labels                                                                                              │   ┃
 │  N│   M      move                                                                                                │   ┃
 │Tra│   m      action menu                                                                                         │   ┃
-│  (│                                                                                                              │   ┃
-│   │ torrents                                                                                                     │   ┃
-│   │   {  toggle filter pane                                                                                      │   ┃
-│   │   1  detail: overview                                                                                        │   ┃
+│  b│                                                                                                              │   ┃
+│  e│ torrents                                                                                                     │   ┃
+│  t│   {  toggle filter pane                                                                                      │   ┃
+│  t│   1  detail: overview                                                                                        │   ┃
 │   │   2  detail: files                                                                                           │   ┃
 │   │   3  detail: trackers                                                                                        │   ┃
 │   │   4  detail: peers                                                                                           │   ┃

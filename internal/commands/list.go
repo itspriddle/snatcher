@@ -256,6 +256,7 @@ func NewListCmd() *cobra.Command {
 		filterFlag string
 		sortFlag   string
 		searchFlag string
+		tracker    string
 		reverse    bool
 		fieldsFlag string
 		topFlag    int
@@ -310,12 +311,13 @@ func NewListCmd() *cobra.Command {
 			}
 
 			// Apply the in-memory transforms in a fixed order: status filter,
-			// then name search, then sort, then truncation. This order is
+			// then tracker, then name search, then sort, then truncation. This order is
 			// shared by every output mode (table, piped, JSON/jq). Truncation
 			// is last on purpose, so --top means "the first N rows of the
-			// rendered order" and composes with the three transforms above
+			// rendered order" and composes with the transforms above
 			// rather than racing them.
 			torrents = transmission.FilterByStatus(torrents, filter)
+			torrents = transmission.FilterByTracker(torrents, strings.TrimSpace(tracker))
 			torrents = transmission.SearchByName(torrents, searchFlag)
 			torrents = transmission.SortTorrents(torrents, sortField, flagOr(cmd, "reverse", reverse, defaults.reverse))
 			torrents = transmission.Top(torrents, topFlag)
@@ -339,6 +341,7 @@ func NewListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&jqExpr, "jq", "", "filter JSON output with a jq expression")
 	cmd.Flags().StringVar(&filterFlag, "filter", "all", "filter by state (all, active, inactive, downloading, seeding, stopped, verifying, queued-to-verify, queued-to-download, queued-to-seed, error)")
 	cmd.Flags().StringVar(&sortFlag, "sort", "queue", "sort by field (queue, name, added, size, progress, ratio, speed)")
+	cmd.Flags().StringVar(&tracker, "tracker", "", "only torrents whose main tracker is this host (case-insensitive)")
 	cmd.Flags().StringVar(&searchFlag, "search", "", "filter to torrents whose name contains this text (case-insensitive)")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "reverse the sort order")
 	cmd.Flags().IntVar(&topFlag, "top", 0, "show only the first N rows of the rendered order")

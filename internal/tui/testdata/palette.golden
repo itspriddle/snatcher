@@ -15,7 +15,7 @@
 │  linux              │   labels                     torrent list                              L │                     ┃
 │  No label           │   move                       torrent list                              M │                     ┃
 │Trackers             │   force start                torrent list                                │                     ┃
-│  (none yet)         │   rename torrent…            torrent list                                │                     ┃
+│  none               │   rename torrent…            torrent list                                │                     ┃
 │                     │   queue top                  torrent list                                │                     ┃
 │                     │   queue bottom               torrent list                                │                     ┃
 │                     │   add tracker…               torrent list                                │                     ┃

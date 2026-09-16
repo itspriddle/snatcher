@@ -111,6 +111,66 @@ func TestLabelFilterMatchesTheRawLabel(t *testing.T) {
 	assert.Equal(t, []int64{2}, rowIDs(m.applyFilterItem(filterItemNamed(t, m, "tag")).torrents.rows))
 }
 
+// TestTrackerFilterMatchesTheRawHost checks a tracker row filters by the host
+// the server sent, not its sanitized display, that the display is sanitized,
+// and that the footer names the filter.
+func TestTrackerFilterMatchesTheRawHost(t *testing.T) {
+	deps := testDeps()
+	deps.Torrents = []transmission.Torrent{
+		{ID: 1, Name: "one", Trackers: []transmission.TorrentTracker{{Host: "evil\x1b[31m.host"}}},
+		{ID: 2, Name: "two", Trackers: []transmission.TorrentTracker{{Host: "b.example"}, {Host: "fallback.example", Tier: 1}}},
+		{ID: 3, Name: "three"},
+	}
+
+	m := New(deps).applyTheme(true).resize(120, 40)
+
+	var hostile filterItem
+
+	for _, item := range m.torrents.filter.items {
+		if item.trackerRow && item.raw == "evil\x1b[31m.host" {
+			hostile = item
+		}
+	}
+
+	require.True(t, hostile.trackerRow, "the hostile host has a row")
+	assert.NotContains(t, hostile.label, "\x1b", "its display is sanitized")
+
+	filtered := m.applyFilterItem(hostile)
+	assert.Equal(t, []int64{1}, rowIDs(filtered.torrents.rows))
+	assert.NotContains(t, filtered.render(), "\x1b[31m")
+
+	byHost := m.applyFilterItem(filterItemNamed(t, m, "b.example"))
+	assert.Equal(t, []int64{2}, rowIDs(byHost.torrents.rows))
+	assert.Equal(t, "tracker b.example", byHost.torrents.listView.filter.text())
+
+	for _, item := range m.torrents.filter.items {
+		assert.NotEqual(t, "fallback.example", item.raw, "a fallback tracker gets no row")
+	}
+}
+
+// TestAppliedTrackerSurvivesRebuild checks the applied tracker row is carried
+// by what it names when a poll adds a host that sorts ahead of it.
+func TestAppliedTrackerSurvivesRebuild(t *testing.T) {
+	rows := []transmission.Torrent{{ID: 1, Trackers: []transmission.TorrentTracker{{Host: "m.example"}}}}
+	p := newFilterPane(rows)
+
+	var host filterItem
+
+	for _, item := range p.items {
+		if item.trackerRow {
+			host = item
+		}
+	}
+
+	p = p.applyItem(host)
+
+	rows = append(rows, transmission.Torrent{ID: 2, Trackers: []transmission.TorrentTracker{{Host: "a.example"}}})
+	next := p.rebuild(rows)
+
+	require.GreaterOrEqual(t, next.applied, 0)
+	assert.Equal(t, "m.example", next.items[next.applied].raw)
+}
+
 // TestActiveCountGoesByRate checks the sidebar counts an idle seeder as
 // inactive rather than active, and that each row filters to what it counts.
 func TestActiveCountGoesByRate(t *testing.T) {
@@ -243,6 +303,16 @@ func TestGroupSelectorNeverUsesAll(t *testing.T) {
 	assert.Empty(t, got.overlays)
 	assert.Equal(t, "no torrents in Downloading", got.toast)
 	assert.Zero(t, stub.calls("torrent-stop"))
+}
+
+// TestGroupSelectorForATracker checks a tracker row's group is the torrents
+// whose main tracker is that host.
+func TestGroupSelectorForATracker(t *testing.T) {
+	m := newTestModel(120, 40)
+
+	sel := groupSelector(filterItemNamed(t, m, "tracker.example.net"), m.torrents.all)
+	assert.False(t, sel.All)
+	assert.Equal(t, []int64{3}, sel.IDs, "torrent 2 lists the host only as a fallback")
 }
 
 // TestGroupDeleteAsksAboutData checks d in the sidebar removes the group through

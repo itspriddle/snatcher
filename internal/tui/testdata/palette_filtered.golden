@@ -15,7 +15,7 @@
 │  linux              │ Command palette                                                          │                     ┃
 │  No label           │ : lim                                                                    │                     ┃
 │Trackers             │                                                                          │                     ┃
-│  (none yet)         │ > peer limit…               torrent list                                 │                     ┃
+│  none               │ > peer limit…               torrent list                                 │                     ┃
 │                     │   upload limit…             torrent list                                 │                     ┃
 │                     │   download limit…           torrent list                                 │                     ┃
 │                     │   seed ratio limit…         torrent list                                 │                     ┃

@@ -68,6 +68,10 @@ type filterItem struct {
 	// since two labels can sanitize to the same text.
 	labelRow bool
 	raw      string
+
+	// trackerRow marks a row of the tracker section; raw is then the host it
+	// names, unsanitized for the same reason as a label's.
+	trackerRow bool
 }
 
 // selectable reports whether the cursor may rest on this row.
@@ -99,8 +103,8 @@ var statusFilters = []transmission.Filter{
 const noLabel = "No label"
 
 // newFilterPane builds the sidebar for a set of torrents: the status section
-// with live counts, a label section derived from the rows themselves, and a
-// tracker section that stays a placeholder until tracker data lands in T5.
+// with live counts, and label and tracker sections derived from the rows
+// themselves.
 func newFilterPane(rows []transmission.Torrent) filterPane {
 	p := filterPane{items: filterItems(rows), applied: -1}
 
@@ -123,7 +127,7 @@ func filterItems(rows []transmission.Torrent) []filterItem {
 	items = append(items, filterItem{label: "Labels", kind: itemHeading})
 	items = append(items, labelItems(rows)...)
 	items = append(items, filterItem{label: "Trackers", kind: itemHeading})
-	items = append(items, filterItem{label: "(none yet)", kind: itemNote})
+	items = append(items, trackerItems(rows)...)
 
 	return items
 }
@@ -165,7 +169,7 @@ func (p filterPane) rebuild(rows []transmission.Torrent) filterPane {
 // enough: a torrent label could be spelled like a status row.
 func (i filterItem) sameAs(other filterItem) bool {
 	return i.kind == other.kind && i.label == other.label && i.filter == other.filter &&
-		i.labelRow == other.labelRow && i.raw == other.raw
+		i.labelRow == other.labelRow && i.trackerRow == other.trackerRow && i.raw == other.raw
 }
 
 // filterLabel is how a domain filter is spelled in the sidebar: its own name,
@@ -211,6 +215,44 @@ func labelItems(rows []transmission.Torrent) []filterItem {
 	}
 
 	return append(items, filterItem{label: noLabel, count: unlabeled, kind: itemFilter, labelRow: true})
+}
+
+// noTrackers is the tracker section's placeholder when no torrent has one.
+const noTrackers = "none"
+
+// trackerItems builds the tracker section from the torrents themselves: one row
+// per main tracker host, sorted, so each torrent counts once and fallback
+// trackers get no row of their own. There is no catch-all row for torrents with
+// no tracker, because the CLI's --tracker cannot select them; an empty section
+// gets a note instead.
+func trackerItems(rows []transmission.Torrent) []filterItem {
+	counts := map[string]int{}
+
+	for _, t := range rows {
+		if host := transmission.MainTracker(t); host != "" {
+			counts[host]++
+		}
+	}
+
+	if len(counts) == 0 {
+		return []filterItem{{label: noTrackers, kind: itemNote}}
+	}
+
+	hosts := make([]string, 0, len(counts))
+	for host := range counts {
+		hosts = append(hosts, host)
+	}
+
+	slices.Sort(hosts)
+
+	items := make([]filterItem, 0, len(hosts))
+	for _, host := range hosts {
+		items = append(items, filterItem{
+			label: output.SanitizeTerminal(host), count: counts[host], kind: itemFilter, trackerRow: true, raw: host,
+		})
+	}
+
+	return items
 }
 
 // move steps the cursor by delta rows, skipping unselectable rows and stopping
@@ -286,10 +328,12 @@ func (p filterPane) applyItem(item filterItem) filterPane {
 	return p
 }
 
-// view is the list filter a row applies: a status, a label, or — for the All
-// row — none.
+// view is the list filter a row applies: a status, a label, a tracker, or —
+// for the All row — none.
 func (i filterItem) view() viewFilter {
 	switch {
+	case i.trackerRow:
+		return viewFilter{kind: filterByTracker, tracker: i.raw}
 	case i.labelRow:
 		return viewFilter{kind: filterByLabel, label: i.raw}
 	case i.filter == transmission.FilterAll:

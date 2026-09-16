@@ -15,7 +15,7 @@
 │  linux              │   idle-seeding-limit          Idle time in minutes before stopping seed… │                     ┃
 │  No label           │   cache-size-mib              Disk cache size in MiB                     │                     ┃
 │Trackers             │   peer-port                   Port to listen for incoming peer connecti… │                     ┃
-│  (none yet)         │   peer-port-random-on-start   Pick a random peer port on each start      │                     ┃
+│  none               │   peer-port-random-on-start   Pick a random peer port on each start      │                     ┃
 │                     │   port-forwarding-enabled     Request UPnP/NAT-PMP port forwarding       │                     ┃
 │                     │   encryption                  Peer encryption mode (allowed, preferred,… │                     ┃
 │                     │   peer-limit-global           Maximum peer connections across all torre… │                     ┃

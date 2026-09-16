@@ -99,7 +99,7 @@ func (m Model) applyFilterPick() Model {
 }
 
 // text is the filter as the footer and the toast name it: a status as the
-// sidebar spells it, a label sanitized, or "no label".
+// sidebar spells it, a label or tracker host sanitized, or "no label".
 func (f viewFilter) text() string {
 	switch f.kind {
 	case filterByStatus:
@@ -110,6 +110,8 @@ func (f viewFilter) text() string {
 		}
 
 		return "label " + output.SanitizeTerminal(f.label)
+	case filterByTracker:
+		return "tracker " + output.SanitizeTerminal(f.tracker)
 	case filterByNone:
 	}
 

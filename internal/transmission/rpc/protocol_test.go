@@ -309,6 +309,12 @@ func TestJSONRPCProtocolTorrentGet(t *testing.T) {
 				"error": 0,
 				"error_string": "",
 				"labels": ["linux", "iso"],
+				"trackers": [
+					{"announce": "https://T.Example:8443/PASSKEY/announce", "id": 0, "scrape": "", "sitename": "example", "tier": 0},
+					{"announce": "udp://t.example:6969", "id": 1, "scrape": "", "sitename": "example", "tier": 1},
+					{"announce": "not a url\u0000/PASSKEY", "id": 2, "scrape": "", "sitename": "", "tier": 2},
+					{"announce": "/relative/PASSKEY", "id": 3, "scrape": "", "sitename": "", "tier": 3}
+				],
 				"queue_position": 3,
 				"is_finished": false,
 				"is_stalled": false
@@ -340,6 +346,13 @@ func TestJSONRPCProtocolTorrentGet(t *testing.T) {
 	assert.Equal(t, []string{"linux", "iso"}, got.Labels)
 	assert.Equal(t, int64(3), got.QueuePosition)
 
+	// Trackers are reduced to lowercased hosts without ports; an announce URL
+	// with no parsable host is dropped, and no path (passkey) survives.
+	assert.Equal(t, []TorrentTracker{
+		{Host: "t.example", Sitename: "example", Tier: 0},
+		{Host: "t.example", Sitename: "example", Tier: 1},
+	}, got.Trackers)
+
 	var gotBody map[string]any
 	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
 
@@ -354,6 +367,7 @@ func TestJSONRPCProtocolTorrentGet(t *testing.T) {
 	assert.ElementsMatch(t, resolveTorrentGetFields(nil, torrentGetFieldsJSONRPCMap), fieldStrings(t, params["fields"]))
 	assert.Contains(t, fieldStrings(t, params["fields"]), "hash_string")
 	assert.Contains(t, fieldStrings(t, params["fields"]), "error_string")
+	assert.Contains(t, fieldStrings(t, params["fields"]), "trackers")
 }
 
 func TestBespokeProtocolTorrentGet(t *testing.T) {
@@ -386,6 +400,9 @@ func TestBespokeProtocolTorrentGet(t *testing.T) {
 				"error": 0,
 				"errorString": "",
 				"labels": ["linux", "iso"],
+				"trackers": [
+					{"announce": "http://tracker.example/PASSKEY/announce", "id": 0, "scrape": "", "sitename": "tracker", "tier": 0}
+				],
 				"queuePosition": 3,
 				"isFinished": false,
 				"isStalled": false
@@ -413,6 +430,7 @@ func TestBespokeProtocolTorrentGet(t *testing.T) {
 	assert.Equal(t, int64(3600), got.ETA)
 	assert.Equal(t, []string{"linux", "iso"}, got.Labels)
 	assert.Equal(t, int64(3), got.QueuePosition)
+	assert.Equal(t, []TorrentTracker{{Host: "tracker.example", Sitename: "tracker", Tier: 0}}, got.Trackers)
 
 	var gotBody map[string]any
 	require.NoError(t, json.Unmarshal(rawBody, &gotBody))
@@ -426,6 +444,7 @@ func TestBespokeProtocolTorrentGet(t *testing.T) {
 	assert.ElementsMatch(t, resolveTorrentGetFields(nil, torrentGetFieldsBespokeMap), fieldStrings(t, args["fields"]))
 	assert.Contains(t, fieldStrings(t, args["fields"]), "hashString")
 	assert.Contains(t, fieldStrings(t, args["fields"]), "errorString")
+	assert.Contains(t, fieldStrings(t, args["fields"]), "trackers")
 }
 
 func TestTorrentGetSendsIDs(t *testing.T) {
