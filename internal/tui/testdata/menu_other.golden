@@ -15,7 +15,7 @@
 │  linux              1│┃   │                                                              │                           ┃
 │  No label           2│┃   │ > honor session limits ▸                                     │                           ┃
 │Trackers              │┃   │   download limit…                                            │                           ┃
-│  (none yet)          │┃   │   upload limit…                                              │                           ┃
+│  none                │┃   │   upload limit…                                              │                           ┃
 │                      │┃   │   peer limit…                                                │                           ┃
 │                      │┃   │   seed ratio limit…                                          │                           ┃
 │                      │┃   │   seed idle limit…                                           │                           ┃

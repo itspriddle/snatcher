@@ -15,7 +15,7 @@
 │  linux              1│┃                                                                                              ┃
 │  No label           2│┃                                                                                              ┃
 │Trackers              │┃                                                                                              ┃
-│  (none yet)          │┃      ╭────────────────────────────────────────────────────────╮                              ┃
+│  none                │┃      ╭────────────────────────────────────────────────────────╮                              ┃
 │                      │┃      │ Also delete downloaded data?                           │                              ┃
 │                      │┃      │ y deletes the files on disk, n keeps them, esc cancels │                              ┃
 │                      │┃      │                                                        │                              ┃

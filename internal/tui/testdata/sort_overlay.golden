@@ -16,10 +16,10 @@
 │  seed               3│┃   │                                                              │                           ┃
 │  No label           7│┃   │   queue  (current)                                           │                           ┃
 │Trackers              │┃   │ > name                                                       │                           ┃
-│  (none yet)          │┃   │   added                                                      │                           ┃
-│                      │┃   │   size                                                       │                           ┃
-│                      │┃   │   progress                                                   │                           ┃
-│                      │┃   │   ratio                                                      │                           ┃
+│  bttracker.debian.… 1│┃   │   added                                                      │                           ┃
+│  evil[31m.host      1│┃   │   size                                                       │                           ┃
+│  torrent.ubuntu.com 1│┃   │   progress                                                   │                           ┃
+│  tracker.example.n… 2│┃   │   ratio                                                      │                           ┃
 │                      │┃   │   speed                                                      │                           ┃
 │                      │┃   │                                                              │                           ┃
 │                      │┃   │   reverse: off                                               │                           ┃

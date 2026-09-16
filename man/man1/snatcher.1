@@ -1196,6 +1196,17 @@ is any torrent with a non-zero download or upload rate, and
 .B inactive
 is one with neither that is not stopped or errored.
 .TP
+.BR \-\-tracker " " \fIhost\fR
+Show only torrents announcing to the tracker
+.I host
+(case-insensitive, exact match, no port), as named in the TUI sidebar's
+Trackers section. Each torrent's
+.B trackers
+field in
+.BR \-\-json " and " \-\-jq
+output carries its tracker hosts, never the announce URLs, which on a private
+tracker embed a passkey.
+.TP
 .BR \-\-search " " \fItext\fR
 Show only torrents whose name contains
 .I text
@@ -1243,7 +1254,7 @@ plaintext-only.
 Show only the first
 .I n
 rows of the final rendered order \(em that is, after
-.BR \-\-filter ", " \-\-search ", " \-\-sort ", and " \-\-reverse
+.BR \-\-filter ", " \-\-tracker ", " \-\-search ", " \-\-sort ", and " \-\-reverse
 have been applied, so
 .B "\-\-sort size \-\-reverse \-\-top 10"
 is the ten largest torrents. Truncation applies to

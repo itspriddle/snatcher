@@ -199,6 +199,7 @@ func TestTorrentJSONContract(t *testing.T) {
 		DownloadDir:        "/downloads",
 		Error:              "",
 		Labels:             []string{"linux", "iso"},
+		Trackers:           []transmission.TorrentTracker{{Host: "t.example", Sitename: "t", Tier: 1}},
 		QueuePosition:      0,
 		IsFinished:         false,
 		IsStalled:          false,
@@ -216,8 +217,8 @@ func TestTorrentJSONContract(t *testing.T) {
 		"size_when_done", "left_until_done", "rate_download", "rate_upload",
 		"upload_ratio", "eta", "peers_connected", "peers_sending_to_us",
 		"peers_getting_from_us", "added_date", "done_date", "activity_date",
-		"download_dir", "error", "labels", "queue_position", "is_finished",
-		"is_stalled",
+		"download_dir", "error", "labels", "trackers", "queue_position",
+		"is_finished", "is_stalled",
 	} {
 		assert.Contains(t, got, key, "missing json key %q", key)
 	}
@@ -228,6 +229,7 @@ func TestTorrentJSONContract(t *testing.T) {
 	assert.Contains(t, string(raw), `"status":"downloading"`)
 	assert.Equal(t, "abc123", got["hash"])
 	assert.Equal(t, float64(7), got["id"])
+	assert.Equal(t, []any{map[string]any{"host": "t.example", "sitename": "t", "tier": float64(1)}}, got["trackers"])
 }
 
 // TestTorrentDetailJSONContract confirms TorrentDetail's json tags are all

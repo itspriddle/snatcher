@@ -15,7 +15,7 @@
 │  linux              1│┃                                                                                              ┃
 │  No label           2│┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
 │Trackers              │┃   │ Switch server                                                │                           ┃
-│  (none yet)          │┃   │                                                              │                           ┃
+│  none                │┃   │                                                              │                           ┃
 │                      │┃   │ > home     nas:9091         (current)                        │                           ┃
 │                      │┃   │   office   10.0.0.5:9091                                     │                           ┃
 │                      │┃   │   seedbox  sb.example:9091  (default)                        │                           ┃

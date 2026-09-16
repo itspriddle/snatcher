@@ -4,33 +4,33 @@
 │  Downloading        4│┃  ^    2 debian-12.7.0-amd… Seeding     100%  631.0 MB       0 B/s  512.0 KB/s   3.41       - ┃
 │  Seeding            3│┃  x    3 archlinux-2026.09… Stopped      87%    1.1 GB       0 B/s       0 B/s   0.00       - ┃
 │  Active             5│┃  %    4 fedora-workstatio… Verifying    99%    2.1 GB       0 B/s       0 B/s   0.00       - ┃
-│  Inactive           4│┃  ~    5 nixos-minimal-25.… Queued to … 100%    1.0 GB       0 B/s       0 B/s   0.00       - ┃
-│  Stopped            2│┃  ~    6 openbsd-7.6-amd64… Queued to …   0%  769.0 MB       0 B/s       0 B/s   0.00       - ┃
-│  Verifying          1│┃  ~╭──────────────────────────────────────────────────────────────╮      0 B/s   0.88       - ┃
-│  Queued to download 1│┃  !│ Filter torrents                                              │      0 B/s   0.00       - ┃
-│  Queued to seed     1│┃  v│                                                              │      0 B/s   0.00 14m 40s ┃
-│  Queued to verify   1│┃  ^│ Status                                                       │  64.0 KB/s   1.04       - ┃
-│  Error              1│┃  x│   All                                                     12 │      0 B/s   0.00       - ┃
-│Labels                │┃  v│ > Downloading                                              4 │      0 B/s   0.00 55m 19s ┃
-│  linux              3│┃   │   Seeding                                                  3 │                           ┃
-│  seed               3│┃   │   Active                                                   5 │                           ┃
-│  No label           7│┃   │   Inactive                                                 4 │                           ┃
-│Trackers              │┃   │   Stopped                                                  2 │                           ┃
-│  (none yet)          │┃   │   Verifying                                                1 │                           ┃
-│                      │┃   │   Queued to download                                       1 │                           ┃
-│                      │┃   │   Queued to seed                                           1 │                           ┃
-│                      │┃   │   Queued to verify                                         1 │                           ┃
-│                      │┃   │   Error                                                    1 │                           ┃
-│                      │┃   │ Labels                                                       │                           ┃
+│  Inactive           4│┃  ~╭──────────────────────────────────────────────────────────────╮      0 B/s   0.00       - ┃
+│  Stopped            2│┃  ~│ Filter torrents                                              │      0 B/s   0.00       - ┃
+│  Verifying          1│┃  ~│                                                              │      0 B/s   0.88       - ┃
+│  Queued to download 1│┃  !│ Status                                                       │      0 B/s   0.00       - ┃
+│  Queued to seed     1│┃  v│   All                                                     12 │      0 B/s   0.00 14m 40s ┃
+│  Queued to verify   1│┃  ^│ > Downloading                                              4 │  64.0 KB/s   1.04       - ┃
+│  Error              1│┃  x│   Seeding                                                  3 │      0 B/s   0.00       - ┃
+│Labels                │┃  v│   Active                                                   5 │      0 B/s   0.00 55m 19s ┃
+│  linux              3│┃   │   Inactive                                                 4 │                           ┃
+│  seed               3│┃   │   Stopped                                                  2 │                           ┃
+│  No label           7│┃   │   Verifying                                                1 │                           ┃
+│Trackers              │┃   │   Queued to download                                       1 │                           ┃
+│  bttracker.debian.… 1│┃   │   Queued to seed                                           1 │                           ┃
+│  evil[31m.host      1│┃   │   Queued to verify                                         1 │                           ┃
+│  torrent.ubuntu.com 1│┃   │   Error                                                    1 │                           ┃
+│  tracker.example.n… 2│┃   │ Labels                                                       │                           ┃
 │                      │┃   │   linux                                                    3 │                           ┃
 │                      │┃   │   seed                                                     3 │                           ┃
 │                      │┃   │   No label                                                 7 │                           ┃
 │                      │┃   │ Trackers                                                     │                           ┃
-│                      │┃   │     (none yet)                                               │                           ┃
+│                      │┃   │   bttracker.debian.org                                     1 │                           ┃
+│                      │┃   │   evil[31m.host                                            1 │                           ┃
+│                      │┃   │   torrent.ubuntu.com                                       1 │                           ┃
+│                      │┃   │   tracker.example.net                                      2 │                           ┃
 │                      │┃   │                                                              │                           ┃
 │                      │┃   │ ↑/k up • ↓/j down • enter apply • f close • esc cancel       │                           ┃
 │                      │┃   ╰──────────────────────────────────────────────────────────────╯                           ┃
-│                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃

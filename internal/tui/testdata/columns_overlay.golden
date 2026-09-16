@@ -16,10 +16,10 @@
 │  seed               3│┃   │   [x] done          Done                                     │                           ┃
 │  No label           7│┃   │   [x] size          Size                                     │                           ┃
 │Trackers              │┃   │   [x] down          Down                                     │                           ┃
-│  (none yet)          │┃   │   [x] up            Up                                       │                           ┃
-│                      │┃   │   [x] ratio         Ratio                                    │                           ┃
-│                      │┃   │   [x] eta           ETA                                      │                           ┃
-│                      │┃   │   [ ] hash          Hash                                     │                           ┃
+│  bttracker.debian.… 1│┃   │   [x] up            Up                                       │                           ┃
+│  evil[31m.host      1│┃   │   [x] ratio         Ratio                                    │                           ┃
+│  torrent.ubuntu.com 1│┃   │   [x] eta           ETA                                      │                           ┃
+│  tracker.example.n… 2│┃   │   [ ] hash          Hash                                     │                           ┃
 │                      │┃   │   [ ] peers         Peers                                    │                           ┃
 │                      │┃   │   [ ] added         Added                                    │                           ┃
 │                      │┃   │   [ ] download_dir  Download Dir                             │                           ┃

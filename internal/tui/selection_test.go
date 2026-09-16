@@ -137,14 +137,13 @@ func TestFilterPaneCursorSkipsHeadings(t *testing.T) {
 	}
 }
 
-// TestFilterPaneEndsStopRatherThanWrap checks the sidebar's ends, including that
-// bottom lands on the last selectable row rather than on the tracker placeholder
-// beneath it.
+// TestFilterPaneEndsStopRatherThanWrap checks the sidebar's ends: bottom lands
+// on the last tracker host.
 func TestFilterPaneEndsStopRatherThanWrap(t *testing.T) {
 	p := newFilterPane(mockTorrents())
 
 	assert.Equal(t, filterLabel(transmission.FilterAll), p.top().current().label)
-	assert.Equal(t, noLabel, p.bottom().current().label)
+	assert.Equal(t, "tracker.example.net", p.bottom().current().label)
 	assert.Equal(t, p.top().current(), p.top().move(-5).current())
 	assert.Equal(t, p.bottom().current(), p.bottom().move(5).current())
 }
@@ -170,10 +169,41 @@ func TestFilterPaneLabelsComeFromTheRows(t *testing.T) {
 	labels := map[string]int{}
 
 	for _, item := range newFilterPane(mockTorrents()).items {
-		if item.kind == itemFilter && item.filter == "" {
+		if item.labelRow {
 			labels[item.label] = item.count
 		}
 	}
 
 	assert.Equal(t, map[string]int{"linux": 3, "seed": 3, noLabel: 7}, labels)
+}
+
+// TestFilterPaneTrackersComeFromTheRows checks the tracker section is derived
+// from the rows, sorted by host, counting a torrent once however many tiers
+// name its host, and with no catch-all row.
+func TestFilterPaneTrackersComeFromTheRows(t *testing.T) {
+	var hosts []string
+
+	counts := map[string]int{}
+
+	for _, item := range newFilterPane(mockTorrents()).items {
+		if item.trackerRow {
+			hosts = append(hosts, item.raw)
+			counts[item.raw] = item.count
+		}
+	}
+
+	assert.Equal(t, []string{"bttracker.debian.org", "evil\x1b[31m.host", "torrent.ubuntu.com", "tracker.example.net"}, hosts)
+	assert.Equal(t, 1, counts["torrent.ubuntu.com"], "two tiers on one host count once")
+	assert.Equal(t, 2, counts["tracker.example.net"])
+}
+
+// TestFilterPaneTrackersEmptyIsANote checks a session with no trackers gets an
+// unselectable note under the heading rather than a bare heading.
+func TestFilterPaneTrackersEmptyIsANote(t *testing.T) {
+	p := newFilterPane([]transmission.Torrent{{ID: 1}})
+	last := p.items[len(p.items)-1]
+
+	assert.Equal(t, itemNote, last.kind)
+	assert.Equal(t, noTrackers, last.label)
+	assert.Equal(t, noLabel, p.bottom().current().label)
 }

@@ -155,9 +155,42 @@ func SearchByName(torrents []Torrent, query string) []Torrent {
 	return out
 }
 
+// TrackerHosts returns the distinct hosts a torrent announces to, sorted. A
+// torrent listing one host in several tiers names it once, so a count of
+// torrents per host counts each torrent once. The result is non-nil.
+func TrackerHosts(t Torrent) []string {
+	hosts := make([]string, 0, len(t.Trackers))
+	for _, tr := range t.Trackers {
+		hosts = append(hosts, tr.Host)
+	}
+
+	slices.Sort(hosts)
+
+	return slices.Compact(hosts)
+}
+
+// FilterByTracker returns a new slice containing the torrents announcing to
+// host, compared case-insensitively against TrackerHosts, preserving input
+// order. An empty host matches everything. The input is never mutated, and the
+// result is non-nil even when empty.
+func FilterByTracker(torrents []Torrent, host string) []Torrent {
+	if host == "" {
+		return slices.Clone(torrents)
+	}
+
+	out := make([]Torrent, 0, len(torrents))
+	for _, t := range torrents {
+		if slices.ContainsFunc(TrackerHosts(t), func(h string) bool { return strings.EqualFold(h, host) }) {
+			out = append(out, t)
+		}
+	}
+
+	return out
+}
+
 // Top returns a new slice holding at most the first n torrents, preserving
 // input order. It is meant to be the last transform applied — after
-// FilterByStatus, SearchByName, and SortTorrents — so "the first n" means the
+// FilterByStatus, FilterByTracker, SearchByName, and SortTorrents — so "the first n" means the
 // first n rows of the rendered order rather than of the server's own.
 //
 // A non-positive n means unlimited, so an unset --top is indistinguishable from

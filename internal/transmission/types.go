@@ -73,6 +73,10 @@ type Peer = rpc.Peer
 // Tracker is one tracker for a torrent.
 type Tracker = rpc.Tracker
 
+// TorrentTracker is one of a torrent's trackers as a list read carries it: its
+// host, never its announce URL.
+type TorrentTracker = rpc.TorrentTracker
+
 // Status is the derived lifecycle state of a torrent.
 type Status = rpc.Status
 
@@ -159,6 +163,7 @@ const (
 	FieldDownloadDir        Field = "download_dir"
 	FieldError              Field = "error"
 	FieldLabels             Field = "labels"
+	FieldTrackers           Field = "trackers"
 	FieldQueuePosition      Field = "queue_position"
 	FieldIsFinished         Field = "is_finished"
 	FieldIsStalled          Field = "is_stalled"
@@ -173,7 +178,8 @@ var AllFields = []Field{
 	FieldRateUpload, FieldUploadRatio, FieldETA, FieldPeersConnected,
 	FieldPeersSendingToUs, FieldPeersGettingFromUs, FieldAddedDate,
 	FieldDoneDate, FieldActivityDate, FieldDownloadDir, FieldError,
-	FieldLabels, FieldQueuePosition, FieldIsFinished, FieldIsStalled,
+	FieldLabels, FieldTrackers, FieldQueuePosition, FieldIsFinished,
+	FieldIsStalled,
 }
 
 // PollFields is the cheap field subset a polling client (the TUI list pane)

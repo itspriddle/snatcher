@@ -21,6 +21,9 @@ const (
 
 	// filterByLabel keeps torrents carrying one label, or carrying none.
 	filterByLabel
+
+	// filterByTracker keeps torrents announcing to one tracker host.
+	filterByTracker
 )
 
 // viewFilter is the one filter in force on the list. There is only ever one: the
@@ -36,6 +39,10 @@ type viewFilter struct {
 	// "no label". It is raw because it is compared against the torrent's own
 	// labels; only its display is sanitized.
 	label string
+
+	// tracker is the raw, unsanitized host a filterByTracker matches, compared
+	// the way the CLI's --tracker compares it.
+	tracker string
 }
 
 // matches reports whether a torrent passes the filter.
@@ -49,6 +56,8 @@ func (f viewFilter) matches(t transmission.Torrent) bool {
 		}
 
 		return slices.Contains(t.Labels, f.label)
+	case filterByTracker:
+		return len(transmission.FilterByTracker([]transmission.Torrent{t}, f.tracker)) == 1
 	case filterByNone:
 	}
 

@@ -15,7 +15,7 @@
 │  linux              1│┃   │   start                                                      │                           ┃
 │  No label           2│┃   │   pause                                                      │                           ┃
 │Trackers              │┃   │   verify                                                     │                           ┃
-│  (none yet)          │┃   │   reannounce                                                 │                           ┃
+│  none                │┃   │   reannounce                                                 │                           ┃
 │                      │┃   │   rename torrent                                             │                           ┃
 │                      │┃   │   queue ▸                                                    │                           ┃
 │                      │┃   │   move / set location                                        │                           ┃

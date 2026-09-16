@@ -20,6 +20,10 @@ func mockTorrents() []transmission.Torrent {
 			LeftUntilDone: 3597946019, RateDownload: 4194304, RateUpload: 131072,
 			UploadRatio: 0.12, ETA: 858, PeersConnected: 24, PeersSendingToUs: 18,
 			DownloadDir: "/data/downloads", Labels: []string{"linux"}, QueuePosition: 0,
+			Trackers: []transmission.TorrentTracker{
+				{Host: "torrent.ubuntu.com", Sitename: "ubuntu", Tier: 0},
+				{Host: "torrent.ubuntu.com", Sitename: "ubuntu", Tier: 1},
+			},
 		},
 		{
 			ID: 2, Hash: "1123456789abcdef0123456789abcdef01234567",
@@ -28,6 +32,10 @@ func mockTorrents() []transmission.Torrent {
 			RateUpload: 524288, UploadRatio: 3.41, ETA: -1, PeersConnected: 9,
 			PeersGettingFromUs: 4, DownloadDir: "/data/downloads",
 			Labels: []string{"linux", "seed"}, QueuePosition: 1, IsFinished: true,
+			Trackers: []transmission.TorrentTracker{
+				{Host: "bttracker.debian.org", Sitename: "debian", Tier: 0},
+				{Host: "tracker.example.net", Sitename: "example", Tier: 1},
+			},
 		},
 		{
 			ID: 3, Hash: "2123456789abcdef0123456789abcdef01234567",
@@ -35,6 +43,7 @@ func mockTorrents() []transmission.Torrent {
 			PercentDone: 0.87, TotalSize: 1181116006, SizeWhenDone: 1181116006,
 			LeftUntilDone: 153545080, ETA: -1, DownloadDir: "/data/downloads",
 			Labels: []string{"linux"}, QueuePosition: 2,
+			Trackers: []transmission.TorrentTracker{{Host: "tracker.example.net", Sitename: "example"}},
 		},
 		{
 			ID: 4, Hash: "3123456789abcdef0123456789abcdef01234567",
@@ -99,6 +108,7 @@ func mockTorrents() []transmission.Torrent {
 			TotalSize: 1048576000, SizeWhenDone: 1048576000, LeftUntilDone: 870318080,
 			RateDownload: 262144, ETA: 3319, PeersConnected: 1, PeersSendingToUs: 1,
 			DownloadDir: "/data/\x1b[1mdownloads", QueuePosition: 11,
+			Trackers: []transmission.TorrentTracker{{Host: "evil\x1b[31m.host"}},
 		},
 	}
 }
