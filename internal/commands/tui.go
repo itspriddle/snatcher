@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/itspriddle/snatcher/internal/config"
+	"github.com/itspriddle/snatcher/internal/prowlarr"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -63,25 +64,79 @@ type ServerEntry struct {
 // second switch while one is running, which is what makes it so.
 func Dialer(cmd *cobra.Command) func(server string) (DialResult, error) {
 	return func(server string) (DialResult, error) {
-		prev := cmd.ErrOrStderr()
+		var d dialed
 
-		var captured bytes.Buffer
+		warning, err := captureDialWarning(cmd, func() error {
+			var err error
 
-		cmd.SetErr(&captured)
-		defer cmd.SetErr(prev)
+			d, err = dialNamed(cmd, server)
 
-		d, err := dialNamed(cmd, server)
+			return err
+		})
 		if err != nil {
 			return DialResult{}, err
 		}
 
-		return DialResult{
-			Client:  d.client,
-			Name:    d.name,
-			URL:     d.url,
-			Warning: strings.TrimSpace(captured.String()),
-		}, nil
+		return DialResult{Client: d.client, Name: d.name, URL: d.url, Warning: warning}, nil
 	}
+}
+
+// ProwlarrDialResult is one Prowlarr dial as the TUI sees it, the counterpart of
+// DialResult.
+type ProwlarrDialResult struct {
+	// Client is the constructed Prowlarr client.
+	Client *prowlarr.Client
+
+	// Name is the alias the dial resolved to.
+	Name string
+
+	// URL is that server's base URL.
+	URL string
+
+	// Warning is the note the dial would have written to stderr, trimmed, or
+	// empty.
+	Warning string
+}
+
+// ProwlarrDialer returns a function that constructs a *prowlarr.Client for a
+// named Prowlarr server, exactly as the search commands do. It captures a dial
+// warning the way Dialer does, and shares Dialer's constraint: the two swap the
+// same error writer, so the TUI never lets a Prowlarr dial overlap a
+// Transmission one.
+func ProwlarrDialer(cmd *cobra.Command) func(server string) (ProwlarrDialResult, error) {
+	return func(server string) (ProwlarrDialResult, error) {
+		var d dialedProwlarr
+
+		warning, err := captureDialWarning(cmd, func() error {
+			var err error
+
+			d, err = dialProwlarrNamed(cmd, server)
+
+			return err
+		})
+		if err != nil {
+			return ProwlarrDialResult{}, err
+		}
+
+		return ProwlarrDialResult{Client: d.client, Name: d.name, URL: d.url, Warning: warning}, nil
+	}
+}
+
+// captureDialWarning runs dial with cmd's error writer swapped for a buffer, and
+// returns what it wrote, trimmed. The writer is restored before it returns.
+func captureDialWarning(cmd *cobra.Command, dial func() error) (string, error) {
+	prev := cmd.ErrOrStderr()
+
+	var captured bytes.Buffer
+
+	cmd.SetErr(&captured)
+	defer cmd.SetErr(prev)
+
+	if err := dial(); err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(captured.String()), nil
 }
 
 // Servers returns a function that lists the configured Transmission servers,
@@ -90,6 +145,20 @@ func Dialer(cmd *cobra.Command) func(server string) (DialResult, error) {
 // Transmission server can back. An unconfigured snatcher lists nothing rather
 // than failing, and no secret store is touched.
 func Servers(cmd *cobra.Command) func() ([]ServerEntry, error) {
+	return serversOfType(cmd, config.TypeTransmission, func(cfg config.Config) string { return cfg.DefaultServer })
+}
+
+// ProwlarrServers returns a function that lists the configured Prowlarr servers,
+// sorted by alias, for the TUI's Prowlarr window and its server picker. It is
+// Servers' counterpart, flagging default_prowlarr_server.
+func ProwlarrServers(cmd *cobra.Command) func() ([]ServerEntry, error) {
+	return serversOfType(cmd, config.TypeProwlarr, func(cfg config.Config) string { return cfg.DefaultProwlarrServer })
+}
+
+// serversOfType lists the configured servers of one type, flagging the alias
+// defaultOf names. An unconfigured snatcher lists nothing rather than failing,
+// and no secret store is touched.
+func serversOfType(cmd *cobra.Command, typ string, defaultOf func(config.Config) string) func() ([]ServerEntry, error) {
 	return func() ([]ServerEntry, error) {
 		cfg, configured, err := loadConfig(configFlag(cmd))
 		if err != nil {
@@ -100,11 +169,12 @@ func Servers(cmd *cobra.Command) func() ([]ServerEntry, error) {
 			return []ServerEntry{}, nil
 		}
 
-		names := cfg.NamesOfType(config.TypeTransmission)
+		names := cfg.NamesOfType(typ)
+		def := defaultOf(cfg)
 		out := make([]ServerEntry, 0, len(names))
 
 		for _, name := range names {
-			out = append(out, ServerEntry{Name: name, URL: cfg.Servers[name].URL, Default: name == cfg.DefaultServer})
+			out = append(out, ServerEntry{Name: name, URL: cfg.Servers[name].URL, Default: name == def})
 		}
 
 		return out, nil

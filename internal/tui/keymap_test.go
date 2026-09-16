@@ -302,6 +302,59 @@ func TestPaletteStackIsModal(t *testing.T) {
 	}
 }
 
+// TestProwlarrModalStacksAreModal pins the Prowlarr window's three modals and
+// its y chord: their keys resolve, and nothing global does.
+func TestProwlarrModalStacksAreModal(t *testing.T) {
+	assertModalStack(t, catalogPickOverlay{}, map[string]Action{
+		"up": actionCatalogUp, "k": actionCatalogUp, "down": actionCatalogDown, "j": actionCatalogDown,
+		"space": actionCatalogToggle, "enter": actionCatalogApply, "f": actionReleaseFilter,
+	})
+	assertModalStack(t, releaseSortOverlay{}, map[string]Action{
+		"up": actionReleaseSortUp, "k": actionReleaseSortUp, "down": actionReleaseSortDown, "j": actionReleaseSortDown,
+		"r": actionReleaseSortReverse, "enter": actionReleaseSortSelect, "o": actionReleaseSort,
+	})
+	assertModalStack(t, releaseColumnsOverlay{}, map[string]Action{
+		"up": actionReleaseColumnsUp, "k": actionReleaseColumnsUp, "down": actionReleaseColumnsDown,
+		"j": actionReleaseColumnsDown, "space": actionReleaseColumnsToggle, "K": actionReleaseColumnsMoveUp,
+		"J": actionReleaseColumnsMoveDown, "enter": actionReleaseColumnsApply, "c": actionReleaseColumns,
+	})
+
+	chord := []Context{chordYankRelease.context()}
+
+	for k, want := range map[string]Action{"u": actionYankInfoURL, "m": actionYankReleaseMagnet, "d": actionYankDownloadURL} {
+		got, ok := lookup(chord, stringKey(k))
+		require.Truef(t, ok, "%q must resolve in the release yank chord", k)
+		assert.Equal(t, want, got)
+	}
+
+	for _, k := range []string{"q", "h", "n", "p", "y"} {
+		_, ok := lookup(chord, stringKey(k))
+		assert.Falsef(t, ok, "%q must cancel the release yank chord", k)
+	}
+}
+
+// TestProwlarrPaneStacks pins what each Prowlarr pane responds to: the release
+// verbs live in the results and the detail, and the search pane has none.
+func TestProwlarrPaneStacks(t *testing.T) {
+	for _, pane := range []Pane{paneResults, paneResultDetail} {
+		action, ok := lookup(paneContexts(pane), stringKey("a"))
+		require.Truef(t, ok, "a in %s", pane)
+		assert.Equal(t, actionReleaseGrab, action)
+	}
+
+	_, ok := lookup(paneContexts(paneSearch), stringKey("a"))
+	assert.False(t, ok, "the search pane carries no release verbs")
+
+	action, _ := lookup(paneContexts(paneSearch), stringKey("enter"))
+	assert.Equal(t, actionSearchSubmit, action)
+
+	action, _ = lookup(paneContexts(paneResults), stringKey("enter"))
+	assert.Equal(t, actionReleaseDetailOpen, action)
+
+	action, _ = lookup(paneContexts(paneResults), stringKey("o"))
+	assert.Equal(t, actionReleaseSort, action, "o sorts releases here, not torrents")
+}
+
 // TestPaneContextsCoversEveryPane checks the static table answers for every
 // member of the enum, so a pane added later cannot quietly fall back to a
 // global-only stack.

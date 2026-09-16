@@ -13,9 +13,7 @@ import (
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// window names the top-level windows. vision.md specifies three; the Prowlarr
-// window is T8's, and its ctrl+p binding is registered now so the collision test
-// sees the full global set.
+// window names the top-level windows, the three vision.md specifies.
 type window int
 
 const (
@@ -24,6 +22,9 @@ const (
 
 	// windowSettings is the settings window.
 	windowSettings
+
+	// windowProwlarr is the Prowlarr search window.
+	windowProwlarr
 )
 
 // inputOwner names the text input that owns the keyboard while
@@ -52,6 +53,10 @@ const (
 	// ownerPalette is the command palette's query, released when the palette
 	// closes.
 	ownerPalette
+
+	// ownerQuery is the Prowlarr search pane's query field, whose blur keeps
+	// its text.
+	ownerQuery
 )
 
 // Model is the root model. It owns focus, the overlay stack, the pending chord,
@@ -108,9 +113,10 @@ type Model struct {
 	// window is the window in front.
 	window window
 
-	// torrents and settings are the windows.
+	// torrents, settings, and prowlarr are the windows.
 	torrents torrentsWindow
 	settings settingsWindow
+	prowlarr prowlarrWindow
 
 	// overlays is the overlay stack, topmost last.
 	overlays []overlay
@@ -154,6 +160,7 @@ func New(deps Deps) Model {
 
 	m.torrents = newTorrentsWindow(m.styles, m.icons, deps.Torrents, view)
 	m.settings = newSettingsWindow(m.styles, deps)
+	m.prowlarr = newProwlarrWindow(m.styles)
 
 	return m
 }
@@ -178,6 +185,7 @@ func (m Model) applyTheme(isDark bool) Model {
 	m.torrents.detail = m.torrents.detail.setStyles(m.styles)
 	m.torrents.searchInput.SetStyles(m.styles.Input)
 	m.settings = m.settings.setStyles(m.styles)
+	m.prowlarr = m.prowlarr.setStyles(m.styles)
 
 	return m
 }
@@ -256,27 +264,68 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.settingReset(msg)
 	}
 
+	if m, ok := m.updateProwlarr(msg); ok {
+		return m, nil
+	}
+
 	return m.forwardToInput(msg)
+}
+
+// updateProwlarr settles the Prowlarr window's replies, and reports whether msg
+// was one. None of them starts another command.
+func (m Model) updateProwlarr(msg tea.Msg) (Model, bool) {
+	switch msg := msg.(type) {
+	case prowlarrDialedMsg:
+		return m.prowlarrDialed(msg), true
+	case searchMsg:
+		return m.searched(msg), true
+	case catalogMsg:
+		return m.catalogFetched(msg), true
+	case grabMsg:
+		return m.grabbed(msg), true
+	case writeMsg:
+		return m.wrote(msg), true
+	case openedMsg:
+		return m.urlOpened(msg), true
+	}
+
+	return m, false
 }
 
 // resize recomputes the layout and reflows the windows.
 func (m Model) resize(w, h int) Model {
 	m.width, m.height = w, h
 
-	l := m.layout()
+	l := m.torrentsLayout()
 	if l.tooSmall {
 		return m
 	}
 
 	m.help.SetWidth(w)
 	m.torrents = m.torrents.resize(l)
+	m.prowlarr = m.prowlarr.resize(m.prowlarrLayout())
 
 	return m.syncSettings()
 }
 
-// layout is the current frame's geometry.
+// layout is the current frame's geometry: the window in front's.
 func (m Model) layout() layout {
+	if m.window == windowProwlarr {
+		return m.prowlarrLayout()
+	}
+
+	return m.torrentsLayout()
+}
+
+// torrentsLayout is the torrents window's geometry, which the settings window
+// shares: neither has panes the other lays out differently.
+func (m Model) torrentsLayout() layout {
 	return computeLayout(m.width, m.height, m.torrents.filterOpen, m.torrents.detailOpen)
+}
+
+// prowlarrLayout is the Prowlarr window's geometry.
+func (m Model) prowlarrLayout() layout {
+	return computeProwlarrLayout(m.width, m.height, m.prowlarr.detailOpen)
 }
 
 // View renders the frame. Alt-screen and the window title are fields of the
@@ -308,6 +357,8 @@ func (m Model) render() string {
 		body = m.settings.view(m.styles, l)
 	case windowTorrents:
 		body = m.torrents.view(m.styles, l, m.listPlaceholder())
+	case windowProwlarr:
+		body = m.prowlarr.view(m.styles, l, m.resultsPlaceholder())
 	}
 
 	frame := m.composite(padFrame(body, l.body))

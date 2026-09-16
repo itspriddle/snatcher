@@ -31,6 +31,10 @@ const (
 	minDetailHeight   = 7
 	minListHeight     = 6
 
+	// searchHeight is the Prowlarr window's search pane: a border and one line,
+	// the query and a summary of the categories and indexers it searches.
+	searchHeight = 3
+
 	// borderSize is the rows and columns a rounded border consumes on each
 	// axis: one line on each side.
 	borderSize = 2
@@ -58,10 +62,15 @@ type layout struct {
 	body rect
 
 	// filter, list, and detail are the torrents window's panes. A closed pane
-	// is the zero rect.
+	// is the zero rect. The Prowlarr window lays its results out in list and
+	// its release detail in detail.
 	filter rect
 	list   rect
 	detail rect
+
+	// search is the Prowlarr window's search pane, and the zero rect in every
+	// other window.
+	search rect
 
 	// helpLine and statusBar are the two chrome rows at the bottom.
 	helpLine  rect
@@ -104,6 +113,38 @@ func computeLayout(w, h int, filterOpen, detailOpen bool) layout {
 	}
 
 	l.list = rect{x: l.filter.w, y: 0, w: w - l.filter.w, h: top.h}
+
+	return l
+}
+
+// computeProwlarrLayout divides a terminal of w by h into the Prowlarr window's
+// regions, in the same one-directional order as computeLayout: chrome off the
+// bottom, the fixed-height search pane off the top, the detail pane off the
+// bottom of what remains, and the results take the rest.
+func computeProwlarrLayout(w, h int, detailOpen bool) layout {
+	if w < minWidth || h < minHeight {
+		return layout{tooSmall: true}
+	}
+
+	body := rect{w: w, h: h - chromeHeight}
+
+	l := layout{
+		body:      body,
+		search:    rect{w: w, h: searchHeight},
+		helpLine:  rect{y: body.h, w: w, h: 1},
+		statusBar: rect{y: body.h + 1, w: w, h: 1},
+	}
+
+	rest := body.h - searchHeight
+	resultsHeight := rest
+
+	if detailOpen {
+		detailHeight := clamp(body.h*detailNumerator/detailDenominator, minDetailHeight, rest-minListHeight)
+		resultsHeight = rest - detailHeight
+		l.detail = rect{y: searchHeight + resultsHeight, w: w, h: detailHeight}
+	}
+
+	l.list = rect{y: searchHeight, w: w, h: resultsHeight}
 
 	return l
 }

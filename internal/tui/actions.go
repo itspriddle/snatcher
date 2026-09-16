@@ -69,6 +69,11 @@ func init() {
 	register(torrentUpdateHandlers())
 	register(paletteHandlers())
 	register(serverActionHandlers())
+	register(prowlarrWindowHandlers())
+	register(releaseColumnsHandlers())
+	register(releaseSortHandlers())
+	register(catalogHandlers())
+	register(releaseActionHandlers())
 	register(notYetHandlers())
 }
 
@@ -186,6 +191,8 @@ func (m Model) submitFocusedInput(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.formSubmitInput(), nil
 	case ownerPalette:
 		return m.paletteSubmit(msg)
+	case ownerQuery:
+		return m.submitSearch()
 	case ownerNone, ownerSettings, ownerSearch:
 	}
 
@@ -335,7 +342,19 @@ func forwardToFocusedPane(m Model, msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m, cmd
 	case paneFilter:
 		return m.moveFilterCursor(msg), nil
-	case paneSettings:
+	case paneResults:
+		table, cmd := m.prowlarr.table.Update(msg)
+		m.prowlarr.table = table
+		m.prowlarr = m.prowlarr.syncCursor()
+
+		return m, cmd
+	case paneResultDetail:
+		var cmd tea.Cmd
+
+		m.prowlarr.detail, cmd = m.prowlarr.detail.forward(msg)
+
+		return m, cmd
+	case paneSettings, paneSearch:
 	}
 
 	return m, nil
@@ -390,8 +409,15 @@ func (m Model) toggleFilterPane() Model {
 	return m.ensureFocusIsOpen().resize(m.width, m.height)
 }
 
-// toggleDetailPane opens or closes the detail pane, with the same focus rule.
+// toggleDetailPane opens or closes the window's detail pane, with the same
+// focus rule.
 func (m Model) toggleDetailPane() Model {
+	if m.window == windowProwlarr {
+		m.prowlarr.detailOpen = !m.prowlarr.detailOpen
+
+		return m.ensureFocusIsOpen().resize(m.width, m.height)
+	}
+
 	m.torrents.detailOpen = !m.torrents.detailOpen
 
 	return m.ensureFocusIsOpen().resize(m.width, m.height)

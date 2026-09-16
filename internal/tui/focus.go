@@ -2,8 +2,12 @@ package tui
 
 // focusedPane returns the pane that owns the keyboard.
 func (m Model) focusedPane() Pane {
-	if m.window == windowSettings {
+	switch m.window {
+	case windowSettings:
 		return paneSettings
+	case windowProwlarr:
+		return m.prowlarr.focus
+	case windowTorrents:
 	}
 
 	return m.torrents.focus
@@ -11,8 +15,12 @@ func (m Model) focusedPane() Pane {
 
 // openPanes lists the current window's open panes in cycle order.
 func (m Model) openPanes() []Pane {
-	if m.window == windowSettings {
+	switch m.window {
+	case windowSettings:
 		return []Pane{paneSettings}
+	case windowProwlarr:
+		return m.prowlarr.openPanes()
+	case windowTorrents:
 	}
 
 	return m.torrents.openPanes()
@@ -21,8 +29,12 @@ func (m Model) openPanes() []Pane {
 // mainPane is the window's primary pane: where the action verbs live, and where
 // focus returns to when a focused pane closes or esc unwinds a pane focus.
 func (m Model) mainPane() Pane {
-	if m.window == windowSettings {
+	switch m.window {
+	case windowSettings:
 		return paneSettings
+	case windowProwlarr:
+		return paneResults
+	case windowTorrents:
 	}
 
 	return paneList
@@ -34,8 +46,14 @@ func (m Model) mainPane() Pane {
 // table nobody told about the focus change would silently do nothing. That is
 // why focus is pushed into the component here rather than read at view time.
 func (m Model) setFocus(p Pane) Model {
-	if m.window == windowSettings {
+	switch m.window {
+	case windowSettings:
 		return m
+	case windowProwlarr:
+		m.prowlarr = m.prowlarr.setFocus(p)
+
+		return m
+	case windowTorrents:
 	}
 
 	m.torrents.focus = p
@@ -68,8 +86,12 @@ func (m Model) cycleFocus(step int) Model {
 
 // focusDirection answers the ctrl+w chord: focus the pane in a direction.
 func (m Model) focusDirection(dir Action) Model {
-	if m.window == windowSettings {
+	switch m.window {
+	case windowSettings:
 		return m
+	case windowProwlarr:
+		return m.setFocus(m.prowlarr.neighbor(dir))
+	case windowTorrents:
 	}
 
 	return m.setFocus(m.torrents.neighbor(dir))
@@ -98,11 +120,11 @@ func (m Model) switchWindow(w window) Model {
 	m.window = w
 	m.settings = m.settings.closeDropdown()
 
-	if w == windowTorrents {
-		return m.ensureFocusIsOpen()
+	if w == windowSettings {
+		return m
 	}
 
-	return m
+	return m.ensureFocusIsOpen()
 }
 
 // contextStack is the stack a key press is resolved against right now, most

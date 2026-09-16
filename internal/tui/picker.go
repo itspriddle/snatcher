@@ -15,14 +15,18 @@ const pickerOverlayKind = "picker"
 // pickerMaxWidth caps the picker box, as confirmMaxWidth caps the confirm.
 const pickerMaxWidth = 60
 
-// pickerOverlay is S: a list of the configured Transmission servers to switch
-// to. The switch is for this session only, like --server; it never writes
-// default_server.
+// pickerOverlay is S: a list of the configured servers of the type the window
+// in front uses, to switch to. The switch is for this session only, like
+// --server; it never writes a default.
 //
 // It is modal, like the confirm overlay. Its stack is ctxPicker alone, so q and
 // the window keys do nothing while it is open, and ctrl+c still quits.
 type pickerOverlay struct {
-	// servers are the configured Transmission servers, sorted by alias.
+	// prowlarr says the list is Prowlarr servers, which switch the Prowlarr
+	// window, rather than Transmission ones.
+	prowlarr bool
+
+	// servers are the configured servers, sorted by alias.
 	servers []ServerEntry
 
 	// current is the alias the TUI is on.
@@ -33,8 +37,8 @@ type pickerOverlay struct {
 }
 
 // newPicker builds the picker with its cursor on the current server.
-func newPicker(servers []ServerEntry, current string) pickerOverlay {
-	p := pickerOverlay{servers: servers, current: current}
+func newPicker(servers []ServerEntry, current string, prowlarr bool) pickerOverlay {
+	p := pickerOverlay{servers: servers, current: current, prowlarr: prowlarr}
 
 	for i, s := range servers {
 		if s.Name == current {
@@ -73,7 +77,12 @@ func (p pickerOverlay) view(m Model, w, _ int) string {
 		hostW = max(hostW, len([]rune(hosts[i])))
 	}
 
-	lines := []string{m.styles.Title.Render(truncate("Switch server", width)), ""}
+	title := "Switch server"
+	if p.prowlarr {
+		title = "Switch Prowlarr server"
+	}
+
+	lines := []string{m.styles.Title.Render(truncate(title, width)), ""}
 
 	for i, s := range p.servers {
 		marker := "  "
@@ -111,7 +120,8 @@ func (p pickerOverlay) note(s ServerEntry) string {
 }
 
 // hostOf is a server URL as a host, sanitized: the RPC path is the same on
-// every Transmission server and spends width saying nothing.
+// every Transmission server and spends width saying nothing, and a host carries
+// no credential.
 func hostOf(raw string) string {
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {
 		return output.SanitizeTerminal(u.Host)
@@ -121,31 +131,42 @@ func hostOf(raw string) string {
 }
 
 // togglePicker is S: open the picker, or close it when it is the overlay on top.
+// It lists the servers of the type the window in front uses. Either window's
+// dial in flight refuses it: the two dialers share one error-writer swap.
 func (m Model) togglePicker() Model {
 	if top, ok := m.topOverlay(); ok && top.kind() == pickerOverlayKind {
 		return m.pop()
 	}
 
+	isProwlarr := m.window == windowProwlarr
+	list, current := m.deps.Servers, m.serverName
+
+	if isProwlarr {
+		list, current = m.deps.ProwlarrServers, m.prowlarr.serverName
+	}
+
 	switch {
-	case m.live.switching:
+	case m.live.switching || m.prowlarr.dialing:
 		m.toast = "switching servers…"
 
 		return m
-	case m.deps.Servers == nil:
+	case list == nil:
 		m.toast = "no server list"
 
 		return m
 	}
 
-	servers, err := m.deps.Servers()
+	servers, err := list()
 
 	switch {
 	case err != nil:
 		m.toast = "server list: " + err.Error()
+	case len(servers) == 0 && isProwlarr:
+		m.toast = "no Prowlarr server configured"
 	case len(servers) <= 1:
 		m.toast = "only one server configured"
 	default:
-		return m.push(newPicker(servers, m.serverName))
+		return m.push(newPicker(servers, current, isProwlarr))
 	}
 
 	return m
@@ -184,10 +205,19 @@ func (m Model) pickServer() (Model, tea.Cmd) {
 	m = m.pop()
 	name := p.servers[p.cursor].Name
 
-	if name == m.serverName {
+	current := m.serverName
+	if p.prowlarr {
+		current = m.prowlarr.serverName
+	}
+
+	if name == current {
 		m.toast = "already on " + name
 
 		return m, nil
+	}
+
+	if p.prowlarr {
+		return m.switchProwlarr(name)
 	}
 
 	if n := m.settings.dirtyCount(); n > 0 {

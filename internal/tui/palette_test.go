@@ -191,10 +191,28 @@ func TestPaletteEntriesAreUnique(t *testing.T) {
 }
 
 // TestMenuLeavesAreBoundOrUnbound checks every action menu leaf can be reached by
-// name too: it is bound in the list pane's stack or its yank chord, or it is an
-// unbound action of the list pane.
+// name too: it is bound in its pane's stack or a chord that starts there, or it
+// is an unbound action of that pane.
 func TestMenuLeavesAreBoundOrUnbound(t *testing.T) {
-	live := paletteContexts(paneContexts(paneList))
+	for _, tc := range []struct {
+		menu menuOverlay
+		pane Pane
+	}{
+		{torrentMenu(1), paneList},
+		{releaseMenu(), paneResults},
+	} {
+		t.Run(tc.menu.title, func(t *testing.T) {
+			assertMenuLeavesReachable(t, tc.menu, tc.pane)
+		})
+	}
+}
+
+// assertMenuLeavesReachable walks a menu, checking each leaf against a pane.
+func assertMenuLeavesReachable(t *testing.T, menu menuOverlay, pane Pane) {
+	t.Helper()
+
+	stack := paneContexts(pane)
+	live := paletteContexts(stack)
 
 	var walk func(items []menuItem)
 
@@ -214,14 +232,31 @@ func TestMenuLeavesAreBoundOrUnbound(t *testing.T) {
 				return b.Action == it.action && slices.Contains(live, b.Context)
 			})
 			unbound := slices.ContainsFunc(unboundActions, func(u unboundAction) bool {
-				return u.action == it.action && u.ctx == ctxTorrentList
+				return u.action == it.action && u.ctx == stack[0]
 			})
 
-			assert.Truef(t, bound || unbound, "menu leaf %q (%s) is neither bound in the list pane nor unbound there", it.label, it.action)
+			assert.Truef(t, bound || unbound, "menu leaf %q (%s) is neither bound in %s nor unbound there", it.label, it.action, pane)
 		}
 	}
 
-	walk(torrentMenu(1).items)
+	walk(menu.items)
+}
+
+// TestPaletteListsReleaseYanks checks the Prowlarr results palette flattens its
+// own y chord, and leaves the torrent verbs out.
+func TestPaletteListsReleaseYanks(t *testing.T) {
+	entries := paletteEntries(paneContexts(paneResults))
+
+	e, ok := entryFor(entries, actionYankDownloadURL)
+	require.True(t, ok)
+	assert.Equal(t, "yank download URL", e.label)
+	assert.Equal(t, "y d", e.keys)
+
+	_, ok = entryFor(entries, actionTorrentStart)
+	assert.False(t, ok)
+
+	_, ok = entryFor(entries, actionReleaseGrab)
+	assert.True(t, ok)
 }
 
 // TestPaletteFiltersAndResetsTheCursor checks typing refilters, best match

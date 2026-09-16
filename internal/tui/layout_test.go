@@ -87,3 +87,33 @@ func TestClampInvertedRangeYieldsLow(t *testing.T) {
 	assert.Equal(t, 7, clamp(1, 7, 30))
 	assert.Equal(t, 30, clamp(99, 7, 30))
 }
+
+// TestComputeProwlarrLayout pins the Prowlarr window's rects at the reference
+// size, with and without the detail pane.
+func TestComputeProwlarrLayout(t *testing.T) {
+	l := computeProwlarrLayout(120, 40, true)
+
+	assert.Equal(t, rect{w: 120, h: 38}, l.body)
+	assert.Equal(t, rect{w: 120, h: 3}, l.search)
+	assert.Equal(t, rect{y: 3, w: 120, h: 20}, l.list)
+	assert.Equal(t, rect{y: 23, w: 120, h: 15}, l.detail)
+	assert.Equal(t, rect{}, l.filter)
+
+	closed := computeProwlarrLayout(80, 24, false)
+
+	assert.Equal(t, rect{y: 3, w: 80, h: 19}, closed.list)
+	assert.Equal(t, rect{}, closed.detail)
+}
+
+// TestComputeProwlarrLayoutAtTheFloor checks the detail pane keeps its minimum
+// at 60x16 and the three panes still tile the body.
+func TestComputeProwlarrLayoutAtTheFloor(t *testing.T) {
+	l := computeProwlarrLayout(minWidth, minHeight, true)
+
+	assert.Equal(t, rect{w: 60, h: 3}, l.search)
+	assert.Equal(t, rect{y: 3, w: 60, h: 4}, l.list)
+	assert.Equal(t, rect{y: 7, w: 60, h: minDetailHeight}, l.detail)
+	assert.Equal(t, l.body.h, l.search.h+l.list.h+l.detail.h)
+
+	assert.True(t, computeProwlarrLayout(minWidth-1, minHeight, false).tooSmall)
+}

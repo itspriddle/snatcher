@@ -249,6 +249,32 @@ func TestEscapePrecedesTheFocusedInput(t *testing.T) {
 	assert.True(t, got.inputFocused, "the overlay closes before the input blurs")
 }
 
+// TestEscInTheProwlarrWindow checks the two Prowlarr cases the ladder has its
+// own rule for: a focused query blurs and keeps its text, and a blurred search
+// pane leaves the window rather than moving focus to the results.
+func TestEscInTheProwlarrWindow(t *testing.T) {
+	m := newTestModel(120, 40).switchWindow(windowProwlarr)
+	m = typeText(press(m, "/"), "ubuntu")
+
+	m, rung := m.escape()
+	assert.Equal(t, "blur input", rung)
+	assert.Equal(t, "ubuntu", m.prowlarr.queryInput.Value())
+	assert.False(t, m.prowlarr.queryInput.Focused())
+	assert.Equal(t, paneSearch, m.focusedPane())
+
+	m, rung = m.escape()
+	assert.Equal(t, "return to torrents", rung)
+	assert.Equal(t, windowTorrents, m.window)
+
+	detail := newTestModel(120, 40).switchWindow(windowProwlarr)
+	detail.prowlarr.detailOpen = true
+	detail = detail.setFocus(paneResultDetail)
+
+	detail, rung = detail.escape()
+	assert.Equal(t, "focus main pane", rung)
+	assert.Equal(t, paneResults, detail.focusedPane())
+}
+
 // TestLadderRungNamesAreUnique guards the test above, which identifies a rung by
 // its name: two rungs sharing one would make a case assert nothing.
 func TestLadderRungNamesAreUnique(t *testing.T) {

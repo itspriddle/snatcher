@@ -2,7 +2,8 @@
 // the focus router, the keymap registry, and the esc ladder.
 //
 // It sits beside internal/commands rather than under it. It depends on
-// internal/transmission, internal/output, and nothing else of snatcher's;
+// internal/transmission, internal/prowlarr, internal/output, and nothing else of
+// snatcher's;
 // internal/cli launches it and injects everything it needs through Deps, so the
 // dial precedence chain and the client-settings registry keep living in
 // internal/commands and this package never imports them.
@@ -20,6 +21,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 
+	"github.com/itspriddle/snatcher/internal/prowlarr"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -67,6 +69,19 @@ type Deps struct {
 	// Clipboard copies a yank to the OS clipboard through a native tool, beside
 	// the OSC 52 write every yank already makes. nil means OSC 52 only.
 	Clipboard func(ctx context.Context, s string) error
+
+	// DialProwlarr constructs a Prowlarr client for a named server. The
+	// Prowlarr window always names the alias it wants. nil means the window has
+	// no way to connect, which it shows as having no server configured.
+	DialProwlarr func(server string) (ProwlarrDialResult, error)
+
+	// ProwlarrServers lists the configured Prowlarr servers, for the Prowlarr
+	// window's first dial and its server picker. nil lists none.
+	ProwlarrServers func() ([]ServerEntry, error)
+
+	// OpenURL opens a URL in the user's browser. nil means there is no browser
+	// to open, and O and P yank the URL instead.
+	OpenURL func(ctx context.Context, url string) error
 }
 
 // DialResult is one dial: the client, the alias and URL it resolved to, and a
@@ -79,8 +94,17 @@ type DialResult struct {
 	Warning string
 }
 
-// ServerEntry is one configured Transmission server in the picker. It mirrors
-// commands.ServerEntry.
+// ProwlarrDialResult is one Prowlarr dial, DialResult's counterpart. It mirrors
+// commands.ProwlarrDialResult.
+type ProwlarrDialResult struct {
+	Client  *prowlarr.Client
+	Name    string
+	URL     string
+	Warning string
+}
+
+// ServerEntry is one configured server in a picker, of whichever type the list
+// was asked for. It mirrors commands.ServerEntry.
 type ServerEntry struct {
 	Name    string
 	URL     string

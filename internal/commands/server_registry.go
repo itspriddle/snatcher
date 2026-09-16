@@ -1049,12 +1049,36 @@ func connectTransmission(cmd *cobra.Command, srv config.Server) (*transmission.C
 // the default it falls back to is default_prowlarr_server, so a Transmission
 // default and a Prowlarr default coexist without either shadowing the other.
 func dialProwlarr(cmd *cobra.Command, server string) (*prowlarr.Client, string, error) {
-	target, err := dialTarget(cmd, server, config.TypeProwlarr)
+	d, err := dialProwlarrNamed(cmd, server)
 	if err != nil {
 		return nil, "", err
 	}
 
-	return connectProwlarr(cmd, target.server)
+	return d.client, d.url, nil
+}
+
+// dialedProwlarr is a Prowlarr client together with the alias and URL the
+// precedence chain resolved it from.
+type dialedProwlarr struct {
+	client *prowlarr.Client
+	name   string
+	url    string
+}
+
+// dialProwlarrNamed is dialProwlarr, keeping the resolved alias, as dialNamed
+// is dial's: the TUI's status bar and server picker need it.
+func dialProwlarrNamed(cmd *cobra.Command, server string) (dialedProwlarr, error) {
+	target, err := dialTarget(cmd, server, config.TypeProwlarr)
+	if err != nil {
+		return dialedProwlarr{}, err
+	}
+
+	client, url, err := connectProwlarr(cmd, target.server)
+	if err != nil {
+		return dialedProwlarr{}, err
+	}
+
+	return dialedProwlarr{client: client, name: target.name, url: url}, nil
 }
 
 // connectProwlarr reads srv's API key and builds the Prowlarr client for it. It
