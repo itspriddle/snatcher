@@ -59,10 +59,7 @@ func TestYankMagnetRefusals(t *testing.T) {
 	assert.Nil(t, cmd)
 	assert.Equal(t, "no server", m.toast)
 
-	_, live := polledModel(t)
-
-	live, rung := live.escape()
-	require.Equal(t, "deselect cursor", rung)
+	_, live := emptyModel(t)
 
 	m, cmd = pressCmd(press(live, "y"), "m")
 	assert.Nil(t, cmd)

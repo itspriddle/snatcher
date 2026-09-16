@@ -40,11 +40,6 @@ type selection[T any, K cmp.Ordered, R rowKey[T, K]] struct {
 	// cursor is the index of the cursor row in the currently rendered rows.
 	cursor int
 
-	// active reports whether the cursor names a row at all. A cursor can be
-	// deselected (esc ladder rung "deselect cursor") without the detail pane
-	// closing, which is a different state from "cursor at row 0".
-	active bool
-
 	// marks are the marked rows, keyed by R rather than by row index so a
 	// re-sort, a filter, or a refresh cannot silently move a mark to a
 	// different row.
@@ -60,7 +55,7 @@ type (
 
 // newSelection returns a selection with the cursor on the first row.
 func newSelection[T any, K cmp.Ordered, R rowKey[T, K]]() selection[T, K, R] {
-	return selection[T, K, R]{active: true, marks: map[K]struct{}{}}
+	return selection[T, K, R]{marks: map[K]struct{}{}}
 }
 
 // newTorrentSelection and newFileSelection are the two selections the TUI keeps.
@@ -119,7 +114,7 @@ func (m Model) listSelector() transmission.Selector {
 
 // row returns the row under the cursor, and whether there is one.
 func (s selection[T, K, R]) row(rows []T) (T, bool) {
-	if !s.active || s.cursor < 0 || s.cursor >= len(rows) {
+	if s.cursor < 0 || s.cursor >= len(rows) {
 		var zero T
 
 		return zero, false
@@ -179,20 +174,11 @@ func (s selection[T, K, R]) markCount() int {
 	return len(s.marks)
 }
 
-// setCursor moves the cursor to an index and reactivates it. It is called with
+// setCursor moves the cursor to an index. It is called with
 // the focused table's own cursor after a nav key is forwarded, so the table and
 // the selection cannot disagree about which row is current.
 func (s selection[T, K, R]) setCursor(i int) selection[T, K, R] {
 	s.cursor = i
-	s.active = true
-
-	return s
-}
-
-// deselect clears the cursor without touching marks; the detail pane stays open
-// and goes empty.
-func (s selection[T, K, R]) deselect() selection[T, K, R] {
-	s.active = false
 
 	return s
 }

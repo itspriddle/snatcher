@@ -20,6 +20,17 @@ func polledModel(t *testing.T) (*rpcStub, Model) {
 	return stub, pollOnce(t, liveModel(t, srv, 120, 40))
 }
 
+// emptyModel is a live model after one poll of a server with no torrents, so
+// nothing is under the cursor.
+func emptyModel(t *testing.T) (*rpcStub, Model) {
+	t.Helper()
+
+	stub, srv := newRPCStub(t)
+	stub.respond("torrent-get", torrentsBody())
+
+	return stub, pollOnce(t, liveModel(t, srv, 120, 40))
+}
+
 // ids is the ids argument of a request, as JSON decoded it.
 func ids(args map[string]any) []any {
 	v, _ := args["ids"].([]any)
@@ -243,13 +254,10 @@ func TestMutationRefusalsWithoutAServer(t *testing.T) {
 	assert.Zero(t, stub.calls("torrent-start"))
 }
 
-// TestNothingSelectedToasts checks a deselected cursor with no marks acts on
-// nothing, rather than falling back to anything wider.
+// TestNothingSelectedToasts checks an empty list acts on nothing, rather than
+// falling back to anything wider.
 func TestNothingSelectedToasts(t *testing.T) {
-	stub, m := polledModel(t)
-
-	m, rung := m.escape()
-	require.Equal(t, "deselect cursor", rung)
+	stub, m := emptyModel(t)
 
 	for _, key := range []string{"s", "p", "d", "J"} {
 		got, cmd := pressCmd(m, key)
