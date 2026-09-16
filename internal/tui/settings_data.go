@@ -297,7 +297,8 @@ func (m Model) settingsSaved(msg settingsSavedMsg) (Model, tea.Cmd) {
 	after := w.after
 	w.after = afterNone
 	m.settings = w.fixCursors()
-	m = m.applyClientWrites(msg.clientWrote).syncSettings()
+	m, reprofile := m.applyClientWrites(msg.clientWrote)
+	m = m.syncSettings()
 
 	// A session write changes what the status bar draws — limits, alt-speed, the
 	// download directory whose free space it shows — so it is re-read now rather
@@ -306,6 +307,8 @@ func (m Model) settingsSaved(msg settingsSavedMsg) (Model, tea.Cmd) {
 	if len(msg.sessionWrote) > 0 && m.polling() && after != afterQuit {
 		refresh = pollSession(m.ctx, m.client, m.live.gen)
 	}
+
+	refresh = tea.Batch(refresh, reprofile)
 
 	if err := errors.Join(msg.clientErr, msg.sessionErr); err != nil {
 		m.toast = "save failed: " + firstErrorLine(msg.clientErr, msg.sessionErr)
@@ -333,10 +336,14 @@ func firstErrorLine(errs ...error) string {
 }
 
 // applyClientWrites makes saved client settings take effect in this session: a
-// theme or icon change re-styles the UI at once, and a poll interval is handed
-// to the refresh spine.
-func (m Model) applyClientWrites(keys []string) Model {
-	restyle := false
+// theme or icon change re-styles the UI at once, a color depth re-profiles the
+// renderer too (the returned command), and a poll interval is handed to the
+// refresh spine.
+func (m Model) applyClientWrites(keys []string) (Model, tea.Cmd) {
+	var (
+		restyle bool
+		cmd     tea.Cmd
+	)
 
 	for _, k := range keys {
 		v, ok := m.settings.fieldValue(k)
@@ -353,6 +360,10 @@ func (m Model) applyClientWrites(keys []string) Model {
 			if on, isBool := v.(bool); isBool {
 				m.deps.NerdFont, restyle = on, true
 			}
+		case clientKeyColorDepth:
+			if depth, isString := v.(string); isString {
+				m, cmd = m.applyColorDepth(depth)
+			}
 		case clientKeyPollInterval:
 			if raw, isString := v.(string); isString {
 				if d, err := time.ParseDuration(raw); err == nil {
@@ -362,11 +373,11 @@ func (m Model) applyClientWrites(keys []string) Model {
 		}
 	}
 
-	if !restyle {
-		return m
+	if !restyle && cmd == nil {
+		return m, nil
 	}
 
-	return m.applyTheme(m.isDark).syncTorrents()
+	return m.applyTheme(m.isDark).syncTorrents(), cmd
 }
 
 // refreshSettings is R in the settings window: re-read the config store and the

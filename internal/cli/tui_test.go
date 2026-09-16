@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -105,9 +106,39 @@ func TestClientConfigAdapterCarriesEveryField(t *testing.T) {
 		Allowed: []string{"default", "dracula", "nord", "solarized"}, SetBy: envTheme,
 	}, byKey["client.theme"])
 	assert.Equal(t, tui.ClientEntry{Key: "client.poll_interval", Value: "30s", Source: "config"}, byKey["client.poll_interval"])
+	assert.Equal(t, tui.ClientEntry{
+		Key: "client.color_depth", Value: "auto", Source: "default",
+		Allowed: []string{"auto", "truecolor", "256", "16"},
+	}, byKey["client.color_depth"])
 
 	require.Error(t, adapter.Validate("client.theme", "neon"))
 	require.NoError(t, adapter.Set("client.poll_interval", "1m"))
+}
+
+// TestLaunchTUIWarnsAboutBrokenThemeFiles checks a theme file that does not
+// parse, and is not selected, is reported on stderr before the TUI would start
+// rather than refusing to start. The launch still fails here — no server is
+// configured — which is what keeps this test off the alt screen.
+func TestLaunchTUIWarnsAboutBrokenThemeFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"servers": {}}`), 0o600))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "themes"), 0o700))
+
+	broken := filepath.Join(dir, "themes", "mine.theme")
+	require.NoError(t, os.WriteFile(broken, []byte("[dark]\ntext = neon\n"), 0o600))
+
+	cmd := NewRootCmd()
+	require.NoError(t, cmd.PersistentFlags().Set("config", path))
+
+	var errOut bytes.Buffer
+	cmd.SetErr(&errOut)
+
+	err := launchTUI(cmd)
+	require.ErrorContains(t, err, "not configured")
+
+	assert.Equal(t, 1, strings.Count(errOut.String(), "warning: "))
+	assert.Contains(t, errOut.String(), broken+":2:")
 }
 
 // TestRootLongMentionsTheTUI checks the help text documents the bare

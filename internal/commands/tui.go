@@ -11,6 +11,7 @@ import (
 
 	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/prowlarr"
+	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -185,8 +186,17 @@ func serversOfType(cmd *cobra.Command, typ string, defaultOf func(config.Config)
 // resolved for one invocation. It is deliberately a plain value: internal/tui
 // receives settings, not a *cobra.Command and not a config.Config.
 type ClientSettings struct {
-	// Theme is the resolved color theme name, one of clientThemes.
+	// Theme is the resolved color theme name: a builtin, or a theme file in the
+	// themes directory.
 	Theme string
+
+	// ColorDepth is the resolved client.color_depth, one of colorDepths.
+	ColorDepth string
+
+	// Warnings describes each theme file that was skipped because it does not
+	// parse. A broken file is only an error when it is the selected theme;
+	// otherwise the launcher prints these and carries on.
+	Warnings []string
 
 	// NerdFont reports whether Nerd Font glyphs may be used for icons.
 	NerdFont bool
@@ -217,12 +227,22 @@ func ResolveClientSettings(cmd *cobra.Command) (ClientSettings, error) {
 		return ClientSettings{}, err
 	}
 
-	theme, err := clientSetting[string](cmd, cfg, keyTheme)
+	name, err := clientSetting[string](cmd, cfg, keyTheme)
 	if err != nil {
 		return ClientSettings{}, err
 	}
 
 	nerdFont, err := clientSetting[bool](cmd, cfg, keyNerdFont)
+	if err != nil {
+		return ClientSettings{}, err
+	}
+
+	depth, err := clientSetting[string](cmd, cfg, keyColorDepth)
+	if err != nil {
+		return ClientSettings{}, err
+	}
+
+	themes, err := themeRegistry(configFlag(cmd))
 	if err != nil {
 		return ClientSettings{}, err
 	}
@@ -241,7 +261,14 @@ func ResolveClientSettings(cmd *cobra.Command) (ClientSettings, error) {
 		return ClientSettings{}, fmt.Errorf("config key %s: %w", keyPollInterval, err)
 	}
 
-	return ClientSettings{Theme: theme, NerdFont: nerdFont, PollInterval: poll, NoColor: noColor()}, nil
+	return ClientSettings{
+		Theme:        name,
+		ColorDepth:   depth,
+		NerdFont:     nerdFont,
+		PollInterval: poll,
+		NoColor:      noColor(),
+		Warnings:     themes.Warnings(),
+	}, nil
 }
 
 // ClientEntry is one client setting as the TUI's settings window sees it: its
@@ -271,8 +298,9 @@ type ClientEntry struct {
 // clientOverrideNames spells, per overridable key, the flag and variable that
 // sit above the config file — the same pair each key's override function reads.
 var clientOverrideNames = map[string]struct{ flag, env string }{
-	keyTheme:    {flag: "--" + flagTheme, env: envTheme},
-	keyNerdFont: {flag: "--" + flagNoNerdFont, env: envNoNerdFont},
+	keyTheme:      {flag: "--" + flagTheme, env: envTheme},
+	keyNerdFont:   {flag: "--" + flagNoNerdFont, env: envNoNerdFont},
+	keyColorDepth: {flag: "--" + flagColorDepth, env: envColorDepth},
 }
 
 // ConfigStore is the client-config seam the TUI writes through: read every key
@@ -293,8 +321,8 @@ func ClientConfigStore(cmd *cobra.Command) ConfigStore {
 }
 
 // Entries resolves every client key for this invocation, sorted by key. The file
-// is read fresh on every call, so a value written by Set is reflected by the
-// next Entries.
+// and the themes directory are read fresh on every call, so a value written by
+// Set, or a theme file added mid-session, is reflected by the next Entries.
 func (s ConfigStore) Entries() ([]ClientEntry, error) {
 	cfg, _, err := loadConfig(s.path)
 	if err != nil {
@@ -306,12 +334,20 @@ func (s ConfigStore) Entries() ([]ClientEntry, error) {
 		return nil, err
 	}
 
+	themes, err := themeRegistry(s.path)
+	if err != nil {
+		return nil, err
+	}
+
 	out := make([]ClientEntry, len(resolved))
 	for i, e := range resolved {
 		entry := ClientEntry{Key: e.Key, Value: e.Value, Source: e.Source}
 
-		if e.Key == keyTheme {
-			entry.Allowed = slices.Clone(clientThemes)
+		switch e.Key {
+		case keyTheme:
+			entry.Allowed = themes.Names()
+		case keyColorDepth:
+			entry.Allowed = slices.Clone(colorDepths)
 		}
 
 		names := clientOverrideNames[e.Key]
@@ -337,7 +373,7 @@ func (s ConfigStore) Validate(key string, value any) error {
 		return err
 	}
 
-	return validateClientValue(def, value)
+	return validateClientValue(def, s.path, value)
 }
 
 // Set validates value and, only if it is acceptable, writes it to the config
@@ -348,11 +384,27 @@ func (s ConfigStore) Set(key string, value any) error {
 		return err
 	}
 
-	if err := validateClientValue(def, value); err != nil {
+	if err := validateClientValue(def, s.path, value); err != nil {
 		return err
 	}
 
 	_, err = writeClientKey(def, s.path, value)
 
 	return err
+}
+
+// ThemeLookup returns the TUI's theme lookup: the builtins plus the theme files
+// beside the config file this invocation reads. The directory is re-read on
+// every call, so a theme file saved mid-session applies at the next re-theme.
+func ThemeLookup(cmd *cobra.Command) func(name string) (theme.Spec, error) {
+	path := configFlag(cmd)
+
+	return func(name string) (theme.Spec, error) {
+		reg, err := themeRegistry(path)
+		if err != nil {
+			return theme.Spec{}, err
+		}
+
+		return reg.Lookup(name)
+	}
 }

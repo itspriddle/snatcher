@@ -37,12 +37,16 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 // ~/.local/state/snatcher/secrets.json, and every result here would depend on
 // whose shell the suite ran in.
 //
-// Two more override client settings for an invocation — SNATCHER_THEME and
-// SNATCHER_NO_NERD_FONT — and would otherwise make "config list" report a source
+// Three more override client settings for an invocation — SNATCHER_THEME,
+// SNATCHER_NO_NERD_FONT, and SNATCHER_COLOR_DEPTH — and would otherwise make "config list" report a source
 // of "env" for a key the test staged in a config file. NO_COLOR joins them: it
 // is read by isTTY and reported by ResolveClientSettings, so a developer with it
 // exported would see a different table contract and a different ClientSettings
 // than CI does.
+//
+// XDG_CONFIG_HOME is pointed at a throwaway directory too, so a test that
+// validates a theme without --config cannot see the developer's own
+// ~/.config/snatcher/themes. Tests still pass a temp --config themselves.
 //
 // XDG_STATE_HOME is pointed at a throwaway directory for the same reason, as the
 // belt to the unset variable's braces: no test — including one written later
@@ -55,7 +59,7 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 // keyring state still call keyring.MockInit or mockStoreUnavailable themselves;
 // this only decides what an unprepared test gets.
 func TestMain(m *testing.M) {
-	for _, key := range []string{envSecretStore, envPassword, envAPIKey, envServer, envTheme, envNoNerdFont, envNoColor} {
+	for _, key := range []string{envSecretStore, envPassword, envAPIKey, envServer, envTheme, envNoNerdFont, envColorDepth, envNoColor} {
 		if err := os.Unsetenv(key); err != nil {
 			fmt.Fprintf(os.Stderr, "commands: unsetting %s: %v\n", key, err)
 			os.Exit(1)
@@ -73,11 +77,23 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	configHome, err := os.MkdirTemp("", "snatcher-commands-config")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "commands: creating a throwaway config directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := os.Setenv("XDG_CONFIG_HOME", configHome); err != nil {
+		fmt.Fprintf(os.Stderr, "commands: setting XDG_CONFIG_HOME: %v\n", err)
+		os.Exit(1)
+	}
+
 	keyring.MockInit()
 
 	code := m.Run()
 
 	_ = os.RemoveAll(stateHome)
+	_ = os.RemoveAll(configHome)
 
 	os.Exit(code)
 }

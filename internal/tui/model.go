@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 
+	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -100,11 +101,21 @@ type Model struct {
 	// startup, which is the trade v2 asks for.
 	isDark bool
 
-	// profile is the terminal's color profile, defaulted to TrueColor until
-	// bubbletea reports the detected one as a tea.ColorProfileMsg. It is the
-	// same trade isDark makes: one frame may render in colors the terminal
-	// cannot show rather than blocking on stdin at startup.
+	// profile is the color profile the model renders with: the detected one,
+	// or the one Deps.ColorDepth overrides it with (see effectiveProfile). It
+	// is defaulted from a TrueColor detection until bubbletea reports the real
+	// one as a tea.ColorProfileMsg. It is the same trade isDark makes: one
+	// frame may render in colors the terminal cannot show rather than blocking
+	// on stdin at startup.
 	profile colorprofile.Profile
+
+	// detected is the profile bubbletea last reported, kept so a color depth
+	// changed mid-session can go back to auto.
+	detected colorprofile.Profile
+
+	// forcedProfile is an override sent to the program with setProfile and not
+	// yet echoed back, or colorprofile.Unknown when none is in flight.
+	forcedProfile colorprofile.Profile
 
 	// styles and icons are the rendering substrate, rebuilt on a theme change.
 	styles Styles
@@ -141,12 +152,13 @@ type Model struct {
 // construct a Model directly.
 func New(deps Deps) Model {
 	m := Model{
-		deps:    deps,
-		ctx:     context.Background(),
-		isDark:  true,
-		profile: colorprofile.TrueColor,
-		chord:   chordNone,
-		help:    help.New(),
+		deps:     deps,
+		ctx:      context.Background(),
+		isDark:   true,
+		detected: colorprofile.TrueColor,
+		profile:  effectiveProfile(deps.ColorDepth, colorprofile.TrueColor),
+		chord:    chordNone,
+		help:     help.New(),
 	}
 
 	m = m.applyTheme(true)
@@ -178,7 +190,7 @@ func New(deps Deps) Model {
 // here, and the other's answer is already on the model.
 func (m Model) applyTheme(isDark bool) Model {
 	m.isDark = isDark
-	m.styles = newStyles(themeFor(m.deps.Theme, isDark), monochrome(m.profile))
+	m.styles = newStyles(m.palette(isDark), monochrome(m.profile))
 	m.icons = newIcons(m.deps.NerdFont)
 	m.help.Styles = m.styles.Help
 	m.torrents.list = m.torrents.list.setStyles(m.styles)
@@ -188,6 +200,24 @@ func (m Model) applyTheme(isDark bool) Model {
 	m.prowlarr = m.prowlarr.setStyles(m.styles)
 
 	return m
+}
+
+// palette resolves the configured theme for the model's color profile and a
+// background. A name the registry cannot answer — unknown, or a theme file
+// broken since launch — draws the default rather than failing: the name was
+// validated where it was read, and the TUI must not fail to draw over it.
+func (m Model) palette(isDark bool) theme.Theme {
+	lookup := m.deps.Themes
+	if lookup == nil {
+		lookup = theme.Builtins().Lookup
+	}
+
+	spec, err := lookup(m.deps.Theme)
+	if err != nil {
+		spec = theme.Default()
+	}
+
+	return spec.Resolve(m.profile, isDark)
 }
 
 // Init asks the terminal for its background color and starts the refresh spine.
@@ -217,9 +247,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		return m.applyTheme(msg.IsDark()), nil
 	case tea.ColorProfileMsg:
-		m.profile = msg.Profile
-
-		return m.applyTheme(m.isDark), nil
+		return m.profileReported(msg.Profile)
 	case tea.KeyPressMsg:
 		// Every key that moves the cursor or opens the pane funnels through one
 		// debounce, rather than each handler remembering to fetch.

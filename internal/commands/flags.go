@@ -16,9 +16,10 @@ const (
 	// flagConfig selects the config file every command reads or writes.
 	flagConfig = "config"
 
-	// flagTheme and flagNoNerdFont override, for one invocation, the two client
-	// settings that decide how snatcher draws itself. Both are the TUI's: they
-	// pick its palette and its glyph set, and no other command's output
+	// flagTheme, flagNoNerdFont, and flagColorDepth override, for one
+	// invocation, the three client settings that decide how snatcher draws
+	// itself. All are the TUI's: they pick its palette, its glyph set, and how
+	// many colors it assumes the terminal has, and no other command's output
 	// changes.
 	//
 	// Both are checked where they are read — resolveClientSetting validates each
@@ -27,9 +28,10 @@ const (
 	// the whole CLI, including the "config" commands that repair it.
 	flagTheme      = "theme"
 	flagNoNerdFont = "no-nerd-font"
+	flagColorDepth = "color-depth"
 )
 
-// The environment companions of the two appearance flags, the rung between the
+// The environment companions of the three appearance flags, the rung between the
 // command line and the config file. They are declared here, beside the flags
 // they stand in for, so a variable and its flag cannot drift apart.
 //
@@ -40,6 +42,7 @@ const (
 const (
 	envTheme      = "SNATCHER_THEME"
 	envNoNerdFont = "SNATCHER_NO_NERD_FONT"
+	envColorDepth = "SNATCHER_COLOR_DEPTH"
 )
 
 // AddGlobalFlags registers snatcher's tree-wide flags on cmd as persistent
@@ -47,8 +50,9 @@ const (
 // on the root command, by internal/cli.
 //
 // A flag belongs here when it is meaningful everywhere and its wording must not
-// drift: --config selects the file every command reads or writes, and --theme
-// and --no-nerd-font override how snatcher draws itself for one invocation.
+// drift: --config selects the file every command reads or writes, and --theme,
+// --no-nerd-font, and --color-depth override how snatcher draws itself for one
+// invocation.
 // Flags that only some commands accept (--server, --json, --jq) stay local to
 // those commands, so they never appear in help for a command that ignores them.
 //
@@ -56,8 +60,12 @@ const (
 // that command to get the same flags the production tree has.
 func AddGlobalFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().String(flagConfig, "", "config file path")
-	cmd.PersistentFlags().String(flagTheme, "", fmt.Sprintf("color theme (%s)", strings.Join(clientThemes, ", ")))
+	// The theme usage cannot list the operator's theme files: it is built
+	// before --config is parsed, so it names the builtins and says there is
+	// more.
+	cmd.PersistentFlags().String(flagTheme, "", "color theme (default, dracula, nord, solarized, or a user theme)")
 	cmd.PersistentFlags().Bool(flagNoNerdFont, false, "use ASCII icons instead of Nerd Font glyphs")
+	cmd.PersistentFlags().String(flagColorDepth, "", fmt.Sprintf("color depth (%s)", strings.Join(colorDepths, ", ")))
 }
 
 // configFlag returns the --config value in force for cmd, or the empty string
@@ -131,7 +139,7 @@ func overrideFromFlagOrEnv(cmd *cobra.Command, flagName, envName string, parse f
 func themeOverride(cmd *cobra.Command) (*clientOverride, error) {
 	return overrideFromFlagOrEnv(cmd, flagTheme, envTheme, func(raw string) (any, error) {
 		name := strings.TrimSpace(raw)
-		if err := validateTheme(name); err != nil {
+		if err := validateTheme(configFlag(cmd), name); err != nil {
 			return nil, err
 		}
 
@@ -155,5 +163,18 @@ func nerdFontOverride(cmd *cobra.Command) (*clientOverride, error) {
 		}
 
 		return !off, nil
+	})
+}
+
+// colorDepthOverride resolves client.color_depth from --color-depth and
+// SNATCHER_COLOR_DEPTH, through the same validator a stored depth faces.
+func colorDepthOverride(cmd *cobra.Command) (*clientOverride, error) {
+	return overrideFromFlagOrEnv(cmd, flagColorDepth, envColorDepth, func(raw string) (any, error) {
+		depth := strings.TrimSpace(raw)
+		if err := validateColorDepth(configFlag(cmd), depth); err != nil {
+			return nil, err
+		}
+
+		return depth, nil
 	})
 }

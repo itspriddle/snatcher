@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,17 +21,17 @@ func TestResolveClientSettingsDefaults(t *testing.T) {
 	settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
 	require.NoError(t, err)
 
-	assert.Equal(t, ClientSettings{Theme: "default", NerdFont: true, PollInterval: 5 * time.Second}, settings)
+	assert.Equal(t, ClientSettings{Theme: "default", ColorDepth: "auto", NerdFont: true, PollInterval: 5 * time.Second}, settings)
 }
 
 // TestResolveClientSettingsReadsFile checks stored values win over the defaults.
 func TestResolveClientSettingsReadsFile(t *testing.T) {
-	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord", "nerd_font": false, "poll_interval": "30s"}}`)
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord", "nerd_font": false, "color_depth": "256", "poll_interval": "30s"}}`)
 
 	settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
 	require.NoError(t, err)
 
-	assert.Equal(t, ClientSettings{Theme: "nord", NerdFont: false, PollInterval: 30 * time.Second}, settings)
+	assert.Equal(t, ClientSettings{Theme: "nord", ColorDepth: "256", NerdFont: false, PollInterval: 30 * time.Second}, settings)
 }
 
 // TestResolveClientSettingsEnvOverridesFile checks the environment rung, which
@@ -120,6 +121,137 @@ func TestResolveClientSettingsReportsNoColor(t *testing.T) {
 	}
 }
 
+// TestResolveClientSettingsColorDepthPrecedence checks client.color_depth
+// resolves flag > env > config > default, like the theme.
+func TestResolveClientSettingsColorDepthPrecedence(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"color_depth": "256"}}`)
+
+	settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
+	require.NoError(t, err)
+	assert.Equal(t, "256", settings.ColorDepth)
+
+	t.Setenv(envColorDepth, " 16 ")
+
+	settings, err = ResolveClientSettings(dialCmd(t, cfgPath))
+	require.NoError(t, err)
+	assert.Equal(t, "16", settings.ColorDepth)
+
+	cmd := dialCmd(t, cfgPath)
+	require.NoError(t, cmd.PersistentFlags().Set(flagColorDepth, "truecolor"))
+
+	settings, err = ResolveClientSettings(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "truecolor", settings.ColorDepth)
+
+	entries, err := ClientConfigStore(cmd).Entries()
+	require.NoError(t, err)
+	assert.Equal(t, "--color-depth", entryFor(t, entries, keyColorDepth).SetBy)
+}
+
+// TestResolveClientSettingsRejectsInvalidColorDepth checks a bad depth fails at
+// every rung, naming the rung.
+func TestResolveClientSettingsRejectsInvalidColorDepth(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"color_depth": "8"}}`)
+
+	_, err := ResolveClientSettings(dialCmd(t, cfgPath))
+	require.ErrorContains(t, err, "client.color_depth")
+
+	cfgPath = writeConfigFile(t, `{"servers": {}}`)
+	t.Setenv(envColorDepth, "lots")
+
+	_, err = ResolveClientSettings(dialCmd(t, cfgPath))
+	require.ErrorContains(t, err, envColorDepth)
+	require.ErrorContains(t, err, `"lots" is not a color depth`)
+}
+
+// writeThemeFile writes one theme file into the themes directory beside
+// cfgPath.
+func writeThemeFile(t *testing.T, cfgPath, name, body string) string {
+	t.Helper()
+
+	dir := filepath.Join(filepath.Dir(cfgPath), "themes")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+
+	path := filepath.Join(dir, name)
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+	return path
+}
+
+// TestUserThemesAreSelectable checks a theme file beside the config is accepted
+// at every rung, offered to the settings window, and handed to the TUI.
+func TestUserThemesAreSelectable(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "mine"}}`)
+	writeThemeFile(t, cfgPath, "mine.theme", "[dark]\naccent = #010203\n")
+
+	cmd := dialCmd(t, cfgPath)
+
+	settings, err := ResolveClientSettings(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "mine", settings.Theme)
+	assert.Empty(t, settings.Warnings)
+
+	entries, err := ClientConfigStore(cmd).Entries()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"default", "dracula", "mine", "nord", "solarized"}, entryFor(t, entries, keyTheme).Allowed)
+
+	spec, err := ThemeLookup(cmd)("mine")
+	require.NoError(t, err)
+	assert.Equal(t, "mine", spec.Name)
+
+	require.NoError(t, cmd.PersistentFlags().Set(flagTheme, "mine"))
+
+	settings, err = ResolveClientSettings(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "mine", settings.Theme)
+}
+
+// TestThemesDirFollowsTheConfigFlag checks --config moves the themes directory
+// with it: a theme beside one config file is unknown to another.
+func TestThemesDirFollowsTheConfigFlag(t *testing.T) {
+	withTheme := writeConfigFile(t, `{"servers": {}}`)
+	writeThemeFile(t, withTheme, "mine.theme", "[ansi]\n")
+
+	without := writeConfigFile(t, `{"servers": {}}`)
+
+	require.NoError(t, ClientConfigStore(dialCmd(t, withTheme)).Validate(keyTheme, "mine"))
+
+	err := ClientConfigStore(dialCmd(t, without)).Validate(keyTheme, "mine")
+	require.ErrorContains(t, err, `"mine" is not a known theme`)
+
+	dir, err := themesDir(withTheme)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(filepath.Dir(withTheme), "themes"), dir)
+}
+
+// TestBrokenThemeFileIsAWarningUnlessSelected checks the broken-file policy: a
+// broken file nobody selected is a launch warning, and a broken selected file is
+// an error naming the file and line.
+func TestBrokenThemeFileIsAWarningUnlessSelected(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{"servers": {}}`)
+	broken := writeThemeFile(t, cfgPath, "mine.theme", "[dark]\n\ntext = neon\n")
+
+	settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
+	require.NoError(t, err)
+	require.Len(t, settings.Warnings, 1)
+	assert.Contains(t, settings.Warnings[0], broken+":3:")
+
+	cmd := dialCmd(t, cfgPath)
+	require.NoError(t, cmd.PersistentFlags().Set(flagTheme, "mine"))
+
+	_, err = ResolveClientSettings(cmd)
+	require.ErrorContains(t, err, "--theme")
+	require.ErrorContains(t, err, broken+":3:")
+
+	out, _, err := runConfig(t, "set", "client.theme", "mine", "--config", cfgPath)
+	assert.Empty(t, out)
+	require.ErrorContains(t, err, broken+":3:")
+	require.NotContains(t, err.Error(), "not a known theme")
+
+	_, err = ThemeLookup(dialCmd(t, cfgPath))("mine")
+	require.ErrorContains(t, err, broken+":3:")
+}
+
 // entryFor finds one key in a ClientConfigStore listing.
 func entryFor(t *testing.T, entries []ClientEntry, key string) ClientEntry {
 	t.Helper()
@@ -146,7 +278,10 @@ func TestClientConfigStoreEntriesReportSources(t *testing.T) {
 	require.NoError(t, err)
 
 	theme := entryFor(t, entries, keyTheme)
-	assert.Equal(t, ClientEntry{Key: keyTheme, Value: "nord", Source: sourceConfig, Allowed: clientThemes}, theme)
+	assert.Equal(t, ClientEntry{Key: keyTheme, Value: "nord", Source: sourceConfig, Allowed: []string{"default", "dracula", "nord", "solarized"}}, theme)
+
+	depth := entryFor(t, entries, keyColorDepth)
+	assert.Equal(t, ClientEntry{Key: keyColorDepth, Value: "auto", Source: sourceDefault, Allowed: colorDepths}, depth)
 
 	nerd := entryFor(t, entries, keyNerdFont)
 	assert.Equal(t, ClientEntry{Key: keyNerdFont, Value: false, Source: sourceEnv, SetBy: envNoNerdFont}, nerd)

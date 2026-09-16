@@ -38,10 +38,11 @@ Available Commands:
   version     Print version information
 
 Flags:
-      --config string   config file path
-  -h, --help            help for snatcher
-      --no-nerd-font    use ASCII icons instead of Nerd Font glyphs
-      --theme string    color theme (default, dracula, nord)
+      --color-depth string   color depth (auto, truecolor, 256, 16)
+      --config string        config file path
+  -h, --help                 help for snatcher
+      --no-nerd-font         use ASCII icons instead of Nerd Font glyphs
+      --theme string         color theme (default, dracula, nord, solarized, or a user theme)
 
 Use "snatcher [command] --help" for more information about a command.
 ```

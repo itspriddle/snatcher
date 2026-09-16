@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"image/color"
 	"regexp"
 	"strings"
@@ -15,86 +16,95 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
-// themeNames is every name --theme and client.theme accept, plus one that is
-// neither, since themeFor must draw something for a name it does not know.
-var themeNames = []string{"default", themeDracula, themeNord, themeSolarized}
+// themeNames is every builtin theme name.
+var themeNames = theme.Builtins().Names()
 
-// TestEveryThemeNameIsADistinctPalette checks the names actually differ.
-//
-// This is the assertion T1 could not make: all three names resolved to one
-// placeholder palette, so "--theme nord" was accepted, stored, and resolved and
-// then changed nothing a user could see.
-func TestEveryThemeNameIsADistinctPalette(t *testing.T) {
-	for _, isDark := range []bool{false, true} {
-		seen := make(map[Theme]string, len(themeNames))
+// themeFor is a builtin theme resolved for truecolor, the way the model
+// resolves one before bubbletea has reported a profile.
+func themeFor(t *testing.T, name string, isDark bool) theme.Theme {
+	t.Helper()
 
-		for _, name := range themeNames {
-			got := themeFor(name, isDark)
+	spec, err := theme.Builtins().Lookup(name)
+	require.NoError(t, err)
 
-			other, dup := seen[got]
-			require.Falsef(t, dup, "isDark=%v: %q and %q are the same palette", isDark, other, name)
-
-			seen[got] = name
-		}
-	}
+	return spec.Resolve(colorprofile.TrueColor, isDark)
 }
 
-// TestNamedThemesDifferBetweenLightAndDark checks the two fixed palettes ship
-// both arrangements, which is what stops a light terminal from rendering
-// Dracula's near-white text on its own near-white background.
-func TestNamedThemesDifferBetweenLightAndDark(t *testing.T) {
-	for _, name := range []string{themeDracula, themeNord, themeSolarized} {
-		assert.NotEqualf(t, themeFor(name, true), themeFor(name, false), "%q has one arrangement for both backgrounds", name)
-	}
+// TestANSIProfileSelectsTheANSIVariant checks a sixteen-color profile draws the
+// theme's curated [ansi] section rather than a downsample of its hex palette.
+func TestANSIProfileSelectsTheANSIVariant(t *testing.T) {
+	deps := testDeps()
+	deps.Theme = "solarized"
+
+	m := New(deps)
+	_, isHex := m.styles.Title.GetForeground().(color.RGBA)
+	require.True(t, isHex, "truecolor draws the hex palette")
+
+	m, _ = m.update(tea.ColorProfileMsg{Profile: colorprofile.ANSI})
+
+	assert.Equal(t, lipgloss.Blue, m.styles.Title.GetForeground())
+	_, isBasic := m.styles.Title.GetForeground().(ansi.BasicColor)
+	assert.True(t, isBasic)
 }
 
-// TestDefaultThemeIsTheTerminalPalette pins decision 1: the default theme is
-// the sixteen colors the terminal already resolves for every other program,
-// which is why it needs no light/dark arrangement of its own.
-func TestDefaultThemeIsTheTerminalPalette(t *testing.T) {
-	dark := themeFor("default", true)
+// TestUnknownThemeNameDrawsTheDefault checks a name the registry cannot answer
+// draws rather than panicking or rendering an empty palette. The TUI must not
+// fail to draw over a config value.
+func TestUnknownThemeNameDrawsTheDefault(t *testing.T) {
+	want := theme.Default().Resolve(colorprofile.TrueColor, true)
 
-	assert.Equal(t, dark, themeFor("default", false), "the terminal's own palette must not be re-picked per background")
-	assert.Equal(t, lipgloss.NoColor{}, dark.Text, "text must be the terminal's configured foreground")
-
-	for name, c := range map[string]color.Color{
-		"Muted": dark.Muted, "Accent": dark.Accent, "Loud": dark.Loud,
-		"Cursor": dark.Cursor, "CursorText": dark.CursorText, "Border": dark.Border,
-		"StatusBar": dark.StatusBar, "StatusText": dark.StatusText, "Warn": dark.Warn,
-	} {
-		_, ok := c.(ansi.BasicColor)
-
-		assert.Truef(t, ok, "%s is %T, not one of the terminal's sixteen colors", name, c)
-	}
-}
-
-// TestUnknownThemeNameFallsBackToTheDefault checks a name the validator did not
-// catch draws rather than panicking or rendering an empty palette. The TUI must
-// not fail to draw over a config value.
-func TestUnknownThemeNameFallsBackToTheDefault(t *testing.T) {
 	for _, name := range []string{"", "DRACULA", "monokai"} {
-		assert.Equal(t, themeFor("default", true), themeFor(name, true))
+		deps := testDeps()
+		deps.Theme = name
+
+		assert.Equal(t, want, New(deps).palette(true))
 	}
+
+	deps := testDeps()
+	deps.Theme = "mine"
+	deps.Themes = func(string) (theme.Spec, error) { return theme.Spec{}, errors.New("mine.theme:3: broken") }
+
+	assert.Equal(t, want, New(deps).palette(true), "a theme file broken since launch draws the default")
+}
+
+// TestThemesSeamIsConsulted checks the model resolves names through
+// Deps.Themes, which is how an operator's theme file reaches the TUI.
+func TestThemesSeamIsConsulted(t *testing.T) {
+	spec, err := theme.Parse("mine", "mine.theme", []byte("[dark]\naccent = #010203\n"))
+	require.NoError(t, err)
+
+	deps := testDeps()
+	deps.Theme = "mine"
+	deps.Themes = func(name string) (theme.Spec, error) {
+		if name == "mine" {
+			return spec, nil
+		}
+
+		return theme.Spec{}, theme.ErrUnknown
+	}
+
+	assert.Equal(t, lipgloss.Color("#010203"), New(deps).styles.Title.GetForeground())
 }
 
 // TestHelpStylesFollowTheTheme checks the help bubble is styled from the
 // palette. T1 hardcoded help.DefaultStyles(true), which answered to neither the
 // theme name nor the light/dark reply.
 func TestHelpStylesFollowTheTheme(t *testing.T) {
-	dracula := helpStyles(themeFor(themeDracula, true), false)
+	dracula := helpStyles(themeFor(t, "dracula", true), false)
 
-	assert.Equal(t, themeFor(themeDracula, true).Muted, dracula.ShortDesc.GetForeground())
-	assert.NotEqual(t, helpStyles(themeFor(themeNord, true), false).ShortDesc.GetForeground(), dracula.ShortDesc.GetForeground())
-	assert.NotEqual(t, helpStyles(themeFor(themeDracula, false), false).ShortKey.GetForeground(), dracula.ShortKey.GetForeground())
+	assert.Equal(t, themeFor(t, "dracula", true).Muted, dracula.ShortDesc.GetForeground())
+	assert.NotEqual(t, helpStyles(themeFor(t, "nord", true), false).ShortDesc.GetForeground(), dracula.ShortDesc.GetForeground())
+	assert.NotEqual(t, helpStyles(themeFor(t, "dracula", false), false).ShortKey.GetForeground(), dracula.ShortKey.GetForeground())
 }
 
 // TestFocusIsEncodedInTheBorderShape pins decision 3: focus is legible without
 // color, so each of the three pane states gets its own border shape.
 func TestFocusIsEncodedInTheBorderShape(t *testing.T) {
-	styles := newStyles(themeFor("default", true), false)
+	styles := newStyles(themeFor(t, "default", true), false)
 
 	shapes := map[string]lipgloss.Border{
 		"unfocused": styles.Pane.GetBorderStyle(),
@@ -241,9 +251,9 @@ func hasReverse(s string) bool {
 // one, and that nothing in the monochrome set paints.
 func TestMonochromeStylesTradeColorForReverseVideo(t *testing.T) {
 	for _, name := range themeNames {
-		theme := themeFor(name, true)
-		mono := newStyles(theme, true)
-		colored := newStyles(theme, false)
+		palette := themeFor(t, name, true)
+		mono := newStyles(palette, true)
+		colored := newStyles(palette, false)
 
 		for label, pair := range map[string][2]lipgloss.Style{
 			"Cursor":         {mono.Cursor, colored.Cursor},
@@ -301,7 +311,7 @@ func TestMonochromeSettingsFramesPaintNothing(t *testing.T) {
 // monochrome fallback of its own: the shape is the signal, and it is the same
 // shape with and without color.
 func TestMonochromeKeepsTheFocusBorderShapes(t *testing.T) {
-	mono := newStyles(themeFor("default", true), true)
+	mono := newStyles(themeFor(t, "default", true), true)
 
 	assert.Equal(t, lipgloss.RoundedBorder(), mono.Pane.GetBorderStyle())
 	assert.Equal(t, lipgloss.ThickBorder(), mono.PaneFocused.GetBorderStyle())
