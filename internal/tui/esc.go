@@ -89,15 +89,6 @@ var ladder = []rung{
 		},
 	},
 	{
-		name:    "deselect cursor",
-		applies: func(m Model) bool { return m.window == windowTorrents && m.torrents.sel.active },
-		apply: func(m Model) Model {
-			m.torrents.sel = m.torrents.sel.deselect()
-
-			return m.syncTorrents()
-		},
-	},
-	{
 		// Leaving the settings window with unsaved changes asks first. The prompt
 		// is an overlay, so the next esc closes it (rung "close overlay") and the
 		// window stays open with its changes.

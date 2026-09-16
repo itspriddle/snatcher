@@ -123,22 +123,13 @@ func TestEscLadderRungs(t *testing.T) {
 				t.Helper()
 
 				assert.Zero(t, m.torrents.sel.markCount())
-				assert.True(t, m.torrents.sel.active, "the cursor below must stay selected")
-			},
-		},
-		{
-			name: "deselect cursor",
-			from: "clear marks",
-			check: func(t *testing.T, m Model) {
-				t.Helper()
-
-				assert.False(t, m.torrents.sel.active)
-				assert.Equal(t, windowTorrents, m.window)
+				_, ok := m.torrents.sel.row(m.torrents.rows)
+				assert.True(t, ok, "the cursor row must stay selected")
 			},
 		},
 		{
 			name:   "prompt to save",
-			from:   "deselect cursor",
+			from:   "clear marks",
 			window: windowSettings,
 			setup:  withDirtySetting,
 			check: func(t *testing.T, m Model) {
@@ -151,7 +142,7 @@ func TestEscLadderRungs(t *testing.T) {
 		},
 		{
 			name:   "return to torrents",
-			from:   "deselect cursor",
+			from:   "clear marks",
 			window: windowSettings,
 			check: func(t *testing.T, m Model) {
 				t.Helper()
@@ -161,7 +152,7 @@ func TestEscLadderRungs(t *testing.T) {
 		},
 		{
 			name: "at rest",
-			from: "deselect cursor",
+			from: "clear marks",
 			check: func(t *testing.T, m Model) {
 				t.Helper()
 
@@ -198,7 +189,7 @@ func TestEscLadderRungs(t *testing.T) {
 
 // loadedModel is a model with every rung of the ladder below the chord
 // applicable at once: an open overlay, a focused input, focus off the main pane,
-// an active search, a mark, and an active cursor.
+// an active search, and a mark.
 func loadedModel(t *testing.T) Model {
 	t.Helper()
 
@@ -236,7 +227,7 @@ func unwound(t *testing.T, m Model, through string) Model {
 // TestEscapeAtRestChangesNothing checks the last rung is genuinely inert: a model
 // at rest comes back unchanged, with no command.
 func TestEscapeAtRestChangesNothing(t *testing.T) {
-	m := unwound(t, loadedModel(t), "deselect cursor")
+	m := unwound(t, loadedModel(t), "clear marks")
 
 	got, cmd := m.handleKey(keyMsg("esc"))
 
@@ -269,5 +260,5 @@ func TestLadderRungNamesAreUnique(t *testing.T) {
 		names[r.name] = true
 	}
 
-	assert.Len(t, ladder, 12)
+	assert.Len(t, ladder, 11)
 }

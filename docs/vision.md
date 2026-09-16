@@ -208,13 +208,12 @@ applicable step runs, and only that step:
    a detail or filter pane
 4. clear the active search
 5. clear marks
-6. deselect the cursor row (detail pane stays, goes empty)
-7. return to the torrents window. Leaving the settings window with unsaved
+6. return to the torrents window. Leaving the settings window with unsaved
    changes asks to save first; that prompt is an overlay, so the next `esc`
    closes it (rung 1) and the window stays open
-8. at rest in the torrents window: do nothing - **esc never quits**
+7. at rest in the torrents window: do nothing - **esc never quits**
 
-`q` runs the same save prompt as rung 7 when the settings window is dirty,
+`q` runs the same save prompt as rung 6 when the settings window is dirty,
 then quits. It never discards edits silently.
 
 **Terminal constraints.** These are hard limits, not preferences:
@@ -340,8 +339,8 @@ any marks exist, otherwise the cursor row.
         - stop seeding when inactive for (checkbox and number input for minutes)
         - sequential download
         - bandwidth group
-- `esc` - per the ladder: clears marks first, then deselects the row (detail
-  pane stays if visible, but empty)
+- `esc` - per the ladder: clears the search, then marks. The cursor row stays
+  selected, so the detail pane keeps showing it
 
 #### Torrents Window > Torrent Filter Pane (Left)
 
@@ -454,7 +453,7 @@ Text area to enter a search, set categories/indexers
 
 - `enter` - submit search, show results in main listing pane
 - `esc` - if search field focused, unfocus, stay in prowlarr window/search
-  pane (rung 2). if not focused, back to torrent window (rung 7)
+  pane (rung 2). if not focused, back to torrent window (rung 6)
 
 #### Prowlarr Window > Main Listing
 
@@ -478,7 +477,7 @@ cols: age, title, indexer, size, grabs, peers, seeders
 - `w` - write the .torrent file locally
 - `m` - action menu (grab, write locally, open in tracker, yanks)
 - `P` - open Prowlarr
-- `esc` - back to torrent window (rung 7; a live search is not "an active
+- `esc` - back to torrent window (rung 6; a live search is not "an active
   search" in the ladder's sense - rung 4 is the torrents window's `/` filter)
 
 **Note on `a` (grab).** Prowlarr's grab endpoint hands the release to the
@@ -511,7 +510,7 @@ powers `snatcher server show --category`.
 
 - `esc`
     - no field focused, close, ask to save pending changes if any, back to
-      previous window (rung 7)
+      previous window (rung 6)
     - field focused, unfocus, stay in settings window (rung 2). A settings
       field's text is a draft, so unfocusing discards it; only `enter` commits
 - `q` - the same save prompt if there are pending changes, then quit

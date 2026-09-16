@@ -73,6 +73,29 @@ func TestOpeningTheDetailFetchesAfterADebounce(t *testing.T) {
 	assert.Zero(t, m.live.detailInFlight)
 }
 
+// TestEscFromTheDetailKeepsItsTorrent checks esc from a focused detail pane
+// returns to the list, and a second esc leaves the cursor row and its detail
+// alone: the row the list highlights is still the row the pane shows.
+func TestEscFromTheDetailKeepsItsTorrent(t *testing.T) {
+	_, m := detailModel(t)
+
+	m, _ = m.update(keyMsg("enter"))
+	m = fireDetailTick(t, m)
+	require.Equal(t, paneDetail, m.focusedPane())
+
+	m = updateKeys(m, "esc")
+	require.Equal(t, paneList, m.focusedPane())
+
+	m, rung := m.escape()
+	assert.Equal(t, "at rest", rung)
+
+	row, ok := m.torrents.sel.row(m.torrents.rows)
+	require.True(t, ok)
+	assert.Equal(t, int64(2), row.ID)
+	assert.True(t, m.torrents.detail.hasDetail)
+	assert.Equal(t, int64(2), m.torrents.detail.detail.ID)
+}
+
 // TestCursorMoveRefetchesTheNewTorrent checks a run of cursor moves costs one
 // fetch, for the torrent the run ended on: every superseded timer is dropped.
 func TestCursorMoveRefetchesTheNewTorrent(t *testing.T) {

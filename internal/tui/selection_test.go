@@ -35,13 +35,11 @@ func TestSelectorIsSortedAndStable(t *testing.T) {
 	assert.Equal(t, []int64{rows[1].ID, rows[4].ID, rows[7].ID}, torrentSelector(sel, rows).IDs)
 }
 
-// TestSelectorWithNoCursorTargetsNothing checks the deselected state. It must
-// never fall back to All: "every torrent on the server" is something a user asks
-// for explicitly, not something a selection decays into.
-func TestSelectorWithNoCursorTargetsNothing(t *testing.T) {
-	rows := mockTorrents()
-
-	sel := torrentSelector(newTorrentSelection().deselect(), rows)
+// TestSelectorWithNoRowsTargetsNothing checks an empty list. It must never
+// fall back to All: "every torrent on the server" is something a user asks for
+// explicitly, not something a selection decays into.
+func TestSelectorWithNoRowsTargetsNothing(t *testing.T) {
+	sel := torrentSelector(newTorrentSelection(), nil)
 
 	assert.Equal(t, transmission.Selector{}, sel)
 	assert.False(t, sel.All)

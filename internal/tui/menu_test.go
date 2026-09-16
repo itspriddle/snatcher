@@ -92,10 +92,7 @@ func TestMenuRefusals(t *testing.T) {
 	assert.Equal(t, "no server", m.toast)
 	assert.Empty(t, m.overlays)
 
-	_, live := polledModel(t)
-
-	live, rung := live.escape()
-	require.Equal(t, "deselect cursor", rung)
+	_, live := emptyModel(t)
 
 	m = press(live, "m")
 	assert.Equal(t, "nothing selected", m.toast)
