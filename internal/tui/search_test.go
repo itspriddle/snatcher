@@ -2,6 +2,7 @@ package tui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/key"
@@ -13,16 +14,6 @@ import (
 // searchFor presses `/`, types a query, and leaves the field focused.
 func searchFor(m Model, query string) Model {
 	return typeText(press(m, "/"), query)
-}
-
-// cursorID is the ID of the torrent under the cursor.
-func cursorID(t *testing.T, m Model) int64 {
-	t.Helper()
-
-	row, ok := m.torrents.sel.row(m.torrents.rows)
-	require.True(t, ok, "the cursor is on no row")
-
-	return row.ID
 }
 
 // TestSlashFocusesTheSearchInput checks `/` hands the keyboard to the field and
@@ -39,80 +30,136 @@ func TestSlashFocusesTheSearchInput(t *testing.T) {
 	assert.Equal(t, "q?", typed.torrents.listView.search, "q and ? go to the field, not to quit and help")
 }
 
-// TestTypingJumpsToTheFirstMatch checks each keystroke jumps the cursor to the
-// first match, and hides nothing.
-func TestTypingJumpsToTheFirstMatch(t *testing.T) {
-	m := searchFor(newTestModel(120, 40), "gentoo")
+// TestTypingFiltersTheRows checks each keystroke narrows the list to the
+// matches rather than jumping a cursor through a full list.
+func TestTypingFiltersTheRows(t *testing.T) {
+	full := newTestModel(120, 40)
+	require.Len(t, full.torrents.rows, 12)
 
-	assert.Equal(t, int64(10), cursorID(t, m))
-	assert.Equal(t, "gentoo", m.torrents.listView.search)
-	assert.Len(t, m.torrents.rows, 12)
+	m := searchFor(full, "x86_64")
 
-	m = typeText(searchFor(newTestModel(120, 40), "zzz"), "")
-	assert.Equal(t, int64(1), cursorID(t, m), "no match leaves the cursor")
+	assert.Equal(t, "x86_64", m.torrents.listView.search)
+	assert.Equal(t, []int64{3, 5, 8, 9}, rowIDs(m.torrents.rows), "only the matches are left")
+
+	for _, row := range m.torrents.rows {
+		assert.Contains(t, strings.ToLower(row.Name), "x86_64")
+	}
 }
 
-// TestNextAndPrevWrap checks n and N walk the matches from the cursor and wrap
-// at both ends.
-func TestNextAndPrevWrap(t *testing.T) {
-	m := press(searchFor(newTestModel(120, 40), "x86_64"), "enter")
-	require.False(t, m.inputFocused)
-	require.Equal(t, int64(3), cursorID(t, m))
+// TestSearchMatchingNothingEmptiesTheList checks a query nothing matches leaves
+// no rows at all, rather than leaving the cursor parked.
+func TestSearchMatchingNothingEmptiesTheList(t *testing.T) {
+	m := searchFor(newTestModel(120, 40), "zzz")
 
-	var visited []int64
+	assert.Empty(t, m.torrents.rows)
+	assert.Equal(t, "search: zzz (0)", m.torrents.searchStatus())
+}
 
-	for range 4 {
-		m = press(m, "n")
-		visited = append(visited, cursorID(t, m))
+// TestSearchComposesWithTheSidebarFilter checks the sidebar narrows first and
+// the search narrows what is left, the order `snatcher list` applies them in.
+func TestSearchComposesWithTheSidebarFilter(t *testing.T) {
+	filtered := seedingFiltered(t, newTestModel(120, 40))
+	seeding := rowIDs(filtered.torrents.rows)
+	require.NotEmpty(t, seeding)
+
+	m := searchFor(filtered, "gentoo")
+	require.NotEmpty(t, m.torrents.rows, "the fixture has a seeding gentoo torrent")
+
+	for _, row := range m.torrents.rows {
+		assert.Contains(t, strings.ToLower(row.Name), "gentoo")
+		assert.Contains(t, seeding, row.ID, "the search never reaches past the filter")
 	}
 
-	assert.Equal(t, []int64{5, 8, 9, 3}, visited)
-	assert.Equal(t, int64(9), cursorID(t, press(m, "N")), "N wraps backwards")
+	assert.Less(t, len(m.torrents.rows), len(seeding), "the search narrowed the filtered set")
+}
+
+// TestSearchKeepsTheCursorOnARow checks the cursor lands on a visible row when
+// the search hides the one it was on.
+func TestSearchKeepsTheCursorOnARow(t *testing.T) {
+	m := searchFor(newTestModel(120, 40), "x86_64")
+
+	row, ok := m.torrents.sel.row(m.torrents.rows)
+	require.True(t, ok, "the cursor is on a row that is still shown")
+	assert.Contains(t, strings.ToLower(row.Name), "x86_64")
+	assert.Less(t, m.torrents.sel.cursor, len(m.torrents.rows), "the cursor is in range")
 }
 
 // TestEscBlursThenClearsSearch checks the first esc blurs the field keeping its
-// text, and the second clears the search.
+// text, and the second clears the search and widens the rows back.
 func TestEscBlursThenClearsSearch(t *testing.T) {
 	m := searchFor(newTestModel(120, 40), "deb")
+	narrowed := len(m.torrents.rows)
+	require.Less(t, narrowed, 12)
 
 	m, rung := m.escape()
 	require.Equal(t, "blur input", rung)
 	assert.False(t, m.inputFocused)
 	assert.Equal(t, ownerNone, m.owner)
 	assert.Equal(t, "deb", m.torrents.listView.search)
+	assert.Len(t, m.torrents.rows, narrowed, "blurring keeps the search in force")
 	assert.Contains(t, m.torrents.footer(), "search: deb")
 
 	m, rung = m.escape()
 	require.Equal(t, "clear search", rung)
 	assert.Empty(t, m.torrents.listView.search)
+	assert.Len(t, m.torrents.rows, 12, "clearing the search widens the rows back")
 	assert.Empty(t, m.torrents.footer())
 	assert.Equal(t, newTestModel(120, 40).torrents.list.table.Height(), m.torrents.list.table.Height())
 }
 
-// TestSearchKeepsMarks checks a search leaves marks alone, unlike a filter.
-func TestSearchKeepsMarks(t *testing.T) {
-	m := press(searchFor(press(newTestModel(120, 40), "space"), "gentoo"), "enter")
+// TestSearchClearsMarks checks a search drops marks, as a filter change does: a
+// mark the search has hidden would otherwise be acted on invisibly.
+func TestSearchClearsMarks(t *testing.T) {
+	marked := press(newTestModel(120, 40), "space")
+	require.Equal(t, 1, marked.torrents.sel.markCount())
 
-	assert.Equal(t, 1, m.torrents.sel.markCount())
-	assert.Equal(t, int64(10), cursorID(t, m))
+	m := press(searchFor(marked, "gentoo"), "enter")
+
+	assert.Zero(t, m.torrents.sel.markCount())
 }
 
-// TestSearchStatusCounts checks the readout's place among the matches, 0 off a
-// match, and "(0)" when nothing matches.
-func TestSearchStatusCounts(t *testing.T) {
-	m := press(searchFor(newTestModel(120, 40), "x86_64"), "enter", "n")
+// TestClearingTheSearchKeepsMarks checks marks made while the search was narrow
+// survive widening. Clearing hides nothing, so the rule that drops marks does
+// not apply, and the ladder's next rung is what clears them.
+func TestClearingTheSearchKeepsMarks(t *testing.T) {
+	m := press(press(searchFor(newTestModel(120, 40), "x86_64"), "enter"), "space")
+	require.Equal(t, 1, m.torrents.sel.markCount())
 
-	assert.Equal(t, "search: x86_64 (2/4)", m.torrents.searchStatus())
-	assert.Equal(t, "search: x86_64 (0/4)", press(m, "g").torrents.searchStatus())
+	m, rung := m.escape()
+	require.Equal(t, "clear search", rung)
+
+	assert.Equal(t, 1, m.torrents.sel.markCount(), "marks survive the rows widening")
+	assert.Len(t, m.torrents.rows, 12)
+
+	m, rung = m.escape()
+	require.Equal(t, "clear marks", rung)
+	assert.Zero(t, m.torrents.sel.markCount())
+}
+
+// TestSearchStatusCounts checks the readout names how many rows the search left.
+func TestSearchStatusCounts(t *testing.T) {
+	m := press(searchFor(newTestModel(120, 40), "x86_64"), "enter")
+
+	assert.Equal(t, "search: x86_64 (4)", m.torrents.searchStatus())
 
 	none := press(searchFor(newTestModel(120, 40), "zzz"), "enter")
 	assert.Equal(t, "search: zzz (0)", none.torrents.searchStatus())
 }
 
-// TestSearchStepWithoutAMatch checks n says why it did nothing.
-func TestSearchStepWithoutAMatch(t *testing.T) {
-	assert.Equal(t, "no search", press(newTestModel(120, 40), "n").toast)
-	assert.Equal(t, "no match for zzz", press(searchFor(newTestModel(120, 40), "zzz"), "enter", "N").toast)
+// TestSearchEmptyPlaceholder checks the empty table says which of the filter and
+// the search emptied it.
+func TestSearchEmptyPlaceholder(t *testing.T) {
+	m := press(searchFor(newTestModel(120, 40), "zzz"), "enter")
+	require.Empty(t, m.torrents.rows)
+
+	ph := m.listPlaceholder()
+	require.Len(t, ph.lines, 2)
+	assert.Equal(t, "no torrents match", ph.lines[0])
+	assert.Contains(t, ph.lines[1], "search: zzz")
+
+	both := press(searchFor(seedingFiltered(t, newTestModel(120, 40)), "zzz"), "enter")
+	assert.Contains(t, both.listPlaceholder().lines[1], "filter: ")
+	assert.Contains(t, both.listPlaceholder().lines[1], "search: zzz")
 }
 
 // TestSlashAgainEditsTheSearch checks a second `/` starts from the search in
@@ -156,7 +203,7 @@ func TestSearchInputKeyMapHasNoBannedKeys(t *testing.T) {
 }
 
 // TestTorrentsSearchGolden pins the footer while searching: the field and the
-// match count, beside a filter.
+// row count, beside a filter.
 func TestTorrentsSearchGolden(t *testing.T) {
 	m := seedingFiltered(t, newTestModel(120, 40))
 

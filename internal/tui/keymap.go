@@ -182,8 +182,6 @@ const (
 	actionToggleFilter   Action = "pane.filter"
 	actionTorrentFilter  Action = "torrent.filter"
 	actionTorrentSearch  Action = "torrent.search"
-	actionSearchNext     Action = "torrent.search-next"
-	actionSearchPrev     Action = "torrent.search-prev"
 	actionTorrentSort    Action = "torrent.sort"
 	actionTorrentColumns Action = "torrent.columns"
 	actionTorrentAdd     Action = "torrent.add"
@@ -378,7 +376,7 @@ var paletteHidden = map[Action]bool{
 
 	actionYankChord: true, actionMenuOpen: true, actionFileMenu: true,
 	actionToggleMark: true, actionFileMark: true,
-	actionSearchNext: true, actionSearchPrev: true, actionFilterApply: true,
+	actionFilterApply:   true,
 	actionDetailPrevTab: true, actionDetailNextTab: true,
 
 	actionSettingsPrevTab: true, actionSettingsNextTab: true,
@@ -467,8 +465,6 @@ var registry = []Binding{
 	bind(ctxTorrents, actionTabPieces, "5", "detail: pieces", "5"),
 	bind(ctxTorrents, actionTorrentFilter, "f", "filter", "f"),
 	bind(ctxTorrents, actionTorrentSearch, "/", "search", "/"),
-	bind(ctxTorrents, actionSearchNext, "n", "next match", "n"),
-	bind(ctxTorrents, actionSearchPrev, "N", "previous match", "N"),
 	bind(ctxTorrents, actionTorrentSort, "o", "sort", "o"),
 	bind(ctxTorrents, actionTorrentColumns, "c", "columns", "c"),
 	bind(ctxTorrents, actionTorrentAdd, "a", "add torrent", "a"),

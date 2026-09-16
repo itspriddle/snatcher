@@ -26,14 +26,14 @@
 │   │   5  detail: pieces                                                                                          │   ┃
 │   │   f  filter                                                                                                  │   ┃
 │   │   /  search                                                                                                  │   ┃
-│   │   n  next match                                                                                              │   ┃
-│   │   N  previous match                                                                                          │   ┃
 │   │   o  sort                                                                                                    │   ┃
 │   │   c  columns                                                                                                 │   ┃
 │   │   a  add torrent                                                                                             │   ┃
 │   │   A  add with options                                                                                        │   ┃
 │   │                                                                                                              │   ┃
 │   │ navigation                                                                                                   │   ┃
+│   │   ↑/k        up                                                                                              │   ┃
+│   │   ↓/j        down                                                                                            │   ┃
 │   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   ┃
 ╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ↑/k scroll up • ↓/j scroll down • pgup page up • pgdn page down • ? help • q quit                                       
