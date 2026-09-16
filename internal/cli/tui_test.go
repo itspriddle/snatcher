@@ -127,3 +127,27 @@ func TestNativeClipboardIsOffOverSSH(t *testing.T) {
 	t.Setenv("SSH_TTY", "/dev/ttys001")
 	assert.Nil(t, nativeClipboard())
 }
+
+// TestNativeBrowserIsOffOverSSH checks a TUI launched over SSH never opens a
+// browser, which would open on the remote machine.
+func TestNativeBrowserIsOffOverSSH(t *testing.T) {
+	t.Setenv("SSH_TTY", "")
+	t.Setenv("SSH_CONNECTION", "x")
+	assert.Nil(t, nativeBrowser())
+
+	t.Setenv("SSH_CONNECTION", "")
+	t.Setenv("SSH_TTY", "/dev/ttys001")
+	assert.Nil(t, nativeBrowser())
+}
+
+// TestProwlarrDialerAdapterCarriesEveryField checks the Prowlarr adapter drops
+// nothing between the two result types.
+func TestProwlarrDialerAdapterCarriesEveryField(t *testing.T) {
+	dial := prowlarrDialer(func(name string) (commands.ProwlarrDialResult, error) {
+		return commands.ProwlarrDialResult{Name: name, URL: "http://p:9696", Warning: "w"}, nil
+	})
+
+	res, err := dial("indexer")
+	require.NoError(t, err)
+	assert.Equal(t, tui.ProwlarrDialResult{Name: "indexer", URL: "http://p:9696", Warning: "w"}, res)
+}

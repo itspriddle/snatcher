@@ -38,6 +38,8 @@ internal/transmission/rpc # typed Transmission RPC client (Client→Protocol→T
 internal/prowlarr/        # typed Prowlarr REST client (Transport→Client→domain types)
 internal/config/          # non-secret config (named servers + types, JSON, XDG path)
 internal/secrets/         # passwords and Prowlarr API keys (OS keyring, or file store)
+internal/clipboard/       # native clipboard writer (pbcopy/wl-copy/xclip/xsel) for TUI yanks
+internal/browser/         # native URL opener (open/xdg-open, http(s) only) for the TUI's O and P
 internal/output/          # JSON / jq / human formatters + terminal sanitizer
 internal/tui/             # terminal UI: layout, focus router, keymap registry
 internal/surface/         # CLI surface snapshot generator
@@ -70,18 +72,24 @@ Layers, outermost to innermost:
   Transmission envelope to the raw response body. `tui.go` holds the seams
   `internal/cli` hands the TUI: `Dialer`, whose `DialResult` carries the
   resolved alias and any unavailable-store warning (captured, never written to
-  stderr under the alt screen); `Servers`, the Transmission aliases for the
-  server picker; `ResolveClientSettings`; and `ClientConfigStore`, which reads
-  and writes client settings through the same functions `config list` and
-  `config set` use.
+  stderr under the alt screen); `ProwlarrDialer` and its `ProwlarrDialResult`,
+  the same for a named Prowlarr alias (the two share one error-writer swap, so
+  the TUI never runs them at once); `Servers` and `ProwlarrServers`, each
+  type's aliases for the server picker; `ResolveClientSettings`; and
+  `ClientConfigStore`, which reads and writes client settings through the same
+  functions `config list` and `config set` use.
 - **`internal/tui`** — the terminal UI, launched by `internal/cli` when
-  `snatcher` is run bare on a terminal. It depends on `transmission` and
-  `output` and **never imports `commands`**: everything it needs arrives through
-  `tui.Deps`, built from the `commands.Dialer` / `commands.Servers` /
+  `snatcher` is run bare on a terminal. It depends on `transmission`,
+  `prowlarr`, and `output` and **never imports `commands`**: everything it needs
+  arrives through `tui.Deps`, built from the `commands.Dialer` /
+  `commands.ProwlarrDialer` / `commands.Servers` / `commands.ProwlarrServers` /
   `commands.ResolveClientSettings` / `commands.ClientConfigStore` seam — the
-  picker's list as `Deps.Servers`, the config store as `Deps.Config`, the
-  `tui.ClientConfig` store the settings window reads and writes client settings
-  through (adapted in `internal/cli`, since neither package imports the other).
+  pickers' lists as `Deps.Servers` and `Deps.ProwlarrServers`, the Prowlarr
+  dialer as `Deps.DialProwlarr`, the native clipboard and browser as
+  `Deps.Clipboard` and `Deps.OpenURL` (both nil over SSH), the config store as
+  `Deps.Config`, the `tui.ClientConfig` store the settings window reads and
+  writes client settings through (adapted in `internal/cli`, since neither
+  package imports the other).
   It is handed the *dialer*, not a dialed client, so switching servers
   mid-session needs no new seam, and `tui.Run` dials before entering the alt
   screen so a configuration error reaches the terminal. Live data rides one
@@ -107,7 +115,13 @@ Layers, outermost to innermost:
   (`palette.go`) is fed by that registry plus `unboundActions`, the table of
   actions no key is bound to, filtered to the live pane stack less
   `paletteHidden`; drift tests fail on an action that is neither listed nor
-  hidden. Adding an unbound action means adding a table row.
+  hidden. Adding an unbound action means adding a table row. The Prowlarr
+  window (`prowlarr.go`) dials lazily on first `ctrl+p` and owns its own client
+  and generation, apart from the refresh spine; its search replies are dropped
+  by sequence and generation the same way. Its results columns, the `.torrent`
+  filename and write rules, and `releaseLabel` mirror `internal/commands`'
+  search files under pinning tests, and every Prowlarr URL it draws, yanks, or
+  opens goes through `client.Redact` first.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list

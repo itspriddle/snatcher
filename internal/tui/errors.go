@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/itspriddle/snatcher/internal/output"
+	"github.com/itspriddle/snatcher/internal/prowlarr"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -22,38 +23,84 @@ type errorText struct {
 	short, long, hint string
 }
 
-// classify decides how an error is presented. The sentinels each get their own
-// wording, because each asks something different of the user — fix credentials,
-// upgrade the server, or wait. Anything else is shown sanitized, since a
-// server's error text is untrusted.
+// errorClass is one sentinel's presentation. appendErr puts the error's own
+// text, sanitized, after long: a server error's text is the only thing that
+// says what went wrong.
+type errorClass struct {
+	sentinel          error
+	short, long, hint string
+	appendErr         bool
+}
+
+// errorClasses are the sentinels with wording of their own, checked in order.
+// Each asks something different of the user — fix credentials, upgrade the
+// server, or wait — and Prowlarr's say which backend is asking, since the
+// status bar can carry both at once.
+var errorClasses = []errorClass{
+	{
+		sentinel: transmission.ErrAuth,
+		short:    "auth failed",
+		long:     "authentication failed: check the server's username and password",
+		hint:     "check credentials with `snatcher server add`, then " + retryHint,
+	},
+	{
+		sentinel: transmission.ErrUnsupported,
+		short:    "unsupported server",
+		long:     "unsupported server: snatcher needs Transmission 4.0 or newer",
+		hint:     "point snatcher at Transmission 4.0 or newer, then " + retryHint,
+	},
+	{
+		sentinel: transmission.ErrUnreachable,
+		short:    "unreachable",
+		long:     "server unreachable: check the URL and that Transmission is running",
+		hint:     retryHint,
+	},
+	{
+		sentinel:  transmission.ErrServer,
+		short:     "server error",
+		long:      "server error: ",
+		hint:      retryHint,
+		appendErr: true,
+	},
+	{
+		sentinel: prowlarr.ErrAuth,
+		short:    "auth failed",
+		long:     "Prowlarr authentication failed: check the server's API key",
+		hint:     "check the API key with `snatcher server add --type prowlarr`, then " + retryHint,
+	},
+	{
+		sentinel: prowlarr.ErrUnreachable,
+		short:    "unreachable",
+		long:     "Prowlarr unreachable: check the URL and that Prowlarr is running",
+		hint:     retryHint,
+	},
+	{
+		sentinel:  prowlarr.ErrServer,
+		short:     "server error",
+		long:      "Prowlarr error: ",
+		hint:      retryHint,
+		appendErr: true,
+	},
+}
+
+// classify decides how an error is presented: a sentinel's own wording, or
+// anything else shown sanitized, since a server's error text is untrusted.
 func classify(err error) errorText {
-	switch {
-	case err == nil:
+	if err == nil {
 		return errorText{}
-	case errors.Is(err, transmission.ErrAuth):
-		return errorText{
-			short: "auth failed",
-			long:  "authentication failed: check the server's username and password",
-			hint:  "check credentials with `snatcher server add`, then " + retryHint,
+	}
+
+	for _, c := range errorClasses {
+		if !errors.Is(err, c.sentinel) {
+			continue
 		}
-	case errors.Is(err, transmission.ErrUnsupported):
-		return errorText{
-			short: "unsupported server",
-			long:  "unsupported server: snatcher needs Transmission 4.0 or newer",
-			hint:  "point snatcher at Transmission 4.0 or newer, then " + retryHint,
+
+		long := c.long
+		if c.appendErr {
+			long += output.SanitizeTerminal(err.Error())
 		}
-	case errors.Is(err, transmission.ErrUnreachable):
-		return errorText{
-			short: "unreachable",
-			long:  "server unreachable: check the URL and that Transmission is running",
-			hint:  retryHint,
-		}
-	case errors.Is(err, transmission.ErrServer):
-		return errorText{
-			short: "server error",
-			long:  "server error: " + output.SanitizeTerminal(err.Error()),
-			hint:  retryHint,
-		}
+
+		return errorText{short: c.short, long: long, hint: c.hint}
 	}
 
 	text := output.SanitizeTerminal(err.Error())

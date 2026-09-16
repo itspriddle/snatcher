@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/itspriddle/snatcher/internal/browser"
 	"github.com/itspriddle/snatcher/internal/clipboard"
 	"github.com/itspriddle/snatcher/internal/commands"
 	"github.com/itspriddle/snatcher/internal/tui"
@@ -50,6 +51,10 @@ func launchTUI(cmd *cobra.Command) error {
 		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,
 		Clipboard:    nativeClipboard(),
+
+		DialProwlarr:    prowlarrDialer(commands.ProwlarrDialer(cmd)),
+		ProwlarrServers: servers(commands.ProwlarrServers(cmd)),
+		OpenURL:         nativeBrowser(),
 	})
 }
 
@@ -61,7 +66,7 @@ func launchTUI(cmd *cobra.Command) error {
 // failure toast for a copy OSC 52 already carried home. The environment is read
 // here, with the launcher's other decisions, so internal/tui reads none.
 func nativeClipboard() func(context.Context, string) error {
-	if os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != "" {
+	if overSSH() {
 		return nil
 	}
 
@@ -73,6 +78,29 @@ func nativeClipboard() func(context.Context, string) error {
 	return w.Write
 }
 
+// nativeBrowser returns the opener O and P use, or nil when there is none, in
+// which case they yank the URL instead.
+//
+// Over SSH it is always nil, for the reason nativeClipboard is: the browser
+// would open on the remote machine, not in front of the user.
+func nativeBrowser() func(context.Context, string) error {
+	if overSSH() {
+		return nil
+	}
+
+	o := browser.Detect()
+	if o == nil {
+		return nil
+	}
+
+	return o.Open
+}
+
+// overSSH reports whether the process was started from an SSH session.
+func overSSH() bool {
+	return os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != ""
+}
+
 // dialer adapts commands.Dialer to the TUI's own DialResult.
 func dialer(dial func(string) (commands.DialResult, error)) func(string) (tui.DialResult, error) {
 	return func(server string) (tui.DialResult, error) {
@@ -82,7 +110,18 @@ func dialer(dial func(string) (commands.DialResult, error)) func(string) (tui.Di
 	}
 }
 
-// servers adapts commands.Servers to the TUI's own ServerEntry.
+// prowlarrDialer adapts commands.ProwlarrDialer to the TUI's own
+// ProwlarrDialResult.
+func prowlarrDialer(dial func(string) (commands.ProwlarrDialResult, error)) func(string) (tui.ProwlarrDialResult, error) {
+	return func(server string) (tui.ProwlarrDialResult, error) {
+		res, err := dial(server)
+
+		return tui.ProwlarrDialResult{Client: res.Client, Name: res.Name, URL: res.URL, Warning: res.Warning}, err
+	}
+}
+
+// servers adapts commands.Servers or commands.ProwlarrServers to the TUI's own
+// ServerEntry.
 func servers(list func() ([]commands.ServerEntry, error)) func() ([]tui.ServerEntry, error) {
 	return func() ([]tui.ServerEntry, error) {
 		entries, err := list()

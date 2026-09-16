@@ -449,7 +449,10 @@ window in v1, so every action acts on the cursor row.
 
 #### Prowlarr Window > Search Pane (Top)
 
-Text area to enter a search, set categories/indexers
+Text area to enter a search. Categories and indexers are not inline dropdowns:
+`f` opens a modal multi-select (one checkbox section each, nothing checked
+meaning "all"), and the pane shows a summary of the selection beside the query
+(`categories: 2  indexers: all`).
 
 - `enter` - submit search, show results in main listing pane
 - `esc` - if search field focused, unfocus, stay in prowlarr window/search
@@ -485,6 +488,11 @@ download client **Prowlarr** is configured with, which is not necessarily the
 server snatcher is pointed at. So `a` here means "tell Prowlarr to grab it",
 not "add it to this server". Adding directly from the release's download URL is
 a possible follow-up, not v1. `enter` never launches a browser - `O` does.
+
+`a` confirms, naming the release and saying where it goes ("Grab <title>
+[indexer]? It goes to Prowlarr's download client, not this server."): one
+release is one question, and it keeps `a` symmetric with the torrents window's
+`a`, which also opens a UI before acting.
 
 #### Prowlarr Window > Detail Pane
 

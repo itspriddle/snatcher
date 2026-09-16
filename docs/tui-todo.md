@@ -588,18 +588,83 @@ server, and no action can hit more torrents than the confirmation stated.
 - **Still deferred:** the sidebar's Trackers group, which changes the domain
   model and the `list --json` contract, gets its own milestone.
 
-## T8. Prowlarr window
+## T8. Prowlarr window — **done**
 
 Gated on CLI M8. Reuses the established window/pane/table/detail patterns.
 
-- Search pane: query field, category and indexer dropdowns (fed by
-  `search indexers` / `search categories`)
-- Results table: age, title, indexer, size, grabs, seeders, leechers; `+`
-  fetches more
-- Detail pane with the tracker URL
-- `a` grab (with the "this goes to Prowlarr's download client" wording from
-  vision.md), `w` write `.torrent` locally, `O` open in browser, `y` yanks
-- `P` opens the Prowlarr web UI
+- ~~Search pane: query field, category and indexer dropdowns (fed by
+  `search indexers` / `search categories`)~~ — the query field plus a summary of
+  the restriction; categories and indexers are a checkbox modal on `f`
+- ~~Results table: age, title, indexer, size, grabs, seeders, leechers; `+`
+  fetches more~~
+- ~~Detail pane with the tracker URL~~
+- ~~`a` grab (with the "this goes to Prowlarr's download client" wording from
+  vision.md), `w` write `.torrent` locally, `O` open in browser, `y` yanks~~
+- ~~`P` opens the Prowlarr web UI~~
+
+**Met.**
+
+### Decisions
+
+- **The window dials lazily, on the first `ctrl+p`,** as a `Cmd` that also
+  reads `SystemStatus` — resolving the API key can raise a Keychain prompt, and
+  the status call verifies the key and supplies the version. The alias is the
+  type's default, else the first by name; `SNATCHER_SERVER` is not consulted.
+  No Prowlarr alias is a hint in the results pane, not a launch error, and a
+  failed first dial is drawn there with `press R to retry`. The first open hands
+  the query field the keyboard.
+- **The window owns its client and generation.** The Transmission poll keeps
+  running while it is open, and a Prowlarr switch never touches `m.client` or
+  `m.live`. The two dialers share `commands`' error-writer swap, so neither
+  starts, and `S` does not open, while the other is in flight.
+- **`S` is type-aware.** It lists Prowlarr aliases in the Prowlarr window and
+  Transmission ones everywhere else. A Prowlarr switch clears the results, the
+  catalog, and the category/indexer restriction (ids are per server), keeps the
+  query text, sort, and columns, and keeps the old client if the dial fails.
+- **One search spine, dropped rather than canceled.** Every submit bumps a
+  sequence; a reply from another sequence or generation is dropped. `enter`
+  always starts over from offset 0 and clears the table at once; `+` asks from
+  the end of what is shown and appends only a page at that offset; a short page
+  exhausts the search. `R` reruns the submitted query, not the field's draft. An
+  empty query is refused, as the CLI refuses one. The limit and search type are
+  the CLI's defaults (`100`, `search`).
+- **Sort and columns are session-only.** No `client.*` keys. The sort fields
+  are Prowlarr's own order (the default) plus the seven columns; the sort is
+  stable, a count the indexer does not publish sorts last in both directions,
+  and the cursor follows its release by `(indexer id, guid)`. Both modals have
+  their own contexts, since `ctxSort`/`ctxColumns` bind `o`/`c` to the torrent
+  modals; the columns modal embeds the torrent one.
+- **Categories and indexers are a modal multi-select on `f`,** not inline
+  dropdowns: one section each, the category tree indented, disabled indexers
+  shown and unselectable, nothing checked meaning "all". The catalog is fetched
+  on the first `f` and kept for the session; a failure is shown in the modal and
+  the next `f` retries. Applying with results on screen asks to resubmit.
+- **`a` confirms:** `Grab <title> [indexer]?` over "It goes to Prowlarr's
+  download client, not this server." One release is one question, and that is
+  where vision.md's wording lives. The POST is the search's raw bytes.
+- **`w` opens a prompt** prefilled with the name `search download` derives,
+  relative to the working directory; an existing path (a dangling symlink
+  included) keeps the prompt open, and the file is written 0600 through a temp
+  file and a rename. A magnet-only release is refused with a pointer at `y m`.
+  The derivation and write rules are copies pinned by
+  `TestTorrentWriteMirrorsSearchDownload`.
+- **URLs are redacted at every render boundary** — detail rows, yanks, `O`, and
+  `P` — through `client.Redact`; the stored release stays byte-exact. `y d`
+  therefore yields a URL without the key, and its toast points at `w`.
+- **`O` and `P` go through `internal/browser`,** which runs `open`/`xdg-open`
+  on an `http(s)` URL only and never over SSH. With no opener they yank the URL
+  instead and say so. `O` falls back to the comments page.
+- **The status bar keeps Transmission's segments** and adds, in this window
+  only, `prowlarr: <alias> (vX)` or `prowlarr: ! <error>`, and `results: N`
+  (`N+` while `+` can fetch more).
+- **esc from a blurred search pane leaves the window,** per vision.md; the
+  "focus main pane" rung skips it. From the detail pane esc returns to the
+  results.
+- **The classifier is a table,** and Prowlarr's three sentinels name Prowlarr
+  and, for auth, `snatcher server add --type prowlarr`.
+- **The results pane leads with the release verbs,** so its help line lists
+  `a w O y m`; `enter` and `+` are in `?` and the palette.
+- **`notYet` is empty.** Every registered key has a handler.
 
 ## T9. Hardening and release
 

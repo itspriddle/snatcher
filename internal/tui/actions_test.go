@@ -54,14 +54,10 @@ func TestUnboundActionsAreUnbound(t *testing.T) {
 	}
 }
 
-// TestNotYetHandlersReportThemselves checks the placeholder handlers say so in
-// the status bar. A registered key that silently did nothing would be
-// indistinguishable from a broken one.
-func TestNotYetHandlersReportThemselves(t *testing.T) {
-	m := press(newTestModel(120, 40), "ctrl+p")
-
-	assert.Contains(t, m.toast, actionWindowProwlarr)
-	assert.Contains(t, m.toast, "not implemented yet")
+// TestNothingIsNotYetImplemented checks every registered key has a real
+// handler: with T8, no binding is left on the placeholder.
+func TestNothingIsNotYetImplemented(t *testing.T) {
+	assert.Empty(t, notYetHandlers())
 }
 
 // TestTheNextKeyClearsTheToast checks a toast is acknowledged by the next key

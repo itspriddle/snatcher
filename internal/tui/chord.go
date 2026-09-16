@@ -17,6 +17,10 @@ const (
 
 	// chordWindow is the ctrl+w prefix: focus a pane directly, vim-style.
 	chordWindow
+
+	// chordYankRelease is the Prowlarr window's y prefix: yank one of the
+	// cursor release's links.
+	chordYankRelease
 )
 
 // context returns the chord's context, which is the whole stack while it is
@@ -28,6 +32,8 @@ func (c chord) context() Context {
 		return ctxChordYank
 	case chordWindow:
 		return ctxChordWindow
+	case chordYankRelease:
+		return ctxChordYankRelease
 	case chordNone:
 	}
 
@@ -37,7 +43,7 @@ func (c chord) context() Context {
 // label is the prefix shown in the status bar while the chord is pending.
 func (c chord) label() string {
 	switch c {
-	case chordYank:
+	case chordYank, chordYankRelease:
 		return "y"
 	case chordWindow:
 		return "ctrl+w"

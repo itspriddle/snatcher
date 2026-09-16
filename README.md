@@ -29,7 +29,8 @@ snatcher | cat
 
 Inside it, `?` lists every key the focused pane responds to, `tab` and
 `ctrl-w hjkl` move between panes, `{` and `}` toggle the filter sidebar and
-the detail pane, `,` opens settings, and `esc` unwinds one step at a time
+the detail pane, `,` opens settings, `ctrl-p` opens Prowlarr search (against
+the default Prowlarr server; `S` switches), and `esc` unwinds one step at a time
 without ever quitting — `q` or `ctrl-c` does that. The focused pane is drawn
 with a thicker border, so focus is never color alone.
 

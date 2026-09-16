@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/itspriddle/snatcher/internal/prowlarr"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -34,6 +37,9 @@ func TestErrorShortAndHint(t *testing.T) {
 		{transmission.ErrUnreachable, "unreachable", retryHint},
 		{transmission.ErrServer, "server error", retryHint},
 		{io.ErrUnexpectedEOF, "unexpected EOF", retryHint},
+		{prowlarr.ErrAuth, "auth failed", "snatcher server add --type prowlarr"},
+		{prowlarr.ErrUnreachable, "unreachable", retryHint},
+		{prowlarr.ErrServer, "server error", retryHint},
 	}
 
 	for _, tc := range tests {
@@ -43,6 +49,20 @@ func TestErrorShortAndHint(t *testing.T) {
 			assert.Contains(t, errorHint(tc.err), retryHint)
 		})
 	}
+}
+
+// TestErrorLineNamesProwlarr checks Prowlarr's sentinels say which backend
+// failed, and that a wrapped server error carries its sanitized text.
+func TestErrorLineNamesProwlarr(t *testing.T) {
+	assert.Contains(t, errorLine(prowlarr.ErrAuth), "API key")
+	assert.Contains(t, errorLine(prowlarr.ErrUnreachable), "Prowlarr unreachable")
+
+	wrapped := fmt.Errorf("%w: HTTP 500: \x1b[31mboom", prowlarr.ErrServer)
+	line := errorLine(fmt.Errorf("search: %w", wrapped))
+
+	assert.True(t, strings.HasPrefix(line, "Prowlarr error: "), line)
+	assert.Contains(t, line, "boom")
+	assert.NotContains(t, line, "\x1b")
 }
 
 // TestErrorShortIsBoundedAndSanitized checks raw server text cannot flood the

@@ -303,3 +303,86 @@ func TestServersUnconfiguredIsEmpty(t *testing.T) {
 
 	assert.Empty(t, entries)
 }
+
+// TestProwlarrDialerResolvesTheNamedServer checks the Prowlarr seam: a named
+// alias dials to a client with its alias and URL, and a Transmission alias is
+// refused rather than handed an API key.
+func TestProwlarrDialerResolvesTheNamedServer(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{
+		"servers": {
+			"home": {"url": "http://nas:9091/transmission/rpc"},
+			"indexer": {"url": "http://prowlarr:9696", "type": "prowlarr"}
+		},
+		"default_server": "home",
+		"default_prowlarr_server": "indexer"
+	}`)
+	t.Setenv(envAPIKey, "k")
+
+	dial := ProwlarrDialer(dialCmd(t, cfgPath))
+
+	res, err := dial("indexer")
+	require.NoError(t, err)
+
+	assert.NotNil(t, res.Client)
+	assert.Equal(t, "indexer", res.Name)
+	assert.Equal(t, "http://prowlarr:9696", res.URL)
+	assert.Empty(t, res.Warning)
+
+	_, err = dial("home")
+	require.Error(t, err)
+}
+
+// TestProwlarrDialerCapturesTheStoreWarning checks the Prowlarr dial keeps a
+// store warning off stderr, and restores the error writer, as Dialer does.
+func TestProwlarrDialerCapturesTheStoreWarning(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{
+		"servers": {"indexer": {"url": "http://prowlarr:9696", "type": "prowlarr"}},
+		"default_prowlarr_server": "indexer"
+	}`)
+
+	mockStoreUnavailable(t)
+	resetStoreUnavailableWarning(t)
+
+	cmd := dialCmd(t, cfgPath)
+
+	var stderr bytes.Buffer
+
+	cmd.SetErr(&stderr)
+
+	res, err := ProwlarrDialer(cmd)("indexer")
+	require.NoError(t, err)
+
+	assert.Contains(t, res.Warning, "secret store could not be reached")
+	assert.Empty(t, stderr.String())
+	assert.Same(t, &stderr, cmd.ErrOrStderr())
+}
+
+// TestProwlarrServersListsProwlarrAliases checks the Prowlarr list: sorted, the
+// Prowlarr default flagged, and Transmission servers left out.
+func TestProwlarrServersListsProwlarrAliases(t *testing.T) {
+	cfgPath := writeConfigFile(t, `{
+		"servers": {
+			"seedbox": {"url": "http://sb.example:9091/transmission/rpc"},
+			"public": {"url": "http://p2:9696", "type": "prowlarr"},
+			"indexer": {"url": "http://prowlarr:9696", "type": "prowlarr"}
+		},
+		"default_server": "seedbox",
+		"default_prowlarr_server": "public"
+	}`)
+
+	entries, err := ProwlarrServers(dialCmd(t, cfgPath))()
+	require.NoError(t, err)
+
+	assert.Equal(t, []ServerEntry{
+		{Name: "indexer", URL: "http://prowlarr:9696"},
+		{Name: "public", URL: "http://p2:9696", Default: true},
+	}, entries)
+}
+
+// TestProwlarrServersUnconfiguredIsEmpty checks a missing config lists nothing.
+func TestProwlarrServersUnconfiguredIsEmpty(t *testing.T) {
+	entries, err := ProwlarrServers(dialCmd(t, t.TempDir()+"/missing.json"))()
+	require.NoError(t, err)
+
+	assert.Empty(t, entries)
+}
