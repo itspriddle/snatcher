@@ -90,7 +90,7 @@ instead of the default location (see
 Use the color theme
 .IR name ,
 one of
-.BR default ", " dracula ", or " nord ,
+.BR default ", " dracula ", " nord ", or " solarized ,
 for this invocation only, overriding the
 .B client.theme
 setting. An unknown name is an error listing the valid ones.
@@ -98,7 +98,7 @@ setting. An unknown name is an error listing the valid ones.
 .B default
 is the terminal's own sixteen colors, so it follows whatever color scheme the
 terminal is configured with;
-.BR dracula " and " nord
+.BR dracula ", " nord ", and " solarized
 are fixed palettes, each with a light and a dark arrangement chosen from the
 terminal's background color.
 .TP
@@ -1869,7 +1869,7 @@ The settings, with the defaults that apply when they are not set:
 .TP
 .B client.theme
 Color theme, one of
-.BR default ", " dracula ", or " nord .
+.BR default ", " dracula ", " nord ", or " solarized .
 Default:
 .BR default .
 .TP
@@ -2639,8 +2639,8 @@ Selects the color theme the TUI draws with for this invocation, equivalent to
 passing
 .BR \-\-theme .
 One of
-.BR default " (the terminal's own sixteen colors), " dracula ", or " nord ;
-each of the latter two has a light and a dark arrangement, chosen from the
+.BR default " (the terminal's own sixteen colors), " dracula ", " nord ", or " solarized ;
+each of the latter three has a light and a dark arrangement, chosen from the
 terminal's background color.
 The
 .B \-\-theme

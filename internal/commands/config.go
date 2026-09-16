@@ -49,7 +49,7 @@ const (
 
 // clientThemes lists every valid client.theme value. It comes from
 // docs/vision.md; a theme added by the TUI grows this list and nothing else.
-var clientThemes = []string{"default", "dracula", "nord"}
+var clientThemes = []string{"default", "dracula", "nord", "solarized"}
 
 const (
 	// minPollInterval and maxPollInterval bound client.poll_interval. The floor

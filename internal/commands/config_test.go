@@ -392,7 +392,7 @@ func TestClientValidators(t *testing.T) {
 		wantErr string
 	}{
 		{name: "theme accepted", key: "client.theme", value: "nord"},
-		{name: "theme rejected", key: "client.theme", value: "solarized", wantErr: "not a known theme"},
+		{name: "theme rejected", key: "client.theme", value: "monokai", wantErr: "not a known theme"},
 		{name: "nerd_font accepts either bool", key: "client.nerd_font", value: false},
 		{name: "list_reverse accepts either bool", key: "client.list_reverse", value: true},
 		{name: "poll interval accepted", key: "client.poll_interval", value: "1m30s"},
@@ -619,7 +619,7 @@ func TestConfigSetRejectsInvalidValues(t *testing.T) {
 		value   string
 		wantErr string
 	}{
-		{name: "theme", key: "client.theme", value: "solarized", wantErr: "not a known theme"},
+		{name: "theme", key: "client.theme", value: "monokai", wantErr: "not a known theme"},
 		{name: "bool", key: "client.nerd_font", value: "yes-please", wantErr: "not a boolean"},
 		{name: "duration unparseable", key: "client.poll_interval", value: "soon", wantErr: "not a duration"},
 		{name: "duration zero", key: "client.poll_interval", value: "0s", wantErr: "out of range"},
@@ -1033,7 +1033,7 @@ func TestConfigReadsRejectInvalidOverrides(t *testing.T) {
 	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord"}}`)
 
 	t.Run("flag", func(t *testing.T) {
-		out, _, err := runConfig(t, "get", "client.theme", "--config", cfgPath, "--theme", "solarized")
+		out, _, err := runConfig(t, "get", "client.theme", "--config", cfgPath, "--theme", "monokai")
 		require.Error(t, err)
 
 		assert.Empty(t, out)

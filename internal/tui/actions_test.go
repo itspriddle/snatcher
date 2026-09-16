@@ -211,7 +211,7 @@ func TestColorProfileMsgRethemes(t *testing.T) {
 	frame := m.render()
 
 	assert.NotRegexp(t, colorPattern, frame, "a monochrome profile still painted")
-	assert.Regexp(t, reverseSGR, frame, "nothing marks the cursor row without color")
+	assert.True(t, hasReverse(frame), "nothing marks the cursor row without color")
 
 	m, _ = m.update(tea.ColorProfileMsg{Profile: colorprofile.TrueColor})
 
