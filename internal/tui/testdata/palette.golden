@@ -2,20 +2,20 @@
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
 │  All                ╭──────────────────────────────────────────────────────────────────────────╮ KB/s   2.50       - ┃
 │  Downloading        │ Command palette                                                          │0 B/s   0.00       - ┃
-│  Seeding            │ :                                                                        │ KB/s   0.50      1h ┃
+│  Completed          │ :                                                                        │ KB/s   0.50      1h ┃
 │  Active             │                                                                          │                     ┃
 │  Inactive           │ > open detail                torrent list                          enter │                     ┃
 │  Stopped            │   start                      torrent list                              s │                     ┃
-│  Verifying          │   pause                      torrent list                              p │                     ┃
-│  Queued to download │   verify                     torrent list                              v │                     ┃
-│  Queued to seed     │   reannounce                 torrent list                              r │                     ┃
-│  Queued to verify   │   delete                     torrent list                              d │                     ┃
-│  Error              │   queue down                 torrent list                              J │                     ┃
-│Labels               │   queue up                   torrent list                              K │                     ┃
-│  linux              │   labels                     torrent list                              L │                     ┃
-│  No label           │   move                       torrent list                              M │                     ┃
-│Trackers             │   force start                torrent list                                │                     ┃
-│  none               │   rename torrent…            torrent list                                │                     ┃
+│  Error              │   pause                      torrent list                              p │                     ┃
+│  Waiting            │   verify                     torrent list                              v │                     ┃
+│Labels               │   reannounce                 torrent list                              r │                     ┃
+│  linux              │   delete                     torrent list                              d │                     ┃
+│  No label           │   queue down                 torrent list                              J │                     ┃
+│Trackers             │   queue up                   torrent list                              K │                     ┃
+│  none               │   labels                     torrent list                              L │                     ┃
+│                     │   move                       torrent list                              M │                     ┃
+│                     │   force start                torrent list                                │                     ┃
+│                     │   rename torrent…            torrent list                                │                     ┃
 │                     │   queue top                  torrent list                                │                     ┃
 │                     │   queue bottom               torrent list                                │                     ┃
 │                     │   add tracker…               torrent list                                │                     ┃

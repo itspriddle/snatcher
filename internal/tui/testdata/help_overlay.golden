@@ -2,24 +2,24 @@
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
 │  All               12│┃  v    1 ubuntu-24.04.1-de… Downloading  42%    5.8 GB    4.0 MB/s  128.0 KB/s   0.12 14m 18s ┃
 │  D╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ - ┃
-│  S│ torrent list                                                                                                 │ - ┃
+│  C│ torrent list                                                                                                 │ - ┃
 │  A│   space  mark                                                                                                │ - ┃
 │  I│   enter  open detail                                                                                         │ - ┃
 │  S│   y      yank…                                                                                               │ - ┃
-│  V│   s      start                                                                                               │ - ┃
-│  Q│   p      pause                                                                                               │ - ┃
-│  Q│   v      verify                                                                                              │0s ┃
-│  Q│   r      reannounce                                                                                          │ - ┃
-│  E│   d      delete                                                                                              │ - ┃
-│Lab│   J      queue down                                                                                          │9s ┃
-│  l│   K      queue up                                                                                            │   ┃
-│  s│   L      labels                                                                                              │   ┃
-│  N│   M      move                                                                                                │   ┃
-│Tra│   m      action menu                                                                                         │   ┃
-│  b│                                                                                                              │   ┃
-│  e│ torrents                                                                                                     │   ┃
-│  t│   {  toggle filter pane                                                                                      │   ┃
-│  t│   1  detail: overview                                                                                        │   ┃
+│  E│   s      start                                                                                               │ - ┃
+│  W│   p      pause                                                                                               │ - ┃
+│Lab│   v      verify                                                                                              │0s ┃
+│  l│   r      reannounce                                                                                          │ - ┃
+│  s│   d      delete                                                                                              │ - ┃
+│  N│   J      queue down                                                                                          │9s ┃
+│Tra│   K      queue up                                                                                            │   ┃
+│  b│   L      labels                                                                                              │   ┃
+│  e│   M      move                                                                                                │   ┃
+│  t│   m      action menu                                                                                         │   ┃
+│  t│                                                                                                              │   ┃
+│   │ torrents                                                                                                     │   ┃
+│   │   {  toggle filter pane                                                                                      │   ┃
+│   │   1  detail: overview                                                                                        │   ┃
 │   │   2  detail: files                                                                                           │   ┃
 │   │   3  detail: trackers                                                                                        │   ┃
 │   │   4  detail: peers                                                                                           │   ┃

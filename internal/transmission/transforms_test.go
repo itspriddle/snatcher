@@ -36,6 +36,8 @@ func TestParseFilter(t *testing.T) {
 		"ACTIVE":      transmission.FilterActive,
 		"inactive":    transmission.FilterInactive,
 		"downloading": transmission.FilterDownloading,
+		"completed":   transmission.FilterCompleted,
+		"Waiting":     transmission.FilterWaiting,
 		"error":       transmission.FilterError,
 	}
 
@@ -75,6 +77,8 @@ func TestFilterByStatus(t *testing.T) {
 		{transmission.FilterStopped, []int64{3}},
 		{transmission.FilterError, []int64{5}},
 		{transmission.FilterVerifying, []int64{}},
+		{transmission.FilterCompleted, []int64{2}},
+		{transmission.FilterWaiting, []int64{4}},
 	}
 
 	for _, tc := range cases {
@@ -105,6 +109,40 @@ func TestFilterActiveGoesByRate(t *testing.T) {
 
 	assert.Equal(t, []int64{2, 4, 6}, ids(transmission.FilterByStatus(in, transmission.FilterActive)))
 	assert.Equal(t, []int64{1, 3, 5}, ids(transmission.FilterByStatus(in, transmission.FilterInactive)))
+}
+
+// TestFilterCompleted checks completed follows TrguiNG: seeding, or any
+// torrent with nothing left to download, but never a zero-size torrent.
+func TestFilterCompleted(t *testing.T) {
+	t.Parallel()
+
+	in := []transmission.Torrent{
+		{ID: 1, Status: transmission.StatusSeeding, SizeWhenDone: 10, LeftUntilDone: 0},
+		{ID: 2, Status: transmission.StatusStopped, SizeWhenDone: 10, LeftUntilDone: 0},
+		{ID: 3, Status: transmission.StatusQueuedToSeed, SizeWhenDone: 10, LeftUntilDone: 0},
+		{ID: 4, Status: transmission.StatusDownloading, SizeWhenDone: 0, LeftUntilDone: 0},
+		{ID: 5, Status: transmission.StatusDownloading, SizeWhenDone: 10, LeftUntilDone: 4},
+		{ID: 6, Status: transmission.StatusStopped, SizeWhenDone: 10, LeftUntilDone: 4},
+	}
+
+	assert.Equal(t, []int64{1, 2, 3}, ids(transmission.FilterByStatus(in, transmission.FilterCompleted)))
+}
+
+// TestFilterWaiting checks waiting follows TrguiNG: verifying, queued to
+// verify, or queued to download, but not queued to seed.
+func TestFilterWaiting(t *testing.T) {
+	t.Parallel()
+
+	in := []transmission.Torrent{
+		{ID: 1, Status: transmission.StatusVerifying},
+		{ID: 2, Status: transmission.StatusQueuedToVerify},
+		{ID: 3, Status: transmission.StatusQueuedToDownload},
+		{ID: 4, Status: transmission.StatusQueuedToSeed},
+		{ID: 5, Status: transmission.StatusStopped},
+		{ID: 6, Status: transmission.StatusDownloading},
+	}
+
+	assert.Equal(t, []int64{1, 2, 3}, ids(transmission.FilterByStatus(in, transmission.FilterWaiting)))
 }
 
 func TestFilterByStatusDoesNotMutate(t *testing.T) {

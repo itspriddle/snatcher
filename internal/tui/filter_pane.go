@@ -79,24 +79,21 @@ func (i filterItem) selectable() bool {
 	return i.kind == itemFilter
 }
 
-// statusFilters are the status section's rows, in display order. The vocabulary
-// is transmission's own — the values --filter takes and FilterByStatus
-// understands — rather than a second, TUI-only set of names. vision.md sketches
-// the sidebar with labels like "Completed" and "Waiting"; those would be a
-// vocabulary the CLI cannot express, and the parity rule says the TUI and the
-// CLI name a selection the same way.
+// statusFilters are the status section's rows, in display order. They follow
+// TrguiNG's sidebar (All, Downloading, Completed, Active, Inactive, Stopped,
+// Error, Waiting), which is a curated subset of transmission's filters: the
+// finer-grained verifying and queued-* filters stay CLI-only, folded here into
+// Waiting. Every row is still a value --filter takes, so the TUI and the CLI
+// name a selection the same way.
 var statusFilters = []transmission.Filter{
 	transmission.FilterAll,
 	transmission.FilterDownloading,
-	transmission.FilterSeeding,
+	transmission.FilterCompleted,
 	transmission.FilterActive,
 	transmission.FilterInactive,
 	transmission.FilterStopped,
-	transmission.FilterVerifying,
-	transmission.FilterQueuedToDownload,
-	transmission.FilterQueuedToSeed,
-	transmission.FilterQueuedToVerify,
 	transmission.FilterError,
+	transmission.FilterWaiting,
 }
 
 // noLabel is the label section's catch-all row, for torrents carrying none.

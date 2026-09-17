@@ -2,19 +2,19 @@
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
 │  All                0│┃                                                                                              ┃
 │  Downloading        0│┃                                                                                              ┃
-│  Seeding            0│┃                                                                                              ┃
+│  Completed          0│┃                                                                                              ┃
 │  Active             0│┃                                                                                              ┃
 │  Inactive           0│┃                                                                                              ┃
 │  Stopped            0│┃                                                                                              ┃
-│  Verifying          0│┃                                                                                              ┃
-│  Queued to download 0│┃                                                                                              ┃
-│  Queued to seed     0│┃                                                                                              ┃
-│  Queued to verify   0│┃                                                                                              ┃
 │  Error              0│┃                                                                                              ┃
+│  Waiting            0│┃                                                                                              ┃
 │Labels                │┃                                                                                              ┃
 │  No label           0│┃                                                                                              ┃
 │Trackers              │┃                                                                                              ┃
 │  none                │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                           loading…                                           ┃

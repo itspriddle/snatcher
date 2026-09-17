@@ -26,11 +26,11 @@ func filterItemNamed(t *testing.T, m Model, label string) filterItem {
 	return filterItem{}
 }
 
-// seedingFiltered applies the sidebar's Seeding row.
-func seedingFiltered(t *testing.T, m Model) Model {
+// completedFiltered applies the sidebar's Completed row.
+func completedFiltered(t *testing.T, m Model) Model {
 	t.Helper()
 
-	return m.applyFilterItem(filterItemNamed(t, m, "Seeding"))
+	return m.applyFilterItem(filterItemNamed(t, m, "Completed"))
 }
 
 // TestSidebarEnterFiltersRowsAndClearsMarks checks enter in the sidebar hides
@@ -41,9 +41,9 @@ func TestSidebarEnterFiltersRowsAndClearsMarks(t *testing.T) {
 
 	m = press(m, "j", "j", "enter")
 
-	assert.Equal(t, []int64{2, 7, 10}, rowIDs(m.torrents.rows))
+	assert.Equal(t, []int64{2, 5, 7, 10}, rowIDs(m.torrents.rows))
 	assert.Zero(t, m.torrents.sel.markCount())
-	assert.Equal(t, "filter: Seeding", m.toast)
+	assert.Equal(t, "filter: Completed", m.toast)
 	assert.Equal(t, m.torrents.filter.cursor, m.torrents.filter.applied)
 	assert.Len(t, m.torrents.all, 12, "the polled set is kept whole")
 }
@@ -60,11 +60,11 @@ func TestFilterModalMatchesTheSidebar(t *testing.T) {
 	m = press(m, "j", "j", "enter")
 
 	assert.False(t, m.hasOverlay(filterPickKind))
-	assert.Equal(t, []int64{2, 7, 10}, rowIDs(m.torrents.rows))
+	assert.Equal(t, []int64{2, 5, 7, 10}, rowIDs(m.torrents.rows))
 
 	reopened, _ := topAs[filterPickOverlay](press(m, "f"))
 	assert.Equal(t, m.torrents.filter.applied, reopened.pane.cursor, "the modal opens on the filter in force")
-	assert.Contains(t, ansi.Strip(press(m, "f").render()), "Seeding  (current)")
+	assert.Contains(t, ansi.Strip(press(m, "f").render()), "Completed  (current)")
 
 	assert.False(t, press(m, "f", "f").hasOverlay(filterPickKind))
 	assert.False(t, press(m, "f", "esc").hasOverlay(filterPickKind))
@@ -210,8 +210,8 @@ func TestNoLabelRow(t *testing.T) {
 
 // TestFilterAllClears checks the All row removes the filter and the footer.
 func TestFilterAllClears(t *testing.T) {
-	m := seedingFiltered(t, newTestModel(120, 40))
-	require.Len(t, m.torrents.rows, 3)
+	m := completedFiltered(t, newTestModel(120, 40))
+	require.Len(t, m.torrents.rows, 4)
 
 	m = m.applyFilterItem(filterItemNamed(t, m, "All"))
 
@@ -339,7 +339,7 @@ func TestGroupDeleteAsksAboutData(t *testing.T) {
 // sidebar's applied marker, the counts still taken from every torrent, and the
 // footer.
 func TestTorrentsFilteredGolden(t *testing.T) {
-	assertGolden(t, "torrents_filtered", seedingFiltered(t, newTestModel(120, 40)).render())
+	assertGolden(t, "torrents_filtered", completedFiltered(t, newTestModel(120, 40)).render())
 }
 
 // TestFilterOverlayGolden pins the filter modal.

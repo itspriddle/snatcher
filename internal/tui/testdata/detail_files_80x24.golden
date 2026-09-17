@@ -2,15 +2,15 @@
 │Status            ││      ID Name                  Status      Done      Size │
 │  All           12││  v    1 ubuntu-24.04.1-deskt… Downloading  42%    5.8 GB │
 │  Downloading    4││  ^    2 debian-12.7.0-amd64-… Seeding     100%  631.0 MB │
-│  Seeding        3││  x    3 archlinux-2026.09.01… Stopped      87%    1.1 GB │
+│  Completed      4││  x    3 archlinux-2026.09.01… Stopped      87%    1.1 GB │
 │  Active         5││  %    4 fedora-workstation-4… Verifying    99%    2.1 GB │
 │  Inactive       4││  ~    5 nixos-minimal-25.05-… Queued to … 100%    1.0 GB │
 │  Stopped        2││  ~    6 openbsd-7.6-amd64-in… Queued to …   0%  769.0 MB │
-│  Verifying      1││  ~    7 freebsd-14.1-release… Queued to … 100%    4.2 GB │
-│  Queued to dow… 1││  !    8 alpine-standard-3.21… Error        31%  200.0 MB │
-│  Queued to seed 1││  v    9 void-live-x86_64-202… Downloading   5%  695.0 MB │
-│  Queued to ver… 1││  ^   10 gentoo-admincd-amd64… Seeding     100%  560.0 MB │
-│  Error          1││                                                          │
+│  Error          1││  ~    7 freebsd-14.1-release… Queued to … 100%    4.2 GB │
+│  Waiting        3││  !    8 alpine-standard-3.21… Error        31%  200.0 MB │
+│Labels            ││  v    9 void-live-x86_64-202… Downloading   5%  695.0 MB │
+│  linux          3││  ^   10 gentoo-admincd-amd64… Seeding     100%  560.0 MB │
+│  seed           3││                                                          │
 ╰──────────────────╯╰──────────────────────────────────────────────────────────╯
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Overview  Files  Trackers  Peers  Pieces                                     ┃

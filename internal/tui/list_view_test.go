@@ -21,10 +21,11 @@ func TestListViewFilterThenSort(t *testing.T) {
 
 	assert.Equal(t, []int64{1, 3, 2}, rowIDs(v.apply(mockTorrents())))
 
-	v.filter = viewFilter{kind: filterByStatus, status: transmission.FilterSeeding}
+	v.filter = viewFilter{kind: filterByStatus, status: transmission.FilterCompleted}
 	v.sort, v.reverse = transmission.SortQueue, false
 
-	assert.Equal(t, []int64{2, 7, 10}, rowIDs(v.apply(mockTorrents())), "seeding includes queued to seed")
+	assert.Equal(t, []int64{2, 5, 7, 10}, rowIDs(v.apply(mockTorrents())),
+		"completed includes queued to seed and any fully downloaded torrent")
 }
 
 // TestListPrefsFromConfig checks the stored sort, direction, and columns are
