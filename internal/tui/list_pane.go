@@ -182,7 +182,7 @@ func (m Model) listPlaceholder() placeholder {
 // escape-aware.
 func (p listPane) view(st Styles, r rect, focused bool, ph placeholder, footer string) string {
 	inner := r.inner()
-	lines := strings.Split(p.table.View(), "\n")
+	lines := highlightRow(strings.Split(p.table.View(), "\n"), p.table.Cursor(), st.Table.Selected)
 
 	if len(ph.lines) > 0 && len(p.table.Rows()) == 0 {
 		lines = placeholderLines(st, lines[0], ph, inner)

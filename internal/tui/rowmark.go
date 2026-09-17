@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/table"
+	"charm.land/lipgloss/v2"
 )
 
 // Row markers tie a screen row back to the table row drawn on it.
@@ -83,4 +84,32 @@ func stripMarkers(s string) string {
 	}
 
 	return rowMarkPattern.ReplaceAllString(s, "")
+}
+
+// sgrPattern matches one SGR sequence: a CSI ending in 'm'. The row markers end
+// in rowMarkFinal and are not matched.
+var sgrPattern = regexp.MustCompile("\x1b\\[[0-9;:]*m")
+
+// highlightRow draws the cursor row of a table's rendered lines in style, and
+// returns lines with that one line replaced. Line 0 is the header and is never
+// touched; a cursor row that is not on screen leaves lines as they are.
+//
+// The table's own Selected style cannot do this: it wraps a row whose cells
+// each end in a full SGR reset, and the first reset clears its background. So
+// the row's own SGR is removed first, markers kept, and the bare line is
+// rendered through style, which then covers every cell.
+func highlightRow(lines []string, cursor int, style lipgloss.Style) []string {
+	mark := rowMark(cursor)
+
+	for i := 1; i < len(lines); i++ {
+		if !strings.Contains(lines[i], mark) {
+			continue
+		}
+
+		lines[i] = style.Render(sgrPattern.ReplaceAllString(lines[i], ""))
+
+		break
+	}
+
+	return lines
 }
