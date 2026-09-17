@@ -360,7 +360,7 @@ func (w prowlarrWindow) searchView(st Styles, r rect) string {
 // resultsView draws the results table, with the placeholder under its header
 // while it has no rows.
 func (w prowlarrWindow) resultsView(st Styles, r rect, ph placeholder) string {
-	lines := strings.Split(w.table.View(), "\n")
+	lines := highlightRow(strings.Split(w.table.View(), "\n"), w.table.Cursor(), st.Table.Selected)
 
 	if len(ph.lines) > 0 && len(w.rows) == 0 {
 		lines = placeholderLines(st, lines[0], ph, r.inner())

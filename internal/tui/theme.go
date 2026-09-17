@@ -123,6 +123,8 @@ func newStyles(t theme.Theme, mono bool) Styles {
 	tbl := table.DefaultStyles()
 	tbl.Header = paint(lipgloss.NewStyle().Bold(true), t.Muted, nil).PaddingRight(cellPadding)
 	tbl.Cell = paint(lipgloss.NewStyle(), t.Text, nil).PaddingRight(cellPadding)
+	// The table's own use of Selected is overdrawn by highlightRow, which
+	// renders the cursor row in it without the cells' inner resets.
 	tbl.Selected = cursor
 
 	return Styles{
@@ -425,8 +427,8 @@ func (i Icons) glyph(icon statusIcon) string {
 //
 // It is a foreground-only SGR closed by SGR 39 (default foreground) rather than
 // a lipgloss style, whose full reset would also clear the background of the row
-// it is drawn inside: the table wraps every cell of the cursor row in its
-// Selected style, and the filter pane's cursor row is one Cursor-styled line.
+// it is drawn inside, such as the filter pane's cursor row, which is one
+// Cursor-styled line.
 func (i Icons) paint(icon statusIcon, text string) string {
 	if i.colors == nil || text == "" {
 		return text

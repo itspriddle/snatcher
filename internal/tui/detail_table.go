@@ -413,7 +413,7 @@ func (t detailTable) cursor() int {
 
 // lines renders the table, or its header and what it says when it has no rows.
 func (t detailTable) lines(st Styles) []string {
-	lines := strings.Split(t.table.View(), "\n")
+	lines := highlightRow(strings.Split(t.table.View(), "\n"), t.table.Cursor(), st.Table.Selected)
 
 	if len(t.table.Rows()) == 0 {
 		return []string{lines[0], st.Muted.Render(t.empty)}
