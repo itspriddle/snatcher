@@ -115,7 +115,7 @@ Sequenced in `docs/todo.md` (CLI) and `docs/tui-todo.md` (TUI).
     - (V2) File manager, view by size and seeding info to determine whether to delete
 
 - https://github.com/daltonsw/bubbleup - popups
-- https://github.com/lrstanley/bubblezone - mouse?
+- https://github.com/lrstanley/bubblezone - mouse? (decided against: in-tree hit-testing, see `docs/tui-todo.md` T10)
 - https://github.com/charmbracelet/huh - form fields
 - https://github.com/charmbracelet/gum - possible references, but not direct use
 
@@ -228,6 +228,35 @@ then quits. It never discards edits silently.
 - Clipboard is **write-only** (OSC 52, plus `pbcopy`/`wl-copy`/`xclip`/`xsel`
   when present and not over SSH). Yanking works; reading the clipboard does
   not. Pasting is the terminal's own paste (bracketed paste enabled).
+
+**Mouse.** The mouse is a convenience layer over the keyboard. Every click does
+what an existing key does, by calling the same transition; it never adds a
+capability the keyboard lacks, and it never adds a binding.
+
+- A click focuses the pane under it. A right click does too.
+- A click on a row (torrents, files, peers, trackers, releases) moves the
+  cursor there. A click on the cursor row of the already focused list is
+  `enter`; a right click is `m` over that row (the file menu on the files tab).
+- A click on a sidebar row focuses it and applies the filter, as the cursor
+  and `enter` would, so marks clear.
+- A click on a tab selects it. A click on a column heading sorts by that
+  column (`o`), and the same heading again flips the direction; a column with
+  no sort field says so.
+- In the settings window, a click moves the row cursor, and a click on the
+  cursor row is `enter`. A click on an open dropdown's option picks it, and on
+  `[ Save ]` or `[ Revert ]` presses it.
+- A click on a modal's row moves the cursor there and runs the row's own key:
+  `enter` in the menu, palette, picker, sort, filter, and form, `space` in the
+  columns and categories/indexers checklists.
+- A click outside the topmost overlay closes it (esc ladder rung 1). Nothing
+  under an open overlay is reachable.
+- A click blurs a focused text input first (rung 2), unless it lands on that
+  input, then goes on to its target. A click cancels a pending chord.
+- The wheel scrolls what is under the pointer - a list's cursor, the sidebar
+  cursor, a detail viewport, a modal's cursor, the help view - and **never**
+  moves focus, applies a filter, or changes a setting's value.
+- `client.mouse` (default `true`) turns it all off. While it is on, the
+  terminal's own text selection needs a modifier, usually shift-drag.
 
 #### Global
 

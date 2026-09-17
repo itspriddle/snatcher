@@ -360,6 +360,10 @@ func (m Model) applyClientWrites(keys []string) (Model, tea.Cmd) {
 			if on, isBool := v.(bool); isBool {
 				m.deps.NerdFont, restyle = on, true
 			}
+		case clientKeyMouse:
+			if on, isBool := v.(bool); isBool {
+				m.mouse = on
+			}
 		case clientKeyColorDepth:
 			if depth, isString := v.(string); isString {
 				m, cmd = m.applyColorDepth(depth)

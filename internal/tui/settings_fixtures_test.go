@@ -81,6 +81,7 @@ func newFakeConfig() *fakeConfig {
 		{Key: clientKeyListColumns, Value: slices.Clone(defaultColumnKeys), Source: "default"},
 		{Key: clientKeyListReverse, Value: false, Source: "default"},
 		{Key: clientKeyListSort, Value: "queue", Source: "default"},
+		{Key: clientKeyMouse, Value: true, Source: "default"},
 		{Key: clientKeyNerdFont, Value: true, Source: "default"},
 		{Key: clientKeyPollInterval, Value: "5s", Source: "default"},
 		{Key: clientKeyTheme, Value: "default", Source: "default", Allowed: slices.Clone(builtinThemes)},

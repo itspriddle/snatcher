@@ -145,6 +145,10 @@ type Model struct {
 
 	// help renders both the short-help line and the help overlay's columns.
 	help help.Model
+
+	// mouse turns mouse reporting on and lets handleMouse act. It starts from
+	// Deps.Mouse and follows a saved client.mouse.
+	mouse bool
 }
 
 // New builds a Model from its dependencies without dialing, connecting, or
@@ -159,6 +163,7 @@ func New(deps Deps) Model {
 		profile:  effectiveProfile(deps.ColorDepth, colorprofile.TrueColor),
 		chord:    chordNone,
 		help:     help.New(),
+		mouse:    deps.Mouse,
 	}
 
 	m = m.applyTheme(true)
@@ -259,6 +264,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		// Every key that moves the cursor or opens the pane funnels through one
 		// debounce, rather than each handler remembering to fetch.
 		m, cmd := m.handleKey(msg)
+
+		return m.ensureDetail(cmd)
+	case tea.MouseMsg:
+		// A click moves the cursor as a key does, so it shares the debounce.
+		m, cmd := m.handleMouse(msg)
 
 		return m.ensureDetail(cmd)
 	case settingsLoadedMsg:
@@ -370,6 +380,13 @@ func (m Model) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = "snatcher"
 
+	// Cell motion reports clicks, releases, and the wheel, and motion only
+	// while a button is held; hover is never reported. bubbletea diffs the
+	// mode per frame, so a saved client.mouse applies on the next one.
+	if m.mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+
 	return v
 }
 
@@ -396,7 +413,9 @@ func (m Model) render() string {
 		body = m.prowlarr.view(m.styles, l, m.resultsPlaceholder())
 	}
 
-	frame := m.composite(padFrame(body, l.body))
+	// The row markers have done their job once the body is drawn: neither the
+	// compositor nor the terminal is shown one.
+	frame := m.composite(stripMarkers(padFrame(body, l.body)))
 
 	return strings.Join([]string{frame, m.helpLineView(l.helpLine.w), m.statusBarView(l.statusBar.w)}, "\n")
 }

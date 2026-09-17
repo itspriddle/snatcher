@@ -153,11 +153,33 @@ func (releaseColumnsOverlay) contexts() []Context { return []Context{ctxReleaseC
 
 // view implements overlay.
 func (o releaseColumnsOverlay) view(m Model, w, h int) string {
-	return o.render(m, w, h, "Release columns", ctxReleaseColumns, func(key string) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o releaseColumnsOverlay) modal(m Model, w, _ int) modal {
+	return o.render(m, w, "Release columns", ctxReleaseColumns, func(key string) string {
 		def, _ := releaseColumnDef(key)
 
 		return def.title
 	})
+}
+
+// pointAt implements modalOverlay. It is spelled out rather than promoted: the
+// embedded modal's would hand back a columnsOverlay, which is not this overlay.
+func (o releaseColumnsOverlay) pointAt(i int) (overlay, bool) {
+	inner, ok := o.point(i)
+	o.columnsOverlay = inner
+
+	return o, ok
+}
+
+// clickAction implements modalOverlay.
+func (releaseColumnsOverlay) clickAction() Action { return actionReleaseColumnsToggle }
+
+// wheelActions implements modalOverlay.
+func (releaseColumnsOverlay) wheelActions() (up, down Action) {
+	return actionReleaseColumnsUp, actionReleaseColumnsDown
 }
 
 // step applies a columnsOverlay transition to the embedded modal.

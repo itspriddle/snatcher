@@ -58,6 +58,7 @@ func launchTUI(cmd *cobra.Command) error {
 		Themes:       commands.ThemeLookup(cmd),
 		ColorDepth:   settings.ColorDepth,
 		NerdFont:     settings.NerdFont,
+		Mouse:        settings.Mouse,
 		NoColor:      settings.NoColor,
 		PollInterval: settings.PollInterval,
 		Clipboard:    nativeClipboard(),

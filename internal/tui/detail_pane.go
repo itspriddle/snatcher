@@ -302,6 +302,40 @@ func (p detailPane) forward(msg tea.Msg) (detailPane, tea.Cmd) {
 	return p, cmd
 }
 
+// pointAt puts the current tab's table cursor on row i, and the files tab's
+// selection cursor with it, as forward does after a key.
+func (p detailPane) pointAt(i int) detailPane {
+	switch p.tab {
+	case tabFiles:
+		p.files.table = pointTable(p.files.table, i)
+		p.fileSel = p.fileSel.setCursor(p.files.cursor())
+	case tabPeers:
+		p.peers.table = pointTable(p.peers.table, i)
+	case tabTrackers:
+		p.trackers.table = pointTable(p.trackers.table, i)
+	}
+
+	return p
+}
+
+// wheel scrolls what the current tab scrolls by delta: its table's cursor, or
+// the viewport by wheelLines a notch.
+func (p detailPane) wheel(delta int) detailPane {
+	switch p.tab {
+	case tabFiles:
+		p.files.table = wheelTable(p.files.table, delta)
+		p.fileSel = p.fileSel.setCursor(p.files.cursor())
+	case tabPeers:
+		p.peers.table = wheelTable(p.peers.table, delta)
+	case tabTrackers:
+		p.trackers.table = wheelTable(p.trackers.table, delta)
+	default:
+		p.vp = wheelViewport(p.vp, delta)
+	}
+
+	return p
+}
+
 // setStyles re-themes the tables, which render their rows with styles of
 // their own.
 func (p detailPane) setStyles(st Styles) detailPane {

@@ -94,7 +94,7 @@ func (p listPane) setRows(rows []transmission.Torrent, sel torrentSelection, ico
 		out = append(out, cells)
 	}
 
-	p.table.SetRows(out)
+	p.table.SetRows(markRows(out))
 
 	return p
 }

@@ -197,7 +197,7 @@ func (w prowlarrWindow) setResults(results []prowlarr.Release) prowlarrWindow {
 // on its release. A release no longer shown puts the cursor at the top.
 func (w prowlarrWindow) reapply() prowlarrWindow {
 	w.rows = w.sort.apply(w.results)
-	w.table.SetRows(releaseRows(w.cols, w.rows))
+	w.table.SetRows(markRows(releaseRows(w.cols, w.rows)))
 
 	cursor := 0
 

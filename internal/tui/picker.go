@@ -2,7 +2,6 @@ package tui
 
 import (
 	"net/url"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -62,9 +61,14 @@ func (p pickerOverlay) move(delta int) pickerOverlay {
 	return p
 }
 
-// view implements overlay. The cursor row carries a ">" marker as well as the
-// cursor style, so it survives NO_COLOR and a stripped golden.
-func (p pickerOverlay) view(m Model, w, _ int) string {
+// view implements overlay.
+func (p pickerOverlay) view(m Model, w, h int) string {
+	return m.modalBox(p.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay. The cursor row carries a ">" marker as well as
+// the cursor style, so it survives NO_COLOR and a stripped golden.
+func (p pickerOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), pickerMaxWidth)
 
 	names := make([]string, len(p.servers))
@@ -82,27 +86,32 @@ func (p pickerOverlay) view(m Model, w, _ int) string {
 		title = "Switch Prowlarr server"
 	}
 
-	lines := []string{m.styles.Title.Render(truncate(title, width)), ""}
+	rows := make([]string, 0, len(p.servers))
 
 	for i, s := range p.servers {
-		marker := "  "
-		if i == p.cursor {
-			marker = "> "
-		}
-
-		line := padLine(marker+padLine(names[i], nameW)+"  "+padLine(hosts[i], hostW)+"  "+p.note(s), width)
-
-		if i == p.cursor {
-			line = m.styles.Cursor.Render(line)
-		}
-
-		lines = append(lines, line)
+		text := padLine(names[i], nameW) + "  " + padLine(hosts[i], hostW) + "  " + p.note(s)
+		rows = append(rows, cursorRow(m.styles, i == p.cursor, text, width))
 	}
 
-	lines = append(lines, "", m.help.ShortHelpView(contextBindings(ctxPicker)))
-
-	return m.styles.Overlay.Render(strings.Join(lines, "\n"))
+	return modal{title: title, rows: rows, focus: p.cursor, ctx: ctxPicker, width: width}
 }
+
+// pointAt implements modalOverlay.
+func (p pickerOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(p.servers) {
+		return p, false
+	}
+
+	p.cursor = i
+
+	return p, true
+}
+
+// clickAction implements modalOverlay: a click switches, as enter does.
+func (pickerOverlay) clickAction() Action { return actionPickerSelect }
+
+// wheelActions implements modalOverlay.
+func (pickerOverlay) wheelActions() (up, down Action) { return actionPickerUp, actionPickerDown }
 
 // note says which server is the current one and which is the configured
 // default.

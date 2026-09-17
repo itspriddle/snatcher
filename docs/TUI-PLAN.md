@@ -35,8 +35,8 @@ dependencies:
 `colorprofile.Ascii` under `NO_COLOR`. No `replace` directives anywhere in the
 graph.
 
-Deferred (v2-ready, add when mouse lands):
-`github.com/lrstanley/bubblezone/v2@v2.0.0`.
+`github.com/lrstanley/bubblezone/v2` was decided against when mouse landed:
+hit-testing is in-tree (see `docs/tui-todo.md`, T10).
 
 ### Component mapping
 
@@ -310,7 +310,7 @@ search window reuses the established window/pane/table/detail patterns.
 
 ## Open / deferred
 
-- **Mouse** — deferred for v1; keyboard-first. `bubblezone/v2` is the
-  fast-follow and pairs with `Compositor` layer hit-testing.
+- **Mouse** — landed after v1 as T10, with in-tree hit-testing rather than
+  `bubblezone/v2`.
 - **Speed graphs beyond a sparkline** — revisit `ntcharts` once it tags a v2
   release and drops the `replace` directive.

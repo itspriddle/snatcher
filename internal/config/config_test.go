@@ -547,6 +547,7 @@ func TestSaveWritesClientKeysWithTheirNaturalJSONTypes(t *testing.T) {
 		ListColumns:  ptr([]string{"id", "name"}),
 		ListSort:     ptr("queue"),
 		ListReverse:  ptr(true),
+		Mouse:        ptr(false),
 	}}
 	require.NoError(t, Save(cfg, path))
 
@@ -558,6 +559,7 @@ func TestSaveWritesClientKeysWithTheirNaturalJSONTypes(t *testing.T) {
 	assert.Equal(t, []any{"id", "name"}, client["list_columns"])
 	assert.Equal(t, "queue", client["list_sort"])
 	assert.Equal(t, true, client["list_reverse"])
+	assert.Equal(t, false, client["mouse"])
 
 	// The client section holds settings only — never a credential of any kind.
 	assert.ElementsMatch(t, clientKeys, slices.Collect(maps.Keys(client)))

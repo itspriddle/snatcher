@@ -63,7 +63,7 @@ func configRows(t *testing.T, out string) [][]string {
 }
 
 // TestClientKeyRegistryMatchesDocumentedKeys pins the registry's key set — and
-// its order — to the seven keys documented in the PRD's key table, so a key added
+// its order — to the eight keys documented in the PRD's key table, so a key added
 // later cannot skip the registry and land in the config with no validator,
 // default, or accessor.
 func TestClientKeyRegistryMatchesDocumentedKeys(t *testing.T) {
@@ -75,6 +75,7 @@ func TestClientKeyRegistryMatchesDocumentedKeys(t *testing.T) {
 		"client.list_columns",
 		"client.list_sort",
 		"client.list_reverse",
+		"client.mouse",
 	}
 
 	keys := make([]string, len(clientKeyRegistry))
@@ -89,6 +90,7 @@ func TestClientKeyRegistryMatchesDocumentedKeys(t *testing.T) {
 		"client.list_columns",
 		"client.list_reverse",
 		"client.list_sort",
+		"client.mouse",
 		"client.nerd_font",
 		"client.poll_interval",
 		"client.theme",
@@ -155,6 +157,7 @@ func TestConfigListReportsDefaultsWithNoConfigFile(t *testing.T) {
 		{"client.list_columns", "id,name,status,done,size,down,up,ratio,eta", "default"},
 		{"client.list_reverse", "false", "default"},
 		{"client.list_sort", "queue", "default"},
+		{"client.mouse", "true", "default"},
 		{"client.nerd_font", "true", "default"},
 		{"client.poll_interval", "5s", "default"},
 		{"client.theme", "default", "default"},
@@ -183,6 +186,7 @@ func TestConfigListReportsStoredValues(t *testing.T) {
 		{"client.list_columns", "id,name,ratio", "config"},
 		{"client.list_reverse", "true", "config"},
 		{"client.list_sort", "queue", "default"},
+		{"client.mouse", "true", "default"},
 		{"client.nerd_font", "false", "config"},
 		{"client.poll_interval", "5s", "default"},
 		{"client.theme", "dracula", "config"},
@@ -1028,6 +1032,7 @@ func TestConfigListReportsOverrideSources(t *testing.T) {
 		{"client.list_columns", "id,name,status,done,size,down,up,ratio,eta", "default"},
 		{"client.list_reverse", "false", "default"},
 		{"client.list_sort", "added", "config"},
+		{"client.mouse", "true", "default"},
 		{"client.nerd_font", "false", "env"},
 		{"client.poll_interval", "5s", "default"},
 		{"client.theme", "dracula", "flag"},

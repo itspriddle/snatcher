@@ -201,6 +201,9 @@ type ClientSettings struct {
 	// NerdFont reports whether Nerd Font glyphs may be used for icons.
 	NerdFont bool
 
+	// Mouse reports whether the TUI responds to mouse clicks and the wheel.
+	Mouse bool
+
 	// PollInterval is how often the TUI refreshes server data.
 	PollInterval time.Duration
 
@@ -237,6 +240,11 @@ func ResolveClientSettings(cmd *cobra.Command) (ClientSettings, error) {
 		return ClientSettings{}, err
 	}
 
+	mouse, err := clientSetting[bool](cmd, cfg, keyMouse)
+	if err != nil {
+		return ClientSettings{}, err
+	}
+
 	depth, err := clientSetting[string](cmd, cfg, keyColorDepth)
 	if err != nil {
 		return ClientSettings{}, err
@@ -265,6 +273,7 @@ func ResolveClientSettings(cmd *cobra.Command) (ClientSettings, error) {
 		Theme:        name,
 		ColorDepth:   depth,
 		NerdFont:     nerdFont,
+		Mouse:        mouse,
 		PollInterval: poll,
 		NoColor:      noColor(),
 		Warnings:     themes.Warnings(),

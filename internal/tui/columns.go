@@ -254,16 +254,46 @@ func (o columnsOverlay) selected() []string {
 
 // view implements overlay.
 func (o columnsOverlay) view(m Model, w, h int) string {
-	return o.render(m, w, h, "Columns", ctxColumns, func(key string) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o columnsOverlay) modal(m Model, w, _ int) modal {
+	return o.render(m, w, "Columns", ctxColumns, func(key string) string {
 		def, _ := columnDef(key)
 
 		return def.title
 	})
 }
 
-// render draws a columns modal. A row reads "[x] name  Name": the key as the
+// pointAt implements modalOverlay.
+func (o columnsOverlay) pointAt(i int) (overlay, bool) {
+	o, ok := o.point(i)
+
+	return o, ok
+}
+
+// point moves the cursor to row i, when there is one.
+func (o columnsOverlay) point(i int) (columnsOverlay, bool) {
+	if i < 0 || i >= len(o.rows) {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click shows or hides the column, as
+// space does. enter still applies.
+func (columnsOverlay) clickAction() Action { return actionColumnsToggle }
+
+// wheelActions implements modalOverlay.
+func (columnsOverlay) wheelActions() (up, down Action) { return actionColumnsUp, actionColumnsDown }
+
+// render lays out a columns modal. A row reads "[x] name  Name": the key as the
 // modal applies it, and the heading the table draws.
-func (o columnsOverlay) render(m Model, w, h int, title string, ctx Context, heading func(string) string) string {
+func (o columnsOverlay) render(m Model, w int, title string, ctx Context, heading func(string) string) modal {
 	width := min(overlayContentWidth(w), columnsMaxWidth)
 
 	keyW := 0
@@ -282,7 +312,7 @@ func (o columnsOverlay) render(m Model, w, h int, title string, ctx Context, hea
 		rows = append(rows, cursorRow(m.styles, i == o.cursor, box+padLine(r.key, keyW)+"  "+heading(r.key), width))
 	}
 
-	return m.modalBox(modal{title: title, rows: rows, focus: o.cursor, ctx: ctx, width: width}, h)
+	return modal{title: title, rows: rows, focus: o.cursor, ctx: ctx, width: width}
 }
 
 // toggleColumns is c: open the modal, or close it when it is the overlay on top.
