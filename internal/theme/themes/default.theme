@@ -15,3 +15,12 @@ border    = bright-black
 status_bg = bright-black
 status_fg = bright-white
 warn      = yellow
+
+icon_all         = default
+icon_downloading = cyan
+icon_completed   = green
+icon_active      = blue
+icon_inactive    = default
+icon_stopped     = bright-black
+icon_error       = red
+icon_waiting     = yellow

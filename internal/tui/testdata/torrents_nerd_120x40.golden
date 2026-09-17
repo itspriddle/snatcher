@@ -1,17 +1,17 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
-│  All               12│┃      1 ubuntu-24.04.1-de… Downloading  42%    5.8 GB    4.0 MB/s  128.0 KB/s   0.12 14m 18s ┃
-│  Downloading        4│┃      2 debian-12.7.0-amd… Seeding     100%  631.0 MB       0 B/s  512.0 KB/s   3.41       - ┃
-│  Completed          4│┃      3 archlinux-2026.09… Stopped      87%    1.1 GB       0 B/s       0 B/s   0.00       - ┃
-│  Active             5│┃      4 fedora-workstatio… Verifying    99%    2.1 GB       0 B/s       0 B/s   0.00       - ┃
-│  Inactive           4│┃      5 nixos-minimal-25.… Queued to … 100%    1.0 GB       0 B/s       0 B/s   0.00       - ┃
-│  Stopped            2│┃      6 openbsd-7.6-amd64… Queued to …   0%  769.0 MB       0 B/s       0 B/s   0.00       - ┃
-│  Error              1│┃      7 freebsd-14.1-rele… Queued to … 100%    4.2 GB       0 B/s       0 B/s   0.88       - ┃
-│  Waiting            3│┃      8 alpine-standard-3… Error        31%  200.0 MB       0 B/s       0 B/s   0.00       - ┃
-│Labels                │┃      9 void-live-x86_64-… Downloading   5%  695.0 MB  768.0 KB/s       0 B/s   0.00 14m 40s ┃
-│  linux              3│┃     10 gentoo-admincd-am… Seeding     100%  560.0 MB       0 B/s   64.0 KB/s   1.04       - ┃
+│   All             12│┃      1 ubuntu-24.04.1-de… Downloading  42%    5.8 GB    4.0 MB/s  128.0 KB/s   0.12 14m 18s ┃
+│   Downloading      4│┃      2 debian-12.7.0-amd… Seeding     100%  631.0 MB       0 B/s  512.0 KB/s   3.41       - ┃
+│   Completed        4│┃      3 archlinux-2026.09… Stopped      87%    1.1 GB       0 B/s       0 B/s   0.00       - ┃
+│   Active           5│┃      4 fedora-workstatio… Verifying    99%    2.1 GB       0 B/s       0 B/s   0.00       - ┃
+│   Inactive         4│┃      5 nixos-minimal-25.… Queued to … 100%    1.0 GB       0 B/s       0 B/s   0.00       - ┃
+│   Stopped          2│┃      6 openbsd-7.6-amd64… Queued to …   0%  769.0 MB       0 B/s       0 B/s   0.00       - ┃
+│   Error            1│┃      7 freebsd-14.1-rele… Queued to … 100%    4.2 GB       0 B/s       0 B/s   0.88       - ┃
+│   Waiting          3│┃      8 alpine-standard-3… Error        31%  200.0 MB       0 B/s       0 B/s   0.00       - ┃
+│Labels                │┃      9 void-live-x86_64-… Downloading   5%  695.0 MB  768.0 KB/s       0 B/s   0.00 14m 40s ┃
+│  linux              3│┃     10 gentoo-admincd-am… Seeding     100%  560.0 MB       0 B/s   64.0 KB/s   1.04       - ┃
 │  seed               3│┃     11 slackware64-15.0-… Stopped      50%    3.6 GB       0 B/s       0 B/s   0.00       - ┃
-│  No label           7│┃     12 hostile[31mname[0… Downloading  17% 1000.0 MB  256.0 KB/s       0 B/s   0.00 55m 19s ┃
+│  No label           7│┃     12 hostile[31mname[0… Downloading  17% 1000.0 MB  256.0 KB/s       0 B/s   0.00 55m 19s ┃
 │Trackers              │┃                                                                                              ┃
 │  bttracker.debian.… 1│┃                                                                                              ┃
 │  evil[31m.host      1│┃                                                                                              ┃

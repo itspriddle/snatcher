@@ -106,7 +106,7 @@ func TestLabelFilterMatchesTheRawLabel(t *testing.T) {
 
 	filtered := m.applyFilterItem(hostile)
 	assert.Equal(t, []int64{1}, rowIDs(filtered.torrents.rows))
-	assert.NotContains(t, filtered.render(), "\x1b[31m")
+	assert.NotContains(t, filtered.render(), "tag\x1b[31m")
 
 	assert.Equal(t, []int64{2}, rowIDs(m.applyFilterItem(filterItemNamed(t, m, "tag")).torrents.rows))
 }
@@ -137,7 +137,7 @@ func TestTrackerFilterMatchesTheRawHost(t *testing.T) {
 
 	filtered := m.applyFilterItem(hostile)
 	assert.Equal(t, []int64{1}, rowIDs(filtered.torrents.rows))
-	assert.NotContains(t, filtered.render(), "\x1b[31m")
+	assert.NotContains(t, filtered.render(), "\x1b[31m.host")
 
 	byHost := m.applyFilterItem(filterItemNamed(t, m, "b.example"))
 	assert.Equal(t, []int64{2}, rowIDs(byHost.torrents.rows))

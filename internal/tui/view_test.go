@@ -290,7 +290,9 @@ func TestHostileNamesAreSanitized(t *testing.T) {
 	frame := m.render()
 
 	assert.Contains(t, ansi.Strip(frame), "hostile")
-	assert.NotContains(t, frame, "\x1b[31m", "the torrent name's escape sequence reached the frame")
+	// The error icon is legitimately red, so the injection is matched with the
+	// text it colors.
+	assert.NotContains(t, frame, "\x1b[31mname", "the torrent name's escape sequence reached the frame")
 	assert.NotContains(t, frame, "\x07", "the torrent name's bell reached the frame")
 }
 

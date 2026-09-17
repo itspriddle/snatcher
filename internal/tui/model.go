@@ -190,14 +190,21 @@ func New(deps Deps) Model {
 // here, and the other's answer is already on the model.
 func (m Model) applyTheme(isDark bool) Model {
 	m.isDark = isDark
-	m.styles = newStyles(m.palette(isDark), monochrome(m.profile))
-	m.icons = newIcons(m.deps.NerdFont)
+	palette := m.palette(isDark)
+	m.styles = newStyles(palette, monochrome(m.profile))
+	m.icons = newIcons(m.deps.NerdFont).painted(palette, monochrome(m.profile))
 	m.help.Styles = m.styles.Help
 	m.torrents.list = m.torrents.list.setStyles(m.styles)
 	m.torrents.detail = m.torrents.detail.setStyles(m.styles)
 	m.torrents.searchInput.SetStyles(m.styles.Input)
 	m.settings = m.settings.setStyles(m.styles)
 	m.prowlarr = m.prowlarr.setStyles(m.styles)
+
+	// The status column is painted into the rows, so they are rebuilt with
+	// the new colors. Before New builds the window there are none.
+	if m.torrents.list.cols != nil {
+		m = m.syncTorrents()
+	}
 
 	return m
 }
@@ -384,7 +391,7 @@ func (m Model) render() string {
 	case windowSettings:
 		body = m.settings.view(m.styles, l)
 	case windowTorrents:
-		body = m.torrents.view(m.styles, l, m.listPlaceholder())
+		body = m.torrents.view(m.styles, m.icons, l, m.listPlaceholder())
 	case windowProwlarr:
 		body = m.prowlarr.view(m.styles, l, m.resultsPlaceholder())
 	}

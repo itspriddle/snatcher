@@ -2657,6 +2657,23 @@ The status bar's background and foreground.
 .TP
 .B warn
 Notices and unsaved-change markers.
+.TP
+.BR icon_all ", " icon_downloading ", " icon_completed ", " icon_active
+.TQ
+.BR icon_inactive ", " icon_stopped ", " icon_error ", " icon_waiting
+The status icons, one each: beside the filter pane's
+.B Status
+rows, and in the torrent list's status column, where a downloading torrent
+draws
+.BR icon_downloading ,
+a seeding one
+.BR icon_completed ,
+a stopped one
+.BR icon_stopped ,
+an errored one
+.BR icon_error ,
+and a queued or verifying one
+.BR icon_waiting .
 .PP
 Values are case-insensitive:
 .TP
@@ -2726,6 +2743,14 @@ border    = #586e75
 status_bg = #073642
 status_fg = #93a1a1
 warn      = #b58900
+icon_all         = #93a1a1
+icon_downloading = #2aa198
+icon_completed   = #859900
+icon_active      = #268bd2
+icon_inactive    = #93a1a1
+icon_stopped     = #586e75
+icon_error       = #dc322f
+icon_waiting     = #b58900
 
 [light]
 text      = #586e75
@@ -2738,6 +2763,14 @@ border    = #93a1a1
 status_bg = #eee8d5
 status_fg = #586e75
 warn      = #cb4b16
+icon_all         = #586e75
+icon_downloading = #2aa198
+icon_completed   = #859900
+icon_active      = #268bd2
+icon_inactive    = #586e75
+icon_stopped     = #93a1a1
+icon_error       = #dc322f
+icon_waiting     = #b58900
 
 # On a 16-color terminal running the Solarized scheme.
 [ansi]
@@ -2751,6 +2784,14 @@ border    = bright\-green
 status_bg = black
 status_fg = bright\-cyan
 warn      = yellow
+icon_all         = bright\-cyan
+icon_downloading = cyan
+icon_completed   = green
+icon_active      = blue
+icon_inactive    = bright\-cyan
+icon_stopped     = bright\-green
+icon_error       = red
+icon_waiting     = yellow
 
 [ansi.light]
 text      = bright\-green
@@ -2761,6 +2802,14 @@ border    = bright\-cyan
 status_bg = white
 status_fg = bright\-green
 warn      = bright\-red
+icon_all         = bright\-green
+icon_downloading = cyan
+icon_completed   = green
+icon_active      = blue
+icon_inactive    = bright\-green
+icon_stopped     = bright\-cyan
+icon_error       = red
+icon_waiting     = yellow
 .EE
 .RE
 .SH ENVIRONMENT

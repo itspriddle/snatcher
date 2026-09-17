@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/itspriddle/snatcher/internal/theme"
 	"github.com/itspriddle/snatcher/internal/transmission"
@@ -219,6 +220,85 @@ func helpStyles(t theme.Theme, mono bool) help.Styles {
 	}
 }
 
+// statusIcon is one of the status icons: the filter pane's Status rows each have
+// one, and a torrent row borrows the one its status belongs to. Each has its own
+// theme color (theme.Theme's Icon* slots).
+type statusIcon int
+
+const (
+	iconAll statusIcon = iota
+	iconDownloading
+	iconCompleted
+	iconActive
+	iconInactive
+	iconStopped
+	iconError
+	iconWaiting
+
+	// iconCount is the number of icons, sizing the glyph and color tables.
+	iconCount
+)
+
+// iconForStatus is the icon a torrent row draws for its status. A seeding
+// torrent is a completed one; every queued or verifying state is waiting, as the
+// Waiting filter folds them. ok is false for a status the enum does not cover.
+func iconForStatus(s transmission.Status) (statusIcon, bool) {
+	switch s {
+	case transmission.StatusStopped:
+		return iconStopped, true
+	case transmission.StatusQueuedToVerify, transmission.StatusVerifying,
+		transmission.StatusQueuedToDownload, transmission.StatusQueuedToSeed:
+		return iconWaiting, true
+	case transmission.StatusDownloading:
+		return iconDownloading, true
+	case transmission.StatusSeeding:
+		return iconCompleted, true
+	case transmission.StatusError:
+		return iconError, true
+	}
+
+	return 0, false
+}
+
+// iconForFilter is the icon a Status row of the filter pane draws. ok is false
+// for a filter the sidebar does not list.
+func iconForFilter(f transmission.Filter) (statusIcon, bool) {
+	switch f {
+	case transmission.FilterAll:
+		return iconAll, true
+	case transmission.FilterDownloading:
+		return iconDownloading, true
+	case transmission.FilterCompleted:
+		return iconCompleted, true
+	case transmission.FilterActive:
+		return iconActive, true
+	case transmission.FilterInactive:
+		return iconInactive, true
+	case transmission.FilterStopped:
+		return iconStopped, true
+	case transmission.FilterError:
+		return iconError, true
+	case transmission.FilterWaiting:
+		return iconWaiting, true
+	}
+
+	return 0, false
+}
+
+// iconColors picks each icon's color out of a theme.
+func iconColors(t theme.Theme) [iconCount]color.Color {
+	return [iconCount]color.Color{
+		iconAll:         t.IconAll,
+		iconDownloading: t.IconDownloading,
+		iconCompleted:   t.IconCompleted,
+		iconActive:      t.IconActive,
+		iconInactive:    t.IconInactive,
+		iconStopped:     t.IconStopped,
+		iconError:       t.IconError,
+		iconWaiting:     t.IconWaiting,
+	}
+}
+
 // Icons is the glyph set the UI draws status and marks with. It has two
 // spellings — Nerd Font and ASCII — chosen by --no-nerd-font / client.nerd_font.
 //
@@ -231,8 +311,12 @@ type Icons struct {
 	Marked   string
 	Unmarked string
 
-	// statuses maps a torrent's derived status to its glyph.
-	statuses map[transmission.Status]string
+	// glyphs is the spelling of each status icon.
+	glyphs *[iconCount]string
+
+	// colors is each status icon's foreground, or nil to draw it uncolored:
+	// before a theme is applied, and under a monochrome profile.
+	colors *[iconCount]color.Color
 }
 
 // nerdFontIcons and asciiIcons are the two glyph sets. The ASCII set is the one
@@ -249,26 +333,26 @@ type Icons struct {
 // range is supplementary-plane and renders two cells in some terminals, which
 // would move the status column.
 var (
-	nerdFontIcons = map[transmission.Status]string{
-		transmission.StatusStopped:          "\uf04c", // nf-fa-pause
-		transmission.StatusQueuedToVerify:   "\uf017", // nf-fa-clock_o
-		transmission.StatusVerifying:        "\uf021", // nf-fa-refresh
-		transmission.StatusQueuedToDownload: "\uf017", // nf-fa-clock_o
-		transmission.StatusDownloading:      "\uf019", // nf-fa-download
-		transmission.StatusQueuedToSeed:     "\uf017", // nf-fa-clock_o
-		transmission.StatusSeeding:          "\uf093", // nf-fa-upload
-		transmission.StatusError:            "\uf071", // nf-fa-warning
+	nerdFontIcons = [iconCount]string{
+		iconAll:         "\uf069", // nf-fa-asterisk
+		iconDownloading: "\uf0ab", // nf-fa-arrow_circle_down
+		iconCompleted:   "\uf00c", // nf-fa-check
+		iconActive:      "\uf0e7", // nf-fa-bolt
+		iconInactive:    "\uf2dc", // nf-fa-snowflake_o
+		iconStopped:     "\uf04c", // nf-fa-pause
+		iconError:       "\uf071", // nf-fa-warning
+		iconWaiting:     "\uf254", // nf-fa-hourglass
 	}
 
-	asciiIcons = map[transmission.Status]string{
-		transmission.StatusStopped:          "x",
-		transmission.StatusQueuedToVerify:   "~",
-		transmission.StatusVerifying:        "%",
-		transmission.StatusQueuedToDownload: "~",
-		transmission.StatusDownloading:      "v",
-		transmission.StatusQueuedToSeed:     "~",
-		transmission.StatusSeeding:          "^",
-		transmission.StatusError:            "!",
+	asciiIcons = [iconCount]string{
+		iconAll:         "*",
+		iconDownloading: "v",
+		iconCompleted:   "+",
+		iconActive:      "^",
+		iconInactive:    "-",
+		iconStopped:     "x",
+		iconError:       "!",
+		iconWaiting:     "~",
 	}
 )
 
@@ -284,24 +368,80 @@ const (
 	asciiMark    = "*"
 )
 
-// newIcons returns the glyph set for this invocation.
+// newIcons returns the glyph set for this invocation, uncolored.
 func newIcons(nerdFont bool) Icons {
 	if nerdFont {
-		return Icons{Marked: nerdFontMark, Unmarked: " ", statuses: nerdFontIcons}
+		return Icons{Marked: nerdFontMark, Unmarked: " ", glyphs: &nerdFontIcons}
 	}
 
-	return Icons{Marked: asciiMark, Unmarked: " ", statuses: asciiIcons}
+	return Icons{Marked: asciiMark, Unmarked: " ", glyphs: &asciiIcons}
+}
+
+// painted returns the set with each status icon drawn in its theme color, or
+// unchanged under a monochrome profile.
+func (i Icons) painted(t theme.Theme, mono bool) Icons {
+	if mono {
+		return i
+	}
+
+	colors := iconColors(t)
+	i.colors = &colors
+
+	return i
 }
 
 // status returns the glyph for a torrent status, or "?" for a value the enum
 // does not cover — a server reporting something unknown must still render a
 // row rather than a blank cell that silently misaligns the column.
 func (i Icons) status(s transmission.Status) string {
-	if glyph, ok := i.statuses[s]; ok {
-		return glyph
+	icon, ok := iconForStatus(s)
+	if !ok {
+		return "?"
 	}
 
-	return "?"
+	return i.glyph(icon)
+}
+
+// statusCell is status, painted in the icon's color.
+func (i Icons) statusCell(s transmission.Status) string {
+	icon, ok := iconForStatus(s)
+	if !ok {
+		return "?"
+	}
+
+	return i.paint(icon, i.glyph(icon))
+}
+
+// glyph returns an icon's spelling, or "" from a zero Icons.
+func (i Icons) glyph(icon statusIcon) string {
+	if i.glyphs == nil {
+		return ""
+	}
+
+	return i.glyphs[icon]
+}
+
+// paint wraps text in the icon's foreground color.
+//
+// It is a foreground-only SGR closed by SGR 39 (default foreground) rather than
+// a lipgloss style, whose full reset would also clear the background of the row
+// it is drawn inside: the table wraps every cell of the cursor row in its
+// Selected style, and the filter pane's cursor row is one Cursor-styled line.
+func (i Icons) paint(icon statusIcon, text string) string {
+	if i.colors == nil || text == "" {
+		return text
+	}
+
+	c := i.colors[icon]
+	if c == nil {
+		return text
+	}
+
+	if _, none := c.(lipgloss.NoColor); none {
+		return text
+	}
+
+	return ansi.Style{}.ForegroundColor(c).String() + text + ansi.Style{}.ForegroundColor(nil).String()
 }
 
 // mark returns the glyph for a row's mark state.
