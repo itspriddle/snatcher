@@ -1218,8 +1218,15 @@ Filter by state (default
 .BR all ).
 One of
 .BR all ", " active ", " inactive ", " downloading ", " seeding ,
-.BR stopped ", " verifying ", " queued\-to\-verify ", " queued\-to\-download ,
-.BR queued\-to\-seed ", " error .
+.BR completed ", " stopped ", " waiting ", " verifying ,
+.BR queued\-to\-verify ", " queued\-to\-download ", " queued\-to\-seed ,
+.BR error .
+.B completed
+is any seeding torrent or one with nothing left to download (stopped or not),
+and
+.B waiting
+is any torrent verifying, queued to verify, or queued to download \(em the
+groups the TUI sidebar shows.
 .B active
 and
 .B inactive

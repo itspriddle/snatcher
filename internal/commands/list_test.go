@@ -629,6 +629,21 @@ func TestListFilterAppliesToJSON(t *testing.T) {
 	assert.Equal(t, "seeding", got[0].Status, "the status slug is the seeding torrent's")
 }
 
+func TestListFilterCompletedAndWaiting(t *testing.T) {
+	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
+	defer closeSrv()
+
+	// completed takes the seeding torrent; waiting matches neither the
+	// downloading nor the seeding one.
+	out, _, err := runList(t, "--config", cfgPath, "--filter", "completed", "--jq", "[.[].id]")
+	require.NoError(t, err)
+	assert.JSONEq(t, "[2]", out)
+
+	out, _, err = runList(t, "--config", cfgPath, "--filter", "waiting", "--jq", "[.[].id]")
+	require.NoError(t, err)
+	assert.JSONEq(t, "[]", out)
+}
+
 func TestListSearchAppliesToJQ(t *testing.T) {
 	cfgPath, closeSrv := listConfigPath(t, bespokeListResponse)
 	defer closeSrv()

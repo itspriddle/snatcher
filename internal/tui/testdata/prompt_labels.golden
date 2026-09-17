@@ -2,21 +2,21 @@
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
 │  All                3│┃* x    1 one.iso            Stopped       0%       0 B       0 B/s       0 B/s   0.00      0s ┃
 │  Downloading        0│┃* x    2 two.iso            Stopped       0%       0 B       0 B/s       0 B/s   0.00      0s ┃
-│  Seeding            0│┃  x    3 three[31m.iso      Stopped       0%       0 B       0 B/s       0 B/s   0.00      0s ┃
+│  Completed          0│┃  x    3 three[31m.iso      Stopped       0%       0 B       0 B/s       0 B/s   0.00      0s ┃
 │  Active             0│┃                                                                                              ┃
 │  Inactive           0│┃                                                                                              ┃
 │  Stopped            3│┃                                                                                              ┃
-│  Verifying          0│┃                                                                                              ┃
-│  Queued to download 0│┃                                                                                              ┃
-│  Queued to seed     0│┃                                                                                              ┃
-│  Queued to verify   0│┃                                                                                              ┃
 │  Error              0│┃                                                                                              ┃
+│  Waiting            0│┃                                                                                              ┃
 │Labels                │┃                                                                                              ┃
 │  a                  2│┃                                                                                              ┃
 │  b                  2│┃                                                                                              ┃
-│  No label           1│┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
-│Trackers              │┃   │ Set labels on 2 torrents                                     │                           ┃
-│  none                │┃   │                                                              │                           ┃
+│  No label           1│┃                                                                                              ┃
+│Trackers              │┃                                                                                              ┃
+│  none                │┃                                                                                              ┃
+│                      │┃   ╭──────────────────────────────────────────────────────────────╮                           ┃
+│                      │┃   │ Set labels on 2 torrents                                     │                           ┃
+│                      │┃   │                                                              │                           ┃
 │                      │┃   │ > a, b                                                       │                           ┃
 │                      │┃   │                                                              │                           ┃
 │                      │┃   │ comma-separated; empty clears                                │                           ┃

@@ -34,8 +34,21 @@ const (
 	// FilterSeeding matches seeding torrents and those queued to seed.
 	FilterSeeding Filter = "seeding"
 
+	// FilterCompleted matches seeding torrents and any torrent with nothing
+	// left to download, stopped or not, as TrguiNG's "Completed" group does.
+	// TrguiNG compares sizeWhenDone to haveValid; the list fields carry
+	// leftUntilDone instead, which is the same test for finished data. A
+	// zero-size torrent (an unresolved magnet) is never complete.
+	FilterCompleted Filter = "completed"
+
 	// FilterStopped matches stopped (paused) torrents.
 	FilterStopped Filter = "stopped"
+
+	// FilterWaiting matches torrents waiting on the server, as TrguiNG's
+	// "Waiting" group does: verifying, queued to verify, or queued to
+	// download. Queued-to-seed torrents are complete, so FilterCompleted
+	// covers them instead.
+	FilterWaiting Filter = "waiting"
 
 	// FilterVerifying matches torrents whose local data is being verified.
 	FilterVerifying Filter = "verifying"
@@ -61,7 +74,9 @@ var filters = []Filter{
 	FilterInactive,
 	FilterDownloading,
 	FilterSeeding,
+	FilterCompleted,
 	FilterStopped,
+	FilterWaiting,
 	FilterVerifying,
 	FilterQueuedToVerify,
 	FilterQueuedToDownload,
@@ -94,8 +109,13 @@ func (f Filter) matches(t Torrent) bool {
 		return t.Status == StatusDownloading || t.Status == StatusQueuedToDownload
 	case FilterSeeding:
 		return t.Status == StatusSeeding || t.Status == StatusQueuedToSeed
+	case FilterCompleted:
+		return t.Status == StatusSeeding || (t.SizeWhenDone > 0 && t.LeftUntilDone == 0)
 	case FilterStopped:
 		return t.Status == StatusStopped
+	case FilterWaiting:
+		return t.Status == StatusVerifying || t.Status == StatusQueuedToVerify ||
+			t.Status == StatusQueuedToDownload
 	case FilterVerifying:
 		return t.Status == StatusVerifying
 	case FilterQueuedToVerify:

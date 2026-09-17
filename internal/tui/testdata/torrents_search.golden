@@ -2,15 +2,12 @@
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
 │  All               12│┃  ^   10 gentoo-admincd-am… Seeding     100%  560.0 MB       0 B/s   64.0 KB/s   1.04       - ┃
 │  Downloading        4│┃                                                                                              ┃
-│> Seeding            3│┃                                                                                              ┃
+│> Completed          4│┃                                                                                              ┃
 │  Active             5│┃                                                                                              ┃
 │  Inactive           4│┃                                                                                              ┃
 │  Stopped            2│┃                                                                                              ┃
-│  Verifying          1│┃                                                                                              ┃
-│  Queued to download 1│┃                                                                                              ┃
-│  Queued to seed     1│┃                                                                                              ┃
-│  Queued to verify   1│┃                                                                                              ┃
 │  Error              1│┃                                                                                              ┃
+│  Waiting            3│┃                                                                                              ┃
 │Labels                │┃                                                                                              ┃
 │  linux              3│┃                                                                                              ┃
 │  seed               3│┃                                                                                              ┃
@@ -34,7 +31,10 @@
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
 │                      │┃                                                                                              ┃
-│                      │┃filter: Seeding   (1) / gentoo                                                                ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃filter: Completed   (1) / gentoo                                                              ┃
 ╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 esc blur • enter submit                                                                                                 
 no server                                                                                                               

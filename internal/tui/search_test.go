@@ -58,7 +58,7 @@ func TestSearchMatchingNothingEmptiesTheList(t *testing.T) {
 // TestSearchComposesWithTheSidebarFilter checks the sidebar narrows first and
 // the search narrows what is left, the order `snatcher list` applies them in.
 func TestSearchComposesWithTheSidebarFilter(t *testing.T) {
-	filtered := seedingFiltered(t, newTestModel(120, 40))
+	filtered := completedFiltered(t, newTestModel(120, 40))
 	seeding := rowIDs(filtered.torrents.rows)
 	require.NotEmpty(t, seeding)
 
@@ -157,7 +157,7 @@ func TestSearchEmptyPlaceholder(t *testing.T) {
 	assert.Equal(t, "no torrents match", ph.lines[0])
 	assert.Contains(t, ph.lines[1], "search: zzz")
 
-	both := press(searchFor(seedingFiltered(t, newTestModel(120, 40)), "zzz"), "enter")
+	both := press(searchFor(completedFiltered(t, newTestModel(120, 40)), "zzz"), "enter")
 	assert.Contains(t, both.listPlaceholder().lines[1], "filter: ")
 	assert.Contains(t, both.listPlaceholder().lines[1], "search: zzz")
 }
@@ -205,7 +205,7 @@ func TestSearchInputKeyMapHasNoBannedKeys(t *testing.T) {
 // TestTorrentsSearchGolden pins the footer while searching: the field and the
 // row count, beside a filter.
 func TestTorrentsSearchGolden(t *testing.T) {
-	m := seedingFiltered(t, newTestModel(120, 40))
+	m := completedFiltered(t, newTestModel(120, 40))
 
 	assertGolden(t, "torrents_search", searchFor(m, "gentoo").render())
 }
