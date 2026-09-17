@@ -1,40 +1,40 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
 │  * All             12│┃  v    1 ubuntu-24.04.1-de… Downloading  42%    5.8 GB    4.0 MB/s  128.0 KB/s   0.12 14m 18s ┃
-│  v╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ - ┃
-│  +│ torrent list                                                                                                 │ - ┃
-│  ^│   space  mark                                                                                                │ - ┃
-│  -│   enter  open detail                                                                                         │ - ┃
-│  x│   y      yank…                                                                                               │ - ┃
-│  !│   s      start                                                                                               │ - ┃
-│  ~│   p      pause                                                                                               │ - ┃
-│Lab│   v      verify                                                                                              │0s ┃
-│  l│   r      reannounce                                                                                          │ - ┃
-│  s│   d      delete                                                                                              │ - ┃
-│  N│   J      queue down                                                                                          │9s ┃
-│Tra│   K      queue up                                                                                            │   ┃
-│  b│   L      labels                                                                                              │   ┃
-│  e│   M      move                                                                                                │   ┃
-│  t│   m      action menu                                                                                         │   ┃
-│  t│                                                                                                              │   ┃
-│   │ torrents                                                                                                     │   ┃
-│   │   {  toggle filter pane                                                                                      │   ┃
-│   │   1  detail: overview                                                                                        │   ┃
-│   │   2  detail: files                                                                                           │   ┃
-│   │   3  detail: trackers                                                                                        │   ┃
-│   │   4  detail: peers                                                                                           │   ┃
-│   │   5  detail: pieces                                                                                          │   ┃
-│   │   f  filter                                                                                                  │   ┃
-│   │   /  search                                                                                                  │   ┃
-│   │   o  sort                                                                                                    │   ┃
-│   │   c  columns                                                                                                 │   ┃
-│   │   a  add torrent                                                                                             │   ┃
-│   │   A  add with options                                                                                        │   ┃
-│   │                                                                                                              │   ┃
-│   │ navigation                                                                                                   │   ┃
-│   │   ↑/k        up                                                                                              │   ┃
-│   │   ↓/j        down                                                                                            │   ┃
+│  v Downloading      4│┃  +    2 debian-12.7.0-amd… Seeding     100%  631.0 MB       0 B/s  512.0 KB/s   3.41       - ┃
+│  + Completed        4│┃  x    3 archlinux-2026.09… Stopped      87%    1.1 GB       0 B/s       0 B/s   0.00       - ┃
+│  ^ Active           5│┃  ~    4 fedora-workstatio… Verifying    99%    2.1 GB       0 B/s       0 B/s   0.00       - ┃
+│  - Inactive         4│┃  ~    5 nixos-minimal-25.… Queued to … 100%    1.0 GB       0 B/s       0 B/s   0.00       - ┃
+│  x Stopped          2│┃  ~    6 openbsd-7.6-amd64… Queued to …   0%  769.0 MB       0 B/s       0 B/s   0.00       - ┃
+│  ! Error            1│┃  ~    7 freebsd-14.1-rele… Queued to … 100%    4.2 GB       0 B/s       0 B/s   0.88       - ┃
+│  ~╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ - ┃
+│Lab│ torrent list                      torrents (cont.)                  navigation (cont.)                       │0s ┃
+│  l│   space  mark                       3  detail: trackers               pgdn       page down                   │ - ┃
+│  s│   enter  open detail                4  detail: peers                  tab        next pane                   │ - ┃
+│  N│   y      yank…                      5  detail: pieces                 shift+tab  previous pane               │9s ┃
+│Tra│   s      start                      f  filter                         ctrl+w     focus pane…                 │   ┃
+│  b│   p      pause                      /  search                         }          toggle detail pane          │   ┃
+│  e│   v      verify                     o  sort                                                                  │   ┃
+│  t│   r      reannounce                 c  columns                      global                                   │   ┃
+│  t│   d      delete                     a  add torrent                    q       quit                           │   ┃
+│   │   J      queue down                 A  add with options               ?       help                           │   ┃
+│   │   K      queue up                                                     esc     back                           │   ┃
+│   │   L      labels                   navigation                          :       command palette                │   ┃
+│   │   M      move                       ↑/k        up                     ctrl+t  torrents window                │   ┃
+│   │   m      action menu                ↓/j        down                   ctrl+p  prowlarr window                │   ┃
+│   │                                     g/home     top                    ,       settings window                │   ┃
+│   │ torrents                            G/end      bottom                 S       switch server                  │   ┃
+│   │   {  toggle filter pane             ctrl+u     ½ page up              t       toggle alt-speed               │   ┃
+│   │   1  detail: overview               ctrl+d     ½ page down            R       refresh                        │   ┃
+│   │   2  detail: files                  pgup       page up                                                       │   ┃
 │   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
+│                      │┃                                                                                              ┃
 ╰──────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-↑/k scroll up • ↓/j scroll down • pgup page up • pgdn page down • ? help • q quit                                       
+↑↓/jk scroll • ctrl+u/d ½ page • pgup/pgdn page • ? help • q quit                                                       
 no server                                                                                                               

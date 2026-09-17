@@ -294,6 +294,9 @@ const (
 	actionHelpPageUp     Action = "help.page-up"
 	actionHelpPageDown   Action = "help.page-down"
 
+	actionHelpHalfPageUp   Action = "help.half-page-up"
+	actionHelpHalfPageDown Action = "help.half-page-down"
+
 	actionYankHash   Action = "yank.hash"
 	actionYankName   Action = "yank.name"
 	actionYankPath   Action = "yank.path"
@@ -695,6 +698,8 @@ var registry = []Binding{
 	bind(ctxHelp, actionHelpScrollDown, "↓/j", "scroll down", "down", "j"),
 	bind(ctxHelp, actionHelpPageUp, "pgup", "page up", "pgup"),
 	bind(ctxHelp, actionHelpPageDown, "pgdn", "page down", "pgdown"),
+	bind(ctxHelp, actionHelpHalfPageUp, "ctrl+u", "½ page up", "ctrl+u"),
+	bind(ctxHelp, actionHelpHalfPageDown, "ctrl+d", "½ page down", "ctrl+d"),
 
 	// The y chord's second key.
 	bind(ctxChordYank, actionYankMagnet, "m", "magnet link", "m"),

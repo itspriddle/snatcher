@@ -83,10 +83,12 @@ func componentKeyMaps() []componentKeyMap {
 			context: ctxHelp,
 			keyMap:  helpViewportKeyMap(),
 			wired: map[string]Action{
-				"Up":       actionHelpScrollUp,
-				"Down":     actionHelpScrollDown,
-				"PageUp":   actionHelpPageUp,
-				"PageDown": actionHelpPageDown,
+				"Up":           actionHelpScrollUp,
+				"Down":         actionHelpScrollDown,
+				"PageUp":       actionHelpPageUp,
+				"PageDown":     actionHelpPageDown,
+				"HalfPageUp":   actionHelpHalfPageUp,
+				"HalfPageDown": actionHelpHalfPageDown,
 			},
 		},
 	}
