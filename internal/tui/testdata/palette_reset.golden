@@ -1,13 +1,13 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
-│  All                ╭──────────────────────────────────────────────────────────────────────────╮ KB/s   2.50       - ┃
-│  Downloading        │ Reset setting                                                            │0 B/s   0.00       - ┃
-│  Completed          │ :                                                                        │ KB/s   0.50      1h ┃
-│  Active             │                                                                          │                     ┃
-│  Inactive           │ > download-dir                Default directory for completed downloads  │                     ┃
-│  Stopped            │   start-added-torrents        Start torrents automatically when added    │                     ┃
-│  Error              │   rename-partial-files        Append .part to incomplete files           │                     ┃
-│  Waiting            │   incomplete-dir-enabled      Keep incomplete downloads in a separate d… │                     ┃
+│  * All              ╭──────────────────────────────────────────────────────────────────────────╮ KB/s   2.50       - ┃
+│  v Downloading      │ Reset setting                                                            │0 B/s   0.00       - ┃
+│  + Completed        │ :                                                                        │ KB/s   0.50      1h ┃
+│  ^ Active           │                                                                          │                     ┃
+│  - Inactive         │ > download-dir                Default directory for completed downloads  │                     ┃
+│  x Stopped          │   start-added-torrents        Start torrents automatically when added    │                     ┃
+│  ! Error            │   rename-partial-files        Append .part to incomplete files           │                     ┃
+│  ~ Waiting          │   incomplete-dir-enabled      Keep incomplete downloads in a separate d… │                     ┃
 │Labels               │   incomplete-dir              Directory for incomplete downloads (when … │                     ┃
 │  linux              │   seed-ratio-limited          Stop seeding at the global seed-ratio lim… │                     ┃
 │  No label           │   seed-ratio-limit            Global seed ratio to stop seeding at (whe… │                     ┃

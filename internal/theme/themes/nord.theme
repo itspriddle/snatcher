@@ -13,6 +13,15 @@ status_bg = #3b4252
 status_fg = #d8dee9
 warn      = #ebcb8b
 
+icon_all         = #d8dee9
+icon_downloading = #88c0d0
+icon_completed   = #a3be8c
+icon_active      = #81a1c1
+icon_inactive    = #d8dee9
+icon_stopped     = #4c566a
+icon_error       = #bf616a
+icon_waiting     = #ebcb8b
+
 [light]
 text      = #2e3440
 muted     = #4c566a
@@ -24,6 +33,15 @@ border    = #4c566a
 status_bg = #e5e9f0
 status_fg = #2e3440
 warn      = #d08770
+
+icon_all         = #2e3440
+icon_downloading = #5e81ac
+icon_completed   = #a3be8c
+icon_active      = #81a1c1
+icon_inactive    = #2e3440
+icon_stopped     = #4c566a
+icon_error       = #bf616a
+icon_waiting     = #d08770
 
 # On a 16-color terminal running the Nord scheme.
 [ansi]
@@ -37,3 +55,12 @@ border    = bright-black
 status_bg = black
 status_fg = white
 warn      = yellow
+
+icon_all         = default
+icon_downloading = cyan
+icon_completed   = green
+icon_active      = blue
+icon_inactive    = default
+icon_stopped     = bright-black
+icon_error       = red
+icon_waiting     = yellow

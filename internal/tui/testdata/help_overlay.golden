@@ -1,13 +1,13 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
-│  All               12│┃  v    1 ubuntu-24.04.1-de… Downloading  42%    5.8 GB    4.0 MB/s  128.0 KB/s   0.12 14m 18s ┃
-│  D╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ - ┃
-│  C│ torrent list                                                                                                 │ - ┃
-│  A│   space  mark                                                                                                │ - ┃
-│  I│   enter  open detail                                                                                         │ - ┃
-│  S│   y      yank…                                                                                               │ - ┃
-│  E│   s      start                                                                                               │ - ┃
-│  W│   p      pause                                                                                               │ - ┃
+│  * All             12│┃  v    1 ubuntu-24.04.1-de… Downloading  42%    5.8 GB    4.0 MB/s  128.0 KB/s   0.12 14m 18s ┃
+│  v╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ - ┃
+│  +│ torrent list                                                                                                 │ - ┃
+│  ^│   space  mark                                                                                                │ - ┃
+│  -│   enter  open detail                                                                                         │ - ┃
+│  x│   y      yank…                                                                                               │ - ┃
+│  !│   s      start                                                                                               │ - ┃
+│  ~│   p      pause                                                                                               │ - ┃
 │Lab│   v      verify                                                                                              │0s ┃
 │  l│   r      reannounce                                                                                          │ - ┃
 │  s│   d      delete                                                                                              │ - ┃

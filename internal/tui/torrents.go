@@ -238,13 +238,13 @@ func (w torrentsWindow) neighborFromList(dir Action) Pane {
 
 // view renders the window: the sidebar and table side by side, with the detail
 // pane, when open, beneath both. placeholder stands in for an empty table.
-func (w torrentsWindow) view(st Styles, l layout, ph placeholder) string {
+func (w torrentsWindow) view(st Styles, icons Icons, l layout, ph placeholder) string {
 	top := w.list.view(st, l.list, w.focus == paneList, ph, w.footerView(st))
 
 	if w.filterOpen {
 		top = lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			w.filter.view(st, l.filter, w.focus == paneFilter),
+			w.filter.view(st, icons, l.filter, w.focus == paneFilter),
 			top,
 		)
 	}

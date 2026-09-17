@@ -4,6 +4,7 @@ import (
 	"errors"
 	"image/color"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode"
@@ -130,21 +131,79 @@ func allStatuses() []transmission.Status {
 	return statuses
 }
 
-// TestBothGlyphSetsCoverEveryStatus checks neither spelling can fall through to
-// the "?" placeholder for a status the enum names.
-func TestBothGlyphSetsCoverEveryStatus(t *testing.T) {
-	for _, nerdFont := range []bool{false, true} {
-		icons := newIcons(nerdFont)
+// TestEveryStatusHasAnIcon checks no status the enum names falls through to the
+// "?" placeholder, in either spelling.
+func TestEveryStatusHasAnIcon(t *testing.T) {
+	for _, s := range allStatuses() {
+		_, ok := iconForStatus(s)
 
-		for _, s := range allStatuses() {
-			_, ok := icons.statuses[s]
-
-			assert.Truef(t, ok, "nerdFont=%v has no glyph for status %d (%s)", nerdFont, s, s)
-		}
+		assert.Truef(t, ok, "no icon for status %d (%s)", s, s)
 	}
 
-	assert.Equal(t, "?", newIcons(false).status(transmission.Status(255)))
-	assert.Equal(t, "?", newIcons(true).status(transmission.Status(255)))
+	for _, nerdFont := range []bool{false, true} {
+		assert.Equal(t, "?", newIcons(nerdFont).status(transmission.Status(255)))
+		assert.Equal(t, "?", newIcons(nerdFont).statusCell(transmission.Status(255)))
+	}
+}
+
+// TestStatusIconsMatchTheSidebar pins which sidebar icon a torrent row borrows.
+func TestStatusIconsMatchTheSidebar(t *testing.T) {
+	want := map[transmission.Status]statusIcon{
+		transmission.StatusStopped:          iconStopped,
+		transmission.StatusQueuedToVerify:   iconWaiting,
+		transmission.StatusVerifying:        iconWaiting,
+		transmission.StatusQueuedToDownload: iconWaiting,
+		transmission.StatusDownloading:      iconDownloading,
+		transmission.StatusQueuedToSeed:     iconWaiting,
+		transmission.StatusSeeding:          iconCompleted,
+		transmission.StatusError:            iconError,
+	}
+
+	for s, icon := range want {
+		got, ok := iconForStatus(s)
+
+		require.Truef(t, ok, "%s", s)
+		assert.Equalf(t, icon, got, "%s", s)
+	}
+}
+
+// TestEverySidebarStatusHasItsOwnIcon checks each Status row of the filter pane
+// draws a distinct icon, and that every icon is used by one.
+func TestEverySidebarStatusHasItsOwnIcon(t *testing.T) {
+	seen := map[statusIcon]transmission.Filter{}
+
+	for _, f := range statusFilters {
+		icon, ok := iconForFilter(f)
+		require.Truef(t, ok, "no icon for filter %s", f)
+
+		prev, dup := seen[icon]
+		assert.Falsef(t, dup, "%s and %s share an icon", prev, f)
+
+		seen[icon] = f
+	}
+
+	assert.Len(t, seen, int(iconCount))
+
+	_, ok := iconForFilter(transmission.FilterVerifying)
+	assert.False(t, ok)
+}
+
+// TestPaintedIconsKeepTheRowBackground pins how an icon is colored: a
+// foreground-only sequence closed by SGR 39, never a full reset, so the cursor
+// row's background carries on past the glyph.
+func TestPaintedIconsKeepTheRowBackground(t *testing.T) {
+	icons := newIcons(false).painted(theme.Theme{IconError: lipgloss.Color("#dc322f")}, false)
+	cell := icons.statusCell(transmission.StatusError)
+
+	assert.Equal(t, "\x1b[38;2;220;50;47m!\x1b[39m", cell)
+	assert.NotContains(t, cell, "\x1b[m")
+	assert.NotContains(t, cell, "\x1b[0m")
+
+	// A slot with no color, and a monochrome profile, draw the bare glyph.
+	assert.Equal(t, "x", icons.statusCell(transmission.StatusStopped))
+
+	mono := newIcons(false).painted(theme.Theme{IconError: lipgloss.Color("#dc322f")}, true)
+	assert.Equal(t, "!", mono.statusCell(transmission.StatusError))
 }
 
 // TestNerdFontGlyphsAreOneCellPrivateUseRunes is the invariant the nerd golden
@@ -157,8 +216,8 @@ func TestBothGlyphSetsCoverEveryStatus(t *testing.T) {
 func TestNerdFontGlyphsAreOneCellPrivateUseRunes(t *testing.T) {
 	glyphs := map[string]string{"mark": nerdFontMark}
 
-	for _, s := range allStatuses() {
-		glyphs[s.String()] = nerdFontIcons[s]
+	for icon, glyph := range nerdFontIcons {
+		glyphs[strconv.Itoa(icon)] = glyph
 	}
 
 	for name, glyph := range glyphs {
@@ -178,8 +237,8 @@ func TestNerdFontGlyphsAreOneCellPrivateUseRunes(t *testing.T) {
 func TestASCIIGlyphsArePrintableASCII(t *testing.T) {
 	glyphs := map[string]string{"mark": asciiMark}
 
-	for _, s := range allStatuses() {
-		glyphs[s.String()] = asciiIcons[s]
+	for icon, glyph := range asciiIcons {
+		glyphs[strconv.Itoa(icon)] = glyph
 	}
 
 	for name, glyph := range glyphs {

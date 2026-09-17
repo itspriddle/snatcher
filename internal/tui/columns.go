@@ -33,7 +33,7 @@ const nameKey = "name"
 // Font glyph sets cannot move any column to their right.
 var prefixColumns = []listColumn{
 	{colSpec: colSpec{title: " ", width: 1}, render: func(_ transmission.Torrent, _ Icons) string { return "" }},
-	{colSpec: colSpec{title: " ", width: 1}, render: func(t transmission.Torrent, i Icons) string { return i.status(t.Status) }},
+	{colSpec: colSpec{title: " ", width: 1}, render: func(t transmission.Torrent, i Icons) string { return i.statusCell(t.Status) }},
 }
 
 // The prefix cells' indices. The mark cell is filled from the selection rather

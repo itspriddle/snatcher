@@ -16,6 +16,15 @@ status_bg = #073642
 status_fg = #93a1a1
 warn      = #b58900
 
+icon_all         = #93a1a1
+icon_downloading = #2aa198
+icon_completed   = #859900
+icon_active      = #268bd2
+icon_inactive    = #93a1a1
+icon_stopped     = #586e75
+icon_error       = #dc322f
+icon_waiting     = #b58900
+
 [light]
 text      = #586e75
 muted     = #839496
@@ -27,6 +36,15 @@ border    = #93a1a1
 status_bg = #eee8d5
 status_fg = #586e75
 warn      = #cb4b16
+
+icon_all         = #586e75
+icon_downloading = #2aa198
+icon_completed   = #859900
+icon_active      = #268bd2
+icon_inactive    = #586e75
+icon_stopped     = #93a1a1
+icon_error       = #dc322f
+icon_waiting     = #b58900
 
 # On a 16-color terminal running the Solarized scheme, which maps the base
 # tones onto the bright colors: base03 bright-black, base02 black, base01
@@ -44,6 +62,15 @@ status_bg = black
 status_fg = bright-cyan
 warn      = yellow
 
+icon_all         = bright-cyan
+icon_downloading = cyan
+icon_completed   = green
+icon_active      = blue
+icon_inactive    = bright-cyan
+icon_stopped     = bright-green
+icon_error       = red
+icon_waiting     = yellow
+
 [ansi.light]
 text      = bright-green
 muted     = bright-blue
@@ -53,3 +80,12 @@ border    = bright-cyan
 status_bg = white
 status_fg = bright-green
 warn      = bright-red
+
+icon_all         = bright-green
+icon_downloading = cyan
+icon_completed   = green
+icon_active      = blue
+icon_inactive    = bright-green
+icon_stopped     = bright-cyan
+icon_error       = red
+icon_waiting     = yellow

@@ -58,6 +58,17 @@ type Theme struct {
 
 	// Warn is a toast or a not-implemented-yet notice.
 	Warn color.Color
+
+	// The status icons' colors, one per icon: the filter pane's Status rows,
+	// and the torrent list's status column, which reuses the same icons.
+	IconAll         color.Color
+	IconDownloading color.Color
+	IconCompleted   color.Color
+	IconActive      color.Color
+	IconInactive    color.Color
+	IconStopped     color.Color
+	IconError       color.Color
+	IconWaiting     color.Color
 }
 
 // The slot keys a theme file spells, one per Theme field.
@@ -72,6 +83,15 @@ const (
 	SlotStatusBg = "status_bg"
 	SlotStatusFg = "status_fg"
 	SlotWarn     = "warn"
+
+	SlotIconAll         = "icon_all"
+	SlotIconDownloading = "icon_downloading"
+	SlotIconCompleted   = "icon_completed"
+	SlotIconActive      = "icon_active"
+	SlotIconInactive    = "icon_inactive"
+	SlotIconStopped     = "icon_stopped"
+	SlotIconError       = "icon_error"
+	SlotIconWaiting     = "icon_waiting"
 )
 
 // Slots is every slot key in Theme's field order. It is the file format's
@@ -79,6 +99,8 @@ const (
 var Slots = []string{
 	SlotText, SlotMuted, SlotAccent, SlotLoud, SlotCursorBg,
 	SlotCursorFg, SlotBorder, SlotStatusBg, SlotStatusFg, SlotWarn,
+	SlotIconAll, SlotIconDownloading, SlotIconCompleted, SlotIconActive,
+	SlotIconInactive, SlotIconStopped, SlotIconError, SlotIconWaiting,
 }
 
 // The sections a theme file may carry.
@@ -126,5 +148,14 @@ func fromSlots(slots map[string]color.Color) Theme {
 		StatusBar:  get(SlotStatusBg),
 		StatusText: get(SlotStatusFg),
 		Warn:       get(SlotWarn),
+
+		IconAll:         get(SlotIconAll),
+		IconDownloading: get(SlotIconDownloading),
+		IconCompleted:   get(SlotIconCompleted),
+		IconActive:      get(SlotIconActive),
+		IconInactive:    get(SlotIconInactive),
+		IconStopped:     get(SlotIconStopped),
+		IconError:       get(SlotIconError),
+		IconWaiting:     get(SlotIconWaiting),
 	}
 }

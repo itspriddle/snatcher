@@ -1,13 +1,13 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
-│  All                ╭──────────────────────────────────────────────────────────────────────────╮ KB/s   2.50       - ┃
-│  Downloading        │ Command palette                                                          │0 B/s   0.00       - ┃
-│  Completed          │ :                                                                        │ KB/s   0.50      1h ┃
-│  Active             │                                                                          │                     ┃
-│  Inactive           │ > open detail                torrent list                          enter │                     ┃
-│  Stopped            │   start                      torrent list                              s │                     ┃
-│  Error              │   pause                      torrent list                              p │                     ┃
-│  Waiting            │   verify                     torrent list                              v │                     ┃
+│  * All              ╭──────────────────────────────────────────────────────────────────────────╮ KB/s   2.50       - ┃
+│  v Downloading      │ Command palette                                                          │0 B/s   0.00       - ┃
+│  + Completed        │ :                                                                        │ KB/s   0.50      1h ┃
+│  ^ Active           │                                                                          │                     ┃
+│  - Inactive         │ > open detail                torrent list                          enter │                     ┃
+│  x Stopped          │   start                      torrent list                              s │                     ┃
+│  ! Error            │   pause                      torrent list                              p │                     ┃
+│  ~ Waiting          │   verify                     torrent list                              v │                     ┃
 │Labels               │   reannounce                 torrent list                              r │                     ┃
 │  linux              │   delete                     torrent list                              d │                     ┃
 │  No label           │   queue down                 torrent list                              J │                     ┃

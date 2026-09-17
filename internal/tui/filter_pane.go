@@ -345,12 +345,12 @@ func (i filterItem) view() viewFilter {
 // A focused filter pane gets the loud border. vision.md is explicit about why:
 // s/p/v/d here act on every torrent in the group, and focus alone must not be
 // the only thing standing between one torrent and four hundred.
-func (p filterPane) view(st Styles, r rect, focused bool) string {
+func (p filterPane) view(st Styles, icons Icons, r rect, focused bool) string {
 	inner := r.inner()
 
 	lines := make([]string, 0, len(p.items))
 	for i, item := range p.items {
-		lines = append(lines, p.itemView(st, item, i, inner.w))
+		lines = append(lines, p.itemView(st, icons, item, i, inner.w))
 	}
 
 	return paneBox(st, paneFilter, focused).
@@ -359,8 +359,10 @@ func (p filterPane) view(st Styles, r rect, focused bool) string {
 		Render(paneContent(lines, r))
 }
 
-// itemView renders one sidebar row into exactly width cells.
-func (p filterPane) itemView(st Styles, item filterItem, i, width int) string {
+// itemView renders one sidebar row into exactly width cells. A Status row leads
+// with its icon, painted in the icon's color except on the cursor row, which is
+// one uniform highlight.
+func (p filterPane) itemView(st Styles, icons Icons, item filterItem, i, width int) string {
 	switch item.kind {
 	case itemHeading:
 		return st.Title.Render(truncate(item.label, width))
@@ -374,8 +376,27 @@ func (p filterPane) itemView(st Styles, item filterItem, i, width int) string {
 		marker = ">"
 	}
 
-	line := pad(marker+" "+item.label, strconv.Itoa(item.count), width)
+	prefix := marker + " "
 
+	icon, hasIcon := iconForFilter(item.filter)
+	glyph := icons.glyph(icon)
+
+	if !hasIcon || item.labelRow || item.trackerRow || glyph == "" {
+		return p.rowView(st, pad(prefix+item.label, strconv.Itoa(item.count), width), i)
+	}
+
+	// The line is laid out plain, since truncation is not escape-aware, and
+	// the glyph is painted after, only if truncation left it whole.
+	line := pad(prefix+glyph+" "+item.label, strconv.Itoa(item.count), width)
+	if i == p.cursor || !strings.HasPrefix(line, prefix+glyph+" ") {
+		return p.rowView(st, line, i)
+	}
+
+	return prefix + icons.paint(icon, glyph) + line[len(prefix)+len(glyph):]
+}
+
+// rowView styles a laid-out selectable row: the cursor row is highlighted.
+func (p filterPane) rowView(st Styles, line string, i int) string {
 	if i == p.cursor {
 		return st.Cursor.Render(line)
 	}

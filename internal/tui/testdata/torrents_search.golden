@@ -1,13 +1,13 @@
 ╭──────────────────────╮┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 │Status                │┃      ID Name               Status      Done      Size        Down          Up  Ratio     ETA ┃
-│  All               12│┃  ^   10 gentoo-admincd-am… Seeding     100%  560.0 MB       0 B/s   64.0 KB/s   1.04       - ┃
-│  Downloading        4│┃                                                                                              ┃
-│> Completed          4│┃                                                                                              ┃
-│  Active             5│┃                                                                                              ┃
-│  Inactive           4│┃                                                                                              ┃
-│  Stopped            2│┃                                                                                              ┃
-│  Error              1│┃                                                                                              ┃
-│  Waiting            3│┃                                                                                              ┃
+│  * All             12│┃  +   10 gentoo-admincd-am… Seeding     100%  560.0 MB       0 B/s   64.0 KB/s   1.04       - ┃
+│  v Downloading      4│┃                                                                                              ┃
+│> + Completed        4│┃                                                                                              ┃
+│  ^ Active           5│┃                                                                                              ┃
+│  - Inactive         4│┃                                                                                              ┃
+│  x Stopped          2│┃                                                                                              ┃
+│  ! Error            1│┃                                                                                              ┃
+│  ~ Waiting          3│┃                                                                                              ┃
 │Labels                │┃                                                                                              ┃
 │  linux              3│┃                                                                                              ┃
 │  seed               3│┃                                                                                              ┃
