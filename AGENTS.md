@@ -117,7 +117,11 @@ Layers, outermost to innermost:
   (`palette.go`) is fed by that registry plus `unboundActions`, the table of
   actions no key is bound to, filtered to the live pane stack less
   `paletteHidden`; drift tests fail on an action that is neither listed nor
-  hidden. Adding an unbound action means adding a table row. The Prowlarr
+  hidden. Adding an unbound action means adding a table row. The mouse adds
+  no actions: `mouse.go` routes clicks and the wheel in the same precedence
+  shape as `handleKey`, and `hit.go` resolves a point from `layout()` plus the
+  zero-width row markers (`rowmark.go`) the tables carry, then calls the same
+  transitions the keys do. The Prowlarr
   window (`prowlarr.go`) dials lazily on first `ctrl+p` and owns its own client
   and generation, apart from the refresh spine; its search replies are dropped
   by sequence and generation the same way. Its results columns, the `.torrent`

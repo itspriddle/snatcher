@@ -759,12 +759,62 @@ Decisions, recorded:
 - Docs: man page, README, vision checklists; a recording for the README
 - `make release-check` green
 
+## T10. Mouse — **done**
+
+The fast-follow after v1. The mouse is a convenience layer: every click does
+what an existing key does, by calling the same transition, and adds neither a
+capability nor a registry action.
+
+- ~~Wheel scrolling over lists, the sidebar, the detail viewports, modals, and
+  help~~
+- ~~Click to focus a pane, move a row cursor, apply a sidebar filter, pick a
+  tab, sort by a column heading (twice to flip)~~
+- ~~Click the cursor row of the focused list to open its detail; right click
+  for the action menu~~
+- ~~Click a modal row to run it; click outside the topmost overlay to close
+  it~~
+- ~~Settings: click tabs, rows, dropdown options, and the Save / Revert
+  buttons~~
+- ~~`client.mouse` (default `true`), editable on the General tab and applied
+  without a restart~~
+
+### Decisions
+
+- **No bubblezone.** Every pane's rectangle is already a pure function of the
+  model (`computeLayout` / `computeProwlarrLayout`), and the frame fills the
+  terminal exactly, so a screen point maps straight onto those rects. The one
+  thing geometry cannot say is which row a scrolled `bubbles/v2/table` draws on
+  a line, since it keeps its offset private. bubblezone would have answered
+  that with an asynchronous zone store, a go-runewidth width counter that can
+  disagree with the x/ansi widths lipgloss uses, and markers the `Compositor`
+  drops, so overlays would have needed geometry anyway.
+- **Row markers instead** (`rowmark.go`): every cell of a table row carries a
+  zero-width `ESC [ <index> z`, which x/ansi measures as nothing and the
+  table, viewport, and lipgloss carry through. A click re-renders only the
+  table in question and reads the marker off the clicked line; `render` strips
+  every marker before compositing, so the terminal never sees one. Every cell
+  rather than the first, because a dropped column is not drawn.
+- **Hit-testing is pure** (`hit.go`): `hitTest(x, y)` resolves a point from
+  `layout()`, the markers, and the same arithmetic the views draw with
+  (`tabAt`, `columnAt`, the settings region walk, `modalWindow`), each pinned
+  against rendered output. Overlays that draw with `modalBox` implement
+  `modalOverlay`, under a drift test; the server picker moved onto `modalBox`
+  to join them.
+- **`handleMouse` mirrors `handleKey`** (`mouse.go`): toast, then off / too
+  small, then the overlay owns the pointer, then blur a focused input, then
+  cancel a chord, then the target. Mouse mode is cell motion (clicks, releases,
+  wheel; no hover), set on the view each frame.
+- **The wheel never changes a value.** The plan had it step a settings row as
+  up/down do; that flips a toggle on a scroll, so the wheel moves the row
+  cursor instead, and moves an open dropdown's cursor without committing.
+- **Headings map to sort fields**, not to columns one-to-one: `down` and `up`
+  both sort by speed, and a column with no sort field (`id`, `status`, …)
+  toasts rather than guessing. Results headings are their sort fields.
+
 ---
 
 ## Not in v1
 
-- **Mouse.** Keyboard-first. `bubblezone/v2` is the fast-follow and pairs with
-  `Compositor` layer hit-testing.
 - **Charts beyond the sparkline.** Revisit `ntcharts` once it tags a v2 release
   without a `replace` directive.
 - **File manager window** (vision "V2").
