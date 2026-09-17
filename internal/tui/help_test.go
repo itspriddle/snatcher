@@ -43,18 +43,113 @@ func TestHelpForTheListPaneListsTheVerbs(t *testing.T) {
 	assert.NotContains(t, text, "apply filter")
 }
 
-// TestHelpListsEveryBindingInTheStackExactlyOnce checks the overlay is a
-// complete, non-repeating view of what is live. It is the reason the keymap is
-// data: a hand-written cheat sheet drifts, and this cannot.
+// TestHelpListsEveryBindingInTheStackExactlyOnce checks the overlay's content
+// is a complete, non-repeating view of what is live. It is the reason the keymap
+// is data: a hand-written cheat sheet drifts, and this cannot.
 func TestHelpListsEveryBindingInTheStackExactlyOnce(t *testing.T) {
 	m := press(newTestModel(200, 80), "?")
-	rows := helpRows(helpText(t, m))
+
+	rows := map[string]int{}
+	for _, b := range m.helpBlocks() {
+		for _, r := range b.rows {
+			rows[r.key+"\x00"+r.desc]++
+		}
+	}
 
 	for _, ctx := range m.stackBeneathHelp() {
 		for _, b := range contextBindings(ctx) {
 			help := b.Help()
 
 			assert.Equalf(t, 1, rows[help.Key+"\x00"+help.Desc], "%q / %q is not listed exactly once", help.Key, help.Desc)
+		}
+	}
+}
+
+// TestHelpLayoutDropsNothing checks every row survives the column flow, at
+// widths that give one column, two, and more. A layout that fit by truncating
+// is exactly what bubbles/help does and what this overlay exists to avoid.
+func TestHelpLayoutDropsNothing(t *testing.T) {
+	m := newTestModel(200, 80)
+	blocks := m.helpBlocks()
+
+	for _, width := range []int{40, 80, 120, 200} {
+		layout := layoutHelp(blocks, width, m.styles)
+		rows := helpLayoutRows(layout)
+
+		for _, b := range blocks {
+			for _, r := range b.rows {
+				assert.Equalf(t, 1, rows[r.key+"\x00"+r.desc], "width %d: %q / %q is not listed exactly once", width, r.key, r.desc)
+			}
+		}
+	}
+}
+
+// helpLayoutRows counts the key/description pairs in a layout, cutting each line
+// at the column boundaries first so one column's row is never read as part of
+// another's.
+func helpLayoutRows(layout helpLayout) map[string]int {
+	var cells []string
+
+	stride := layout.colWidth + helpColumnGap
+
+	for _, line := range layout.lines {
+		line = ansi.Strip(line)
+		for i := range layout.columns {
+			cells = append(cells, ansi.Cut(line, i*stride, i*stride+layout.colWidth))
+		}
+	}
+
+	return helpRows(strings.Join(cells, "\n"))
+}
+
+// TestHelpUsesColumnsWhenWide checks a wide terminal gets more than one column,
+// and that the columns make the help shorter.
+func TestHelpUsesColumnsWhenWide(t *testing.T) {
+	m := newTestModel(200, 80)
+	blocks := m.helpBlocks()
+
+	wide := layoutHelp(blocks, 200, m.styles)
+	narrow := layoutHelp(blocks, 40, m.styles)
+
+	assert.Greater(t, wide.columns, 1)
+	assert.Equal(t, 1, narrow.columns)
+	assert.Less(t, len(wide.lines), len(narrow.lines))
+}
+
+// TestHelpFallsBackToOneColumn checks a terminal too narrow for two columns gets
+// the stacked list, blocks separated by one blank line and nothing padded out.
+func TestHelpFallsBackToOneColumn(t *testing.T) {
+	m := newTestModel(200, 80)
+	blocks := m.helpBlocks()
+	layout := layoutHelp(blocks, 40, m.styles)
+
+	require.Equal(t, 1, layout.columns)
+
+	want := len(blocks) - 1
+	for _, b := range blocks {
+		want += 1 + len(b.rows)
+	}
+
+	assert.Len(t, layout.lines, want)
+	assert.NotContains(t, ansi.Strip(strings.Join(layout.lines, "\n")), "(cont.)")
+}
+
+// TestHelpNeverOrphansATitle checks the flow never leaves a title at the foot of
+// a column with its rows in the next, never opens a column with a blank line,
+// and repeats the title of a block it splits.
+func TestHelpNeverOrphansATitle(t *testing.T) {
+	m := newTestModel(200, 80)
+	blocks := m.helpBlocks()
+
+	for n := 1; n <= 8; n++ {
+		for ci, col := range flowHelp(blocks, n) {
+			require.NotEmpty(t, col)
+			assert.GreaterOrEqualf(t, col[0].block, 0, "n=%d column %d opens with a blank", n, ci)
+			assert.Equalf(t, -1, col[0].row, "n=%d column %d does not open with a title", n, ci)
+			assert.Equalf(t, ci > 0 && col[0].cont, col[0].cont, "n=%d column %d: the first column cannot continue a block", n, ci)
+
+			last := col[len(col)-1]
+			assert.Falsef(t, last.block >= 0 && last.row < 0, "n=%d column %d ends on a title", n, ci)
 		}
 	}
 }
@@ -125,6 +220,24 @@ func TestHelpScrolls(t *testing.T) {
 
 	m = press(m, "k")
 	assert.Equal(t, 1, helpOffset(t, m))
+}
+
+// TestHelpHalfPages checks ctrl+d and ctrl+u move half the box, as they do in
+// the torrent list.
+func TestHelpHalfPages(t *testing.T) {
+	m := press(newTestModel(80, 16), "?")
+	require.Zero(t, helpOffset(t, m))
+
+	m = press(m, "ctrl+d")
+
+	top, _ := m.topOverlay()
+	half := top.(helpOverlay).fit(m, m.width, m.height).vp.Height() / 2
+
+	require.Positive(t, half)
+	assert.Equal(t, half, helpOffset(t, m))
+
+	m = press(m, "ctrl+u")
+	assert.Zero(t, helpOffset(t, m))
 }
 
 // helpOffset is the help overlay's current scroll position.

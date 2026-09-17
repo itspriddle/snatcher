@@ -206,6 +206,9 @@ func helpHandlers() map[Action]handler {
 		actionHelpScrollDown: scrollHelp,
 		actionHelpPageUp:     scrollHelp,
 		actionHelpPageDown:   scrollHelp,
+
+		actionHelpHalfPageUp:   scrollHelp,
+		actionHelpHalfPageDown: scrollHelp,
 	}
 }
 
