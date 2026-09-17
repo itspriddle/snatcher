@@ -41,7 +41,7 @@ func TestSpaceMarksAFileWithoutMovingTheCursor(t *testing.T) {
 	assert.Equal(t, 1, p.files.cursor())
 	assert.True(t, p.fileSel.isMarked(1))
 	assert.Equal(t, 1, p.fileSel.markCount())
-	assert.Equal(t, m.icons.mark(true), p.files.table.Rows()[1][0])
+	assert.Equal(t, m.icons.mark(true), stripMarkers(p.files.table.Rows()[1][0]))
 	assert.Zero(t, m.torrents.sel.markCount(), "a file mark is not a torrent mark")
 }
 

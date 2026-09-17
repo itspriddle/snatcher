@@ -49,6 +49,11 @@ func (o filterPickOverlay) move(delta int) filterPickOverlay {
 
 // view implements overlay.
 func (o filterPickOverlay) view(m Model, w, h int) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o filterPickOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), filterPickMaxWidth)
 
 	rows := make([]string, 0, len(o.pane.items))
@@ -57,7 +62,26 @@ func (o filterPickOverlay) view(m Model, w, h int) string {
 		rows = append(rows, o.row(m.styles, item, i, width))
 	}
 
-	return m.modalBox(modal{title: "Filter torrents", rows: rows, focus: o.pane.cursor, ctx: ctxFilterPick, width: width}, h)
+	return modal{title: "Filter torrents", rows: rows, focus: o.pane.cursor, ctx: ctxFilterPick, width: width}
+}
+
+// pointAt implements modalOverlay. Headings and notes never hold the cursor.
+func (o filterPickOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(o.pane.items) || !o.pane.items[i].selectable() {
+		return o, false
+	}
+
+	o.pane.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click applies the row, as enter does.
+func (filterPickOverlay) clickAction() Action { return actionFilterPickSelect }
+
+// wheelActions implements modalOverlay.
+func (filterPickOverlay) wheelActions() (up, down Action) {
+	return actionFilterPickUp, actionFilterPickDown
 }
 
 // row draws one of the modal's rows in exactly width cells.

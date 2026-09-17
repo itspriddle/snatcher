@@ -1,8 +1,12 @@
 package tui
 
 import (
+	"strings"
+	"testing"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // testDeps is the dependency set every test builds a model from: no dialer, the
@@ -104,4 +108,73 @@ func press(m Model, keys ...string) Model {
 // handlers whose whole effect is the command they return.
 func pressCmd(m Model, k string) (Model, tea.Cmd) {
 	return m.handleKey(keyMsg(k))
+}
+
+// clickMsg, rightClickMsg, and wheelMsg are the mouse messages a terminal sends
+// in cell-motion mode.
+func clickMsg(x, y int) tea.MouseClickMsg {
+	return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft}
+}
+
+func rightClickMsg(x, y int) tea.MouseClickMsg {
+	return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseRight}
+}
+
+func wheelMsg(x, y int, up bool) tea.MouseWheelMsg {
+	button := tea.MouseWheelDown
+	if up {
+		button = tea.MouseWheelUp
+	}
+
+	return tea.MouseWheelMsg{X: x, Y: y, Button: button}
+}
+
+// click, rightClick, and wheel send mouse messages through update, as press
+// sends keys, discarding the command.
+func click(m Model, x, y int) Model {
+	m, _ = m.update(clickMsg(x, y))
+
+	return m
+}
+
+func rightClick(m Model, x, y int) Model {
+	m, _ = m.update(rightClickMsg(x, y))
+
+	return m
+}
+
+func wheel(m Model, x, y, notches int) Model {
+	for range abs(notches) {
+		m, _ = m.update(wheelMsg(x, y, notches < 0))
+	}
+
+	return m
+}
+
+// locate finds text in the rendered frame and returns the cell it starts at.
+// Tests click what they can see, so a hit-test that drifts from the drawing
+// fails here rather than in a terminal.
+func locate(t *testing.T, m Model, text string) (x, y int) {
+	t.Helper()
+
+	return locateIn(t, m, rect{w: m.width, h: m.height}, text)
+}
+
+// locateIn is locate restricted to a region, for text drawn in more than one
+// pane.
+func locateIn(t *testing.T, m Model, r rect, text string) (x, y int) {
+	t.Helper()
+
+	lines := strings.Split(ansi.Strip(m.render()), "\n")
+
+	for y := r.y; y < r.y+r.h && y < len(lines); y++ {
+		line := ansi.Cut(lines[y], r.x, r.x+r.w)
+		if i := strings.Index(line, text); i >= 0 {
+			return r.x + ansi.StringWidth(line[:i]), y
+		}
+	}
+
+	t.Fatalf("%q is not drawn in %+v:\n%s", text, r, strings.Join(lines, "\n"))
+
+	return 0, 0
 }

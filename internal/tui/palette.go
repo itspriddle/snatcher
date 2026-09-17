@@ -159,6 +159,11 @@ func paletteBudget(h int) int {
 
 // view implements overlay.
 func (o paletteOverlay) view(m Model, w, h int) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o paletteOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), paletteMaxWidth)
 
 	labelW, keyW := 0, 0
@@ -178,7 +183,7 @@ func (o paletteOverlay) view(m Model, w, h int) string {
 		rows = append(rows, m.styles.Muted.Render(padLine("  no matches", width)))
 	}
 
-	return m.modalBox(modal{
+	return modal{
 		title: o.title,
 		head:  []string{o.input.View()},
 		rows:  rows,
@@ -186,8 +191,25 @@ func (o paletteOverlay) view(m Model, w, h int) string {
 		ctx:   ctxPalette,
 		help:  o.helpBindings(),
 		width: width,
-	}, h)
+	}
 }
+
+// pointAt implements modalOverlay. The "no matches" line is not an entry.
+func (o paletteOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(o.matches) {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click runs the entry, as enter does.
+func (paletteOverlay) clickAction() Action { return actionInputSubmit }
+
+// wheelActions implements modalOverlay.
+func (paletteOverlay) wheelActions() (up, down Action) { return actionPaletteUp, actionPaletteDown }
 
 // paletteRow draws one entry: the label, the note, and the key right-aligned.
 // The note gives way first when the row is narrow, then the label. The cursor

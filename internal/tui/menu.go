@@ -97,6 +97,11 @@ func (o menuOverlay) move(delta int) menuOverlay {
 // view implements overlay. A submenu row ends in "▸"; a disabled row is muted
 // and names the milestone it waits on, so it reads without color too.
 func (o menuOverlay) view(m Model, w, h int) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o menuOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), menuMaxWidth)
 
 	rows := make([]string, 0, len(o.items))
@@ -120,8 +125,25 @@ func (o menuOverlay) view(m Model, w, h int) string {
 		rows = append(rows, cursorRow(m.styles, i == o.cursor, label, width))
 	}
 
-	return m.modalBox(modal{title: o.title, rows: rows, focus: o.cursor, ctx: ctxMenu, width: width}, h)
+	return modal{title: o.title, rows: rows, focus: o.cursor, ctx: ctxMenu, width: width}
 }
+
+// pointAt implements modalOverlay. A disabled row never holds the cursor.
+func (o menuOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(o.items) || o.items[i].disabled {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click is enter.
+func (menuOverlay) clickAction() Action { return actionMenuSelect }
+
+// wheelActions implements modalOverlay.
+func (menuOverlay) wheelActions() (up, down Action) { return actionMenuUp, actionMenuDown }
 
 // openMenu is m: open the menu over the selection, or close every menu level
 // when one is on top. It refuses for the same reasons a verb would, so a menu

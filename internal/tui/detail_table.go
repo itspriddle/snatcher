@@ -354,7 +354,7 @@ func (t detailTable) setRows(rows []table.Row, keys []string) detailTable {
 	}
 
 	t.keys = keys
-	t.table.SetRows(rows)
+	t.table.SetRows(markRows(rows))
 	t.table.SetCursor(max(0, cursor))
 
 	return t

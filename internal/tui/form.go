@@ -151,6 +151,11 @@ func (o formOverlay) inputWidth(w int) int {
 
 // view implements overlay.
 func (o formOverlay) view(m Model, w, h int) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o formOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), formMaxWidth)
 	labelW := o.labelWidth()
 
@@ -169,8 +174,26 @@ func (o formOverlay) view(m Model, w, h int) string {
 		ctx = ctxTextInput
 	}
 
-	return m.modalBox(modal{title: o.title, rows: rows, focus: o.cursor, footer: []string{footer}, ctx: ctx, width: width}, h)
+	return modal{title: o.title, rows: rows, focus: o.cursor, footer: []string{footer}, ctx: ctx, width: width}
 }
+
+// pointAt implements modalOverlay.
+func (o formOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(o.rows) {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click is enter — edit a text row, flip
+// a toggle, press the button.
+func (formOverlay) clickAction() Action { return actionFormEnter }
+
+// wheelActions implements modalOverlay: the form's rows are stepped with tab.
+func (formOverlay) wheelActions() (up, down Action) { return actionFormPrev, actionFormNext }
 
 // rowView draws one row. The row being edited shows the input in place of its
 // value, as a settings row does.

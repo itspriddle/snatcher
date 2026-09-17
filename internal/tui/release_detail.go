@@ -107,6 +107,13 @@ func (d releaseDetail) forward(msg tea.Msg) (releaseDetail, tea.Cmd) {
 	return d, cmd
 }
 
+// wheel scrolls the pane by delta notches.
+func (d releaseDetail) wheel(delta int) releaseDetail {
+	d.vp = wheelViewport(d.vp, delta)
+
+	return d
+}
+
 // view renders the scrolled lines into r, each cut escape-aware first.
 func (d releaseDetail) view(st Styles, r rect, focused bool) string {
 	inner := r.inner()

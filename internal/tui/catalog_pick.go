@@ -251,6 +251,11 @@ func (o catalogPickOverlay) selected(kind catalogRowKind) []int {
 
 // view implements overlay.
 func (o catalogPickOverlay) view(m Model, w, h int) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o catalogPickOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), filterPickMaxWidth)
 
 	rows := make([]string, 0, len(o.rows))
@@ -277,15 +282,34 @@ func (o catalogPickOverlay) view(m Model, w, h int) string {
 		}
 	}
 
-	return m.modalBox(modal{
+	return modal{
 		title:  "Search categories and indexers",
 		rows:   rows,
 		focus:  o.cursor,
 		footer: []string{m.styles.Muted.Render(padLine("  nothing checked searches all", width))},
 		ctx:    ctxCatalogPick,
 		width:  width,
-	}, h)
+	}
 }
+
+// pointAt implements modalOverlay. Headings, notes, and disabled indexers never
+// hold the cursor.
+func (o catalogPickOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(o.rows) || !o.rows[i].selectable() {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click checks or unchecks the row, as
+// space does. enter still applies.
+func (catalogPickOverlay) clickAction() Action { return actionCatalogToggle }
+
+// wheelActions implements modalOverlay.
+func (catalogPickOverlay) wheelActions() (up, down Action) { return actionCatalogUp, actionCatalogDown }
 
 // toggleCatalogPick is f: open the modal, fetching the catalog the first time,
 // or close it when it is on top.

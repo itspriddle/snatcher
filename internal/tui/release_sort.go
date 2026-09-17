@@ -164,6 +164,11 @@ func (o releaseSortOverlay) flipReverse() releaseSortOverlay {
 
 // view implements overlay.
 func (o releaseSortOverlay) view(m Model, w, h int) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o releaseSortOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), sortMaxWidth)
 
 	rows := make([]string, 0, len(releaseSortFields))
@@ -181,14 +186,33 @@ func (o releaseSortOverlay) view(m Model, w, h int) string {
 		rows = append(rows, cursorRow(m.styles, i == o.cursor, label, width))
 	}
 
-	return m.modalBox(modal{
+	return modal{
 		title:  "Sort releases",
 		rows:   rows,
 		focus:  o.cursor,
 		footer: []string{padLine("  reverse: "+onOff(o.reverse), width)},
 		ctx:    ctxReleaseSort,
 		width:  width,
-	}, h)
+	}
+}
+
+// pointAt implements modalOverlay.
+func (o releaseSortOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(releaseSortFields) {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click applies the field, as enter does.
+func (releaseSortOverlay) clickAction() Action { return actionReleaseSortSelect }
+
+// wheelActions implements modalOverlay.
+func (releaseSortOverlay) wheelActions() (up, down Action) {
+	return actionReleaseSortUp, actionReleaseSortDown
 }
 
 // toggleReleaseSort is o: open the modal, or close it when it is on top.
@@ -207,17 +231,41 @@ func (m Model) applyReleaseSort() Model {
 		return m
 	}
 
-	m = m.pop()
+	return m.pop().setReleaseSort(releaseSort{field: releaseSortFields[o.cursor], reverse: o.reverse})
+}
 
-	s := releaseSort{field: releaseSortFields[o.cursor], reverse: o.reverse}
+// setReleaseSort installs a results sort. The modal and a click on a results
+// heading both land here.
+func (m Model) setReleaseSort(s releaseSort) Model {
 	m.prowlarr = m.prowlarr.setSort(s)
-
 	m.toast = "sort: " + string(s.field)
+
 	if s.reverse {
 		m.toast += ", reversed"
 	}
 
 	return m
+}
+
+// sortReleasesByColumn is a click on a results heading. Every results column is
+// named for the sort field that orders it, so the heading is the field; the same
+// heading again flips the direction.
+func (m Model) sortReleasesByColumn(col int) Model {
+	cols := m.prowlarr.cols
+	if col < 0 || col >= len(cols) {
+		return m
+	}
+
+	field := releaseSortField(cols[col].key)
+	if !slices.Contains(releaseSortFields, field) || field == releaseSortServer {
+		m.toast = "no sort for " + cols[col].key
+
+		return m
+	}
+
+	current := m.prowlarr.sort
+
+	return m.setReleaseSort(releaseSort{field: field, reverse: field == current.field && !current.reverse})
 }
 
 // releaseSortHandlers are o and the modal's own keys.

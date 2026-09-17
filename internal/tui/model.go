@@ -266,6 +266,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		m, cmd := m.handleKey(msg)
 
 		return m.ensureDetail(cmd)
+	case tea.MouseMsg:
+		// A click moves the cursor as a key does, so it shares the debounce.
+		m, cmd := m.handleMouse(msg)
+
+		return m.ensureDetail(cmd)
 	case settingsLoadedMsg:
 		return m.settingsLoaded(msg)
 	case settingsSavedMsg:
@@ -408,7 +413,9 @@ func (m Model) render() string {
 		body = m.prowlarr.view(m.styles, l, m.resultsPlaceholder())
 	}
 
-	frame := m.composite(padFrame(body, l.body))
+	// The row markers have done their job once the body is drawn: neither the
+	// compositor nor the terminal is shown one.
+	frame := m.composite(stripMarkers(padFrame(body, l.body)))
 
 	return strings.Join([]string{frame, m.helpLineView(l.helpLine.w), m.statusBarView(l.statusBar.w)}, "\n")
 }

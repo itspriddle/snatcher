@@ -76,6 +76,11 @@ func (o sortOverlay) flipReverse() sortOverlay {
 
 // view implements overlay.
 func (o sortOverlay) view(m Model, w, h int) string {
+	return m.modalBox(o.modal(m, w, h), h)
+}
+
+// modal implements modalOverlay.
+func (o sortOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), sortMaxWidth)
 
 	rows := make([]string, 0, len(sortFields))
@@ -89,15 +94,32 @@ func (o sortOverlay) view(m Model, w, h int) string {
 		rows = append(rows, cursorRow(m.styles, i == o.cursor, label, width))
 	}
 
-	return m.modalBox(modal{
+	return modal{
 		title:  "Sort torrents",
 		rows:   rows,
 		focus:  o.cursor,
 		footer: []string{padLine("  reverse: "+onOff(o.reverse), width)},
 		ctx:    ctxSort,
 		width:  width,
-	}, h)
+	}
 }
+
+// pointAt implements modalOverlay.
+func (o sortOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(sortFields) {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click applies the field, as enter does.
+func (sortOverlay) clickAction() Action { return actionSortSelect }
+
+// wheelActions implements modalOverlay.
+func (sortOverlay) wheelActions() (up, down Action) { return actionSortUp, actionSortDown }
 
 // onOff spells a switch.
 func onOff(on bool) string {
@@ -126,11 +148,16 @@ func (m Model) applySort() Model {
 		return m
 	}
 
-	m = m.pop()
+	return m.pop().setListSort(sortFields[o.cursor], o.reverse)
+}
 
+// setListSort installs a sort, then persists whichever of the two keys changed.
+// The session value applies whether or not the write succeeds. The modal and a
+// click on a column heading both land here.
+func (m Model) setListSort(field transmission.SortField, reverse bool) Model {
 	prev := m.torrents.listView
 	v := prev
-	v.sort, v.reverse = sortFields[o.cursor], o.reverse
+	v.sort, v.reverse = field, reverse
 
 	m.torrents = m.torrents.setView(v, m.icons)
 	m.toast = "sort: " + string(v.sort)
@@ -148,4 +175,37 @@ func (m Model) applySort() Model {
 	}
 
 	return m
+}
+
+// columnSorts maps the torrent columns a heading click can sort by to the sort
+// field that orders them. Both speed columns sort by speed, as --sort does.
+var columnSorts = map[string]transmission.SortField{
+	nameKey: transmission.SortName,
+	"size":  transmission.SortSize,
+	"done":  transmission.SortProgress,
+	"ratio": transmission.SortRatio,
+	"added": transmission.SortAdded,
+	"down":  transmission.SortSpeed,
+	"up":    transmission.SortSpeed,
+}
+
+// sortByColumn is a click on a column heading: sort by the column, or flip the
+// direction when the list is already sorted by it. A column with no sort says
+// so rather than doing nothing.
+func (m Model) sortByColumn(col int) Model {
+	cols := m.torrents.list.cols
+	if col < 0 || col >= len(cols) || cols[col].key == "" {
+		return m
+	}
+
+	field, ok := columnSorts[cols[col].key]
+	if !ok {
+		m.toast = "no sort for " + cols[col].key
+
+		return m
+	}
+
+	v := m.torrents.listView
+
+	return m.setListSort(field, field == v.sort && !v.reverse)
 }

@@ -301,6 +301,28 @@ func (w settingsWindow) switchTab(step int) settingsWindow {
 	return w.fixCursors()
 }
 
+// gotoTab selects a tab by index, clamped to the tabs that exist, closing an
+// open dropdown: it belongs to the tab being left.
+func (w settingsWindow) gotoTab(i int) settingsWindow {
+	w = w.closeDropdown()
+	w.tab = clamp(i, 0, len(w.tabs)-1)
+
+	return w.fixCursors()
+}
+
+// pointAt moves the cursor to a row of the current tab, when the row can hold
+// it.
+func (w settingsWindow) pointAt(i int) settingsWindow {
+	if i < 0 || i >= len(w.tabs[w.tab].fields) || !w.selectable(w.tab, i) {
+		return w
+	}
+
+	w = w.cloned()
+	w.tabs[w.tab].cursor = i
+
+	return w
+}
+
 // moveField moves the cursor step rows within the tab, wrapping, buttons
 // included and read-only rows skipped.
 func (w settingsWindow) moveField(step int) settingsWindow {
@@ -752,6 +774,17 @@ func (w settingsWindow) hintLine(st Styles, width int) string {
 // text as well as its style, so focus survives NO_COLOR and a stripped golden
 // alike, and the row does not shift when focus moves.
 func (w settingsWindow) buttonsLine(st Styles) string {
+	save, revert := w.buttonPieces(st)
+
+	return save + buttonGap + revert
+}
+
+// buttonGap separates the two buttons.
+const buttonGap = "  "
+
+// buttonPieces are the Save and Revert buttons as buttonsLine joins them, apart
+// so a click can be measured against each.
+func (w settingsWindow) buttonPieces(st Styles) (save, revert string) {
 	cursorKey := w.current().key
 
 	render := func(k, label string) string {
@@ -762,7 +795,7 @@ func (w settingsWindow) buttonsLine(st Styles) string {
 		return st.Button.Render("[ " + label + " ]")
 	}
 
-	return render(buttonSave, fmt.Sprintf("Save (%d)", w.dirtyCount())) + "  " + render(buttonRevert, "Revert")
+	return render(buttonSave, fmt.Sprintf("Save (%d)", w.dirtyCount())), render(buttonRevert, "Revert")
 }
 
 // settingsHandler wraps a settings key's transition with what every settings

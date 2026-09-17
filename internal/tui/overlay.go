@@ -156,11 +156,9 @@ func overlayContentHeight(h int) int {
 // keeping the focused row in view: a column list is fifteen rows, and a 60x16
 // terminal has room for five of them.
 func (m Model) modalBox(b modal, h int) string {
-	budget := max(1, overlayContentHeight(h)-4-len(b.footer)-len(b.head))
-	start := scrollStart(b.focus, len(b.rows), budget)
-	end := min(len(b.rows), start+budget)
+	start, end := modalWindow(b, h)
 
-	lines := make([]string, 0, budget+4+len(b.footer)+len(b.head))
+	lines := make([]string, 0, end-start+4+len(b.footer)+len(b.head))
 	lines = append(lines, m.styles.Title.Render(truncate(b.title, b.width)))
 	lines = append(lines, b.head...)
 	lines = append(lines, "")
@@ -180,6 +178,43 @@ func (m Model) modalBox(b modal, h int) string {
 	lines = append(lines, ansi.Truncate(m.help.ShortHelpView(bindings), b.width, "…"))
 
 	return m.styles.Overlay.Render(strings.Join(lines, "\n"))
+}
+
+// modalWindow is the run of a modal's rows modalBox draws in a terminal of h
+// rows: from start up to, not including, end.
+func modalWindow(b modal, h int) (start, end int) {
+	budget := max(1, overlayContentHeight(h)-4-len(b.footer)-len(b.head))
+	start = scrollStart(b.focus, len(b.rows), budget)
+
+	return start, min(len(b.rows), start+budget)
+}
+
+// modalRowsTop is how many content lines modalBox draws above a modal's first
+// row: the title, the head, and a blank line.
+func modalRowsTop(b modal) int {
+	return 1 + len(b.head) + 1
+}
+
+// modalOverlay is an overlay drawn with modalBox, whose rows a click can land
+// on. modal is exactly what its view hands modalBox, so the hit-test and the
+// frame agree on which row is where.
+type modalOverlay interface {
+	overlay
+
+	// modal is the modal the overlay draws in a frame of w by h.
+	modal(m Model, w, h int) modal
+
+	// pointAt moves the cursor to row i, and reports false for a row that
+	// cannot hold it: a heading, a note, a disabled row.
+	pointAt(i int) (overlay, bool)
+
+	// clickAction is what a click on a row runs once the cursor is on it: the
+	// action the row's own key runs.
+	clickAction() Action
+
+	// wheelActions are the actions the overlay's own up and down keys run,
+	// which a notch of the wheel runs too.
+	wheelActions() (up, down Action)
 }
 
 // scrollStart is the first row of a window of height rows over total rows that
@@ -219,6 +254,13 @@ func (m Model) hasOverlay(kind string) bool {
 	return false
 }
 
+// placeBox is where composite centers a rendered overlay box in the frame.
+func (m Model) placeBox(box string) rect {
+	w, h := lipgloss.Width(box), lipgloss.Height(box)
+
+	return rect{x: max(0, (m.width-w)/2), y: max(0, (m.height-h)/2), w: w, h: h}
+}
+
 // composite draws the overlay stack over a base frame, each layer centered and
 // one Z above the last.
 //
@@ -235,11 +277,9 @@ func (m Model) composite(base string) string {
 
 	for i, o := range m.overlays {
 		box := o.view(m, m.width, m.height)
+		r := m.placeBox(box)
 
-		x := max(0, (m.width-lipgloss.Width(box))/2)
-		y := max(0, (m.height-lipgloss.Height(box))/2)
-
-		layers = append(layers, lipgloss.NewLayer(box).X(x).Y(y).Z(i+1))
+		layers = append(layers, lipgloss.NewLayer(box).X(r.x).Y(r.y).Z(i+1))
 	}
 
 	return lipgloss.NewCompositor(layers...).Render()
