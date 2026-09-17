@@ -23,6 +23,7 @@ const (
 	clientKeyNerdFont     = "client.nerd_font"
 	clientKeyColorDepth   = "client.color_depth"
 	clientKeyPollInterval = "client.poll_interval"
+	clientKeyMouse        = "client.mouse"
 )
 
 // builtinThemes are the theme choices offered before Deps.Config has answered
@@ -147,6 +148,11 @@ func newSettingsWindow(st Styles, deps Deps) settingsWindow {
 			key: clientKeyColorDepth, label: clientKeyColorDepth, desc: "Colors the terminal can draw (auto detects)",
 			kind: fieldSelect, source: sourceClient, options: builtinColorDepths,
 			loaded: depth, value: depth,
+		},
+		{
+			key: clientKeyMouse, label: clientKeyMouse, desc: "Respond to mouse clicks and the wheel",
+			kind: fieldToggle, source: sourceClient,
+			loaded: deps.Mouse, value: deps.Mouse,
 		},
 	}}
 

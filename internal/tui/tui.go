@@ -58,6 +58,11 @@ type Deps struct {
 	// NerdFont reports whether Nerd Font glyphs may be used.
 	NerdFont bool
 
+	// Mouse reports whether the TUI turns on mouse reporting and responds to
+	// clicks and the wheel. Saving client.mouse in the settings window flips it
+	// for the running session.
+	Mouse bool
+
 	// NoColor is set when NO_COLOR is in the environment, resolved by the
 	// command layer with the same predicate the CLI's plaintext output uses.
 	// colorprofile has a NO_COLOR check of its own, but it parses the value

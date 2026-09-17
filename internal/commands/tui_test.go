@@ -21,12 +21,12 @@ func TestResolveClientSettingsDefaults(t *testing.T) {
 	settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
 	require.NoError(t, err)
 
-	assert.Equal(t, ClientSettings{Theme: "default", ColorDepth: "auto", NerdFont: true, PollInterval: 5 * time.Second}, settings)
+	assert.Equal(t, ClientSettings{Theme: "default", ColorDepth: "auto", NerdFont: true, Mouse: true, PollInterval: 5 * time.Second}, settings)
 }
 
 // TestResolveClientSettingsReadsFile checks stored values win over the defaults.
 func TestResolveClientSettingsReadsFile(t *testing.T) {
-	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord", "nerd_font": false, "color_depth": "256", "poll_interval": "30s"}}`)
+	cfgPath := writeConfigFile(t, `{"servers": {}, "client": {"theme": "nord", "nerd_font": false, "color_depth": "256", "poll_interval": "30s", "mouse": false}}`)
 
 	settings, err := ResolveClientSettings(dialCmd(t, cfgPath))
 	require.NoError(t, err)

@@ -145,6 +145,10 @@ type Model struct {
 
 	// help renders both the short-help line and the help overlay's columns.
 	help help.Model
+
+	// mouse turns mouse reporting on and lets handleMouse act. It starts from
+	// Deps.Mouse and follows a saved client.mouse.
+	mouse bool
 }
 
 // New builds a Model from its dependencies without dialing, connecting, or
@@ -159,6 +163,7 @@ func New(deps Deps) Model {
 		profile:  effectiveProfile(deps.ColorDepth, colorprofile.TrueColor),
 		chord:    chordNone,
 		help:     help.New(),
+		mouse:    deps.Mouse,
 	}
 
 	m = m.applyTheme(true)
@@ -369,6 +374,13 @@ func (m Model) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
 	v.WindowTitle = "snatcher"
+
+	// Cell motion reports clicks, releases, and the wheel, and motion only
+	// while a button is held; hover is never reported. bubbletea diffs the
+	// mode per frame, so a saved client.mouse applies on the next one.
+	if m.mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 
 	return v
 }

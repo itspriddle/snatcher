@@ -133,6 +133,7 @@ type Client struct {
 	ListColumns  *[]string `json:"list_columns,omitempty"`
 	ListSort     *string   `json:"list_sort,omitempty"`
 	ListReverse  *bool     `json:"list_reverse,omitempty"`
+	Mouse        *bool     `json:"mouse,omitempty"`
 
 	// unknown holds keys inside the client object that this package does not
 	// model, so a hand-edited or newer-version key survives a Load/Save round
@@ -145,6 +146,7 @@ type Client struct {
 // see unknownKeys — is preserved verbatim in Client.unknown.
 var clientKeys = []string{
 	"theme", "nerd_font", "color_depth", "poll_interval", "list_columns", "list_sort", "list_reverse",
+	"mouse",
 }
 
 // IsZero reports whether the client section holds nothing at all — no set key
@@ -159,6 +161,7 @@ func (c Client) IsZero() bool {
 		c.ListColumns == nil &&
 		c.ListSort == nil &&
 		c.ListReverse == nil &&
+		c.Mouse == nil &&
 		len(c.unknown) == 0
 }
 
@@ -230,6 +233,7 @@ func (c Client) MarshalJSON() ([]byte, error) {
 		putField(obj, "list_columns", c.ListColumns),
 		putField(obj, "list_sort", c.ListSort),
 		putField(obj, "list_reverse", c.ListReverse),
+		putField(obj, "mouse", c.Mouse),
 	); err != nil {
 		return nil, err
 	}

@@ -4,7 +4,7 @@
 ┃  client.theme         < default > (no config store)                                                                  ┃
 ┃  client.nerd_font     [ ] (no config store)                                                                          ┃
 ┃  client.color_depth   < auto > (no config store)                                                                     ┃
-┃                                                                                                                      ┃
+┃  client.mouse         [x] (no config store)                                                                          ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃
 ┃                                                                                                                      ┃

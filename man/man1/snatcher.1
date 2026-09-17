@@ -1958,6 +1958,13 @@ reverses its sort order by default
 .RB ( true / false ).
 Default:
 .BR false .
+.TP
+.B client.mouse
+Whether the TUI turns on mouse reporting and responds to clicks and the wheel
+.RB ( true / false ).
+While it is on, the terminal's own text selection needs a modifier, usually
+shift-drag. Default:
+.BR true .
 .PP
 .BR client.theme ", " client.color_depth ", and " client.nerd_font
 can also be overridden for a single invocation, without editing the file, with
@@ -1972,16 +1979,18 @@ write the file and are unaffected by whatever is in force, so a
 .B \-\-theme
 on the command line can never end up persisted.
 .PP
-.BR client.theme ", " client.color_depth ", " client.nerd_font ", and " client.poll_interval
+.BR client.theme ", " client.color_depth ", " client.nerd_font ", " client.poll_interval ", and " client.mouse
 are the TUI's own settings, and no other command renders them:
 .B client.theme
 picks its palette,
 .B client.color_depth
 how many colors it draws with,
 .B client.nerd_font
-whether it draws Nerd Font glyphs or their ASCII fallbacks, and
+whether it draws Nerd Font glyphs or their ASCII fallbacks,
 .B client.poll_interval
-how often it refreshes server data.
+how often it refreshes server data, and
+.B client.mouse
+whether it answers the mouse.
 .SS "search"
 .B snatcher search
 .RI [ options "] [" query ]

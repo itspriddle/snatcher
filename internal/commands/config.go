@@ -49,6 +49,7 @@ const (
 	keyListColumns  = "client.list_columns"
 	keyListSort     = "client.list_sort"
 	keyListReverse  = "client.list_reverse"
+	keyMouse        = "client.mouse"
 )
 
 // colorDepths lists every valid client.color_depth value. auto keeps the
@@ -182,6 +183,13 @@ var clientKeyRegistry = []clientKeyDef{
 		def:      false,
 		accessor: func(c config.Client) (any, bool) { return clientValue(c.ListReverse) },
 		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.ListReverse, v) },
+		validate: alwaysValid,
+	},
+	{
+		key:      keyMouse,
+		def:      true,
+		accessor: func(c config.Client) (any, bool) { return clientValue(c.Mouse) },
+		apply:    func(c *config.Client, v any) error { return applyClientValue(&c.Mouse, v) },
 		validate: alwaysValid,
 	},
 }
