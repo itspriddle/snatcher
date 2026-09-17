@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -702,4 +704,47 @@ func TestWheelInOverlays(t *testing.T) {
 
 	help, _ := topAs[helpOverlay](h)
 	assert.Equal(t, wheelLines, help.vp.YOffset())
+}
+
+// TestClickOnALongListKeepsTheView checks a click on a scrolled list of many
+// torrents selects the row without moving it: every row stays where it was
+// drawn.
+func TestClickOnALongListKeepsTheView(t *testing.T) {
+	deps := testDeps()
+	deps.Torrents = nil
+
+	for i := range 150 {
+		deps.Torrents = append(deps.Torrents, transmission.Torrent{ID: int64(i + 1), Name: "torrent-" + strconv.Itoa(i+1)})
+	}
+
+	m := New(deps).applyTheme(true).resize(120, 40)
+	m = press(m, "G")
+	m = wheel(m, 60, 10, -30).setFocus(paneFilter)
+
+	view := m.torrents.list.table.View()
+	inner := m.layout().list.inner()
+
+	for _, line := range []int{1, 5, 12, 20} {
+		want, ok := rowAt(view, line)
+		require.True(t, ok)
+
+		clicked := click(m, inner.x+10, inner.y+line)
+
+		assert.Equal(t, want, clicked.torrents.list.cursor(), "line %d", line)
+		assert.Equal(t, markerOrder(view), markerOrder(clicked.torrents.list.table.View()),
+			"clicking line %d moved the view", line)
+	}
+}
+
+// markerOrder is the row indexes a view draws, line by line.
+func markerOrder(view string) string {
+	var out []string
+
+	for line := 1; line < len(strings.Split(view, "\n")); line++ {
+		if i, ok := rowAt(view, line); ok {
+			out = append(out, strconv.Itoa(i))
+		}
+	}
+
+	return strings.Join(out, ",")
 }

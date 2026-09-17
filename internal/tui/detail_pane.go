@@ -307,12 +307,12 @@ func (p detailPane) forward(msg tea.Msg) (detailPane, tea.Cmd) {
 func (p detailPane) pointAt(i int) detailPane {
 	switch p.tab {
 	case tabFiles:
-		p.files.table.SetCursor(i)
+		p.files.table = pointTable(p.files.table, i)
 		p.fileSel = p.fileSel.setCursor(p.files.cursor())
 	case tabPeers:
-		p.peers.table.SetCursor(i)
+		p.peers.table = pointTable(p.peers.table, i)
 	case tabTrackers:
-		p.trackers.table.SetCursor(i)
+		p.trackers.table = pointTable(p.trackers.table, i)
 	}
 
 	return p

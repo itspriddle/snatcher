@@ -204,7 +204,7 @@ func (m Model) clickListRow(i int, right bool) (Model, tea.Cmd) {
 	again := m.focusedPane() == paneList && i == m.torrents.list.cursor()
 
 	m = m.setFocus(paneList)
-	m.torrents.list.table.SetCursor(i)
+	m.torrents.list.table = pointTable(m.torrents.list.table, i)
 	m.torrents.sel = m.torrents.sel.setCursor(m.torrents.list.cursor())
 	m = m.syncTorrents()
 
@@ -223,7 +223,7 @@ func (m Model) clickResultRow(i int, right bool) (Model, tea.Cmd) {
 	again := m.focusedPane() == paneResults && i == m.prowlarr.table.Cursor()
 
 	m = m.setFocus(paneResults)
-	m.prowlarr.table.SetCursor(i)
+	m.prowlarr.table = pointTable(m.prowlarr.table, i)
 	m.prowlarr = m.prowlarr.syncCursor()
 
 	switch {
@@ -411,6 +411,25 @@ func wheelTable(t table.Model, delta int) table.Model {
 		t.MoveUp(-delta)
 	} else {
 		t.MoveDown(delta)
+	}
+
+	return t
+}
+
+// pointTable moves a table's cursor to row i, a row on screen, without
+// scrolling. SetCursor would re-anchor the table's rendered rows on the new
+// cursor while keeping its old scroll offset, which jumps the view on a long
+// list; stepping a row at a time is what j and k do, and it leaves a visible
+// target where it is drawn.
+func pointTable(t table.Model, i int) table.Model {
+	i = clamp(i, 0, max(0, len(t.Rows())-1))
+
+	for t.Cursor() < i {
+		t.MoveDown(1)
+	}
+
+	for t.Cursor() > i {
+		t.MoveUp(1)
 	}
 
 	return t
