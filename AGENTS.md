@@ -23,7 +23,7 @@ make fmt           # gofmt -s -w .
 make release-check # check + replace-check + vuln + race-test
 ```
 
-Requirements: Go 1.26+, `golangci-lint` v2.12.2, `govulncheck`. `brew bundle`
+Requirements: Go 1.27+, `golangci-lint` v2.12.2, `govulncheck`. `brew bundle`
 installs the dev toolchain from the `Brewfile`. `direnv` (`.envrc`) puts
 `./bin` on `PATH` after `make build`.
 

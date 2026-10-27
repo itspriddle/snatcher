@@ -71,7 +71,7 @@ shown by border shape and the cursor row in reverse video.
 
 ### From source
 
-Requires **Go 1.26+**.
+Requires **Go 1.27+**.
 
 ```sh
 go install github.com/itspriddle/snatcher/cmd/snatcher@latest
@@ -277,7 +277,7 @@ make surface       # regenerate the committed .surface snapshot
 make release-check # check + replace-check + govulncheck + race tests
 ```
 
-Requires Go 1.26+, `golangci-lint`, and `govulncheck`; `brew bundle` installs
+Requires Go 1.27+, `golangci-lint`, and `govulncheck`; `brew bundle` installs
 the toolchain from the `Brewfile`. See [`AGENTS.md`](AGENTS.md) for the
 architecture and contribution guide, and [`docs/`](docs/) for the product
 vision and Transmission RPC references.
