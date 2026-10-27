@@ -44,7 +44,7 @@ If any check fails, stop and tell the user what needs fixing.
 ### 3. Create and push the tag
 
 ```sh
-git tag vX.Y.Z
+git tag -m vX.Y.Z vX.Y.Z
 git push origin vX.Y.Z
 ```
 
@@ -63,7 +63,9 @@ gh run list --workflow=release.yml --limit 1
   truth (version is injected via ldflags into `internal/version` at build time).
 - Don't create GitHub releases manually; GoReleaser handles that on tag push
   (`.github/workflows/release.yml`, triggered on `v*`).
-- Use annotated tags only if the user asks; default to lightweight tags.
+- Tags are signed (`tag.gpgsign` is on), so always pass `-m vX.Y.Z` — a bare
+  `git tag vX.Y.Z` opens an editor and fails non-interactively. The message is
+  just the tag name, matching earlier tags.
 - Optional pre-flight: `make release-check` runs the full gate (check +
   replace-check + vuln + race-test) before tagging if the user wants extra
   confidence. Skip it for a quick lazy bump.
