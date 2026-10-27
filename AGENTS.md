@@ -18,12 +18,12 @@ runs `fmt-check`, `vet`, `lint`, `test`, `check-surface`, `check-man`, and
 make build         # build bin/snatcher with version ldflags
 make check         # local CI gate (run before pushing)
 make test          # go test ./...
-make lint          # golangci-lint run (needs golangci-lint v2.12.2)
+make lint          # golangci-lint run (needs golangci-lint v2.15.0)
 make fmt           # gofmt -s -w .
 make release-check # check + replace-check + vuln + race-test
 ```
 
-Requirements: Go 1.27+, `golangci-lint` v2.12.2, `govulncheck`. `brew bundle`
+Requirements: Go 1.27+, `golangci-lint` v2.15.0, `govulncheck`. `brew bundle`
 installs the dev toolchain from the `Brewfile`. `direnv` (`.envrc`) puts
 `./bin` on `PATH` after `make build`.
 
