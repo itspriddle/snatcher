@@ -21,6 +21,6 @@ icon_downloading = cyan
 icon_completed   = green
 icon_active      = blue
 icon_inactive    = default
-icon_stopped     = bright-black
+icon_stopped     = default
 icon_error       = red
 icon_waiting     = yellow
