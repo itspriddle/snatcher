@@ -190,8 +190,9 @@ func TestAddPausedByDefault(t *testing.T) {
 		_, _, err := runAdd(t, "--config", cfgPath, "--start", "https://example.com/a.torrent")
 		require.NoError(t, err)
 
-		// paused is false, so omitempty drops it from the wire entirely.
-		assert.NotContains(t, body, `"paused"`)
+		// paused=false is sent explicitly so the server's start-added-torrents
+		// default cannot override --start.
+		assert.Contains(t, body, `"paused":false`)
 	})
 }
 

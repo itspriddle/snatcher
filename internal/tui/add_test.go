@@ -155,7 +155,7 @@ func TestAddFormBuildsTheRequest(t *testing.T) {
 	assert.Equal(t, testMagnet, args[0]["filename"])
 	assert.Equal(t, "/srv/new", args[0]["download-dir"])
 	assert.Equal(t, []any{"a", "b"}, args[0]["labels"])
-	assert.NotContains(t, args[0], "paused", "Start now adds unpaused")
+	assert.Equal(t, false, args[0]["paused"], "Start now adds unpaused, explicitly")
 	assert.Equal(t, "Added new.iso", m.toast)
 }
 

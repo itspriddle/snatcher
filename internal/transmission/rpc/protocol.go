@@ -1178,12 +1178,14 @@ func jsonrpcFilesToCanonical(in []jsonrpcDetailFile) []File {
 }
 
 // jsonrpcAddParams is the snake_case torrent_add request params shape. Empty
-// fields are omitted so the server applies its defaults.
+// fields are omitted so the server applies its defaults — except paused, which
+// is always sent: omitting paused=false would defer to the server's
+// start-added-torrents setting and silently add the torrent stopped.
 type jsonrpcAddParams struct {
 	Metainfo    string   `json:"metainfo,omitempty"`
 	Filename    string   `json:"filename,omitempty"`
 	DownloadDir string   `json:"download_dir,omitempty"`
-	Paused      bool     `json:"paused,omitempty"`
+	Paused      bool     `json:"paused"`
 	Labels      []string `json:"labels,omitempty"`
 }
 
@@ -2429,12 +2431,13 @@ func (d bespokeDetailTorrent) toDetail() TorrentDetail {
 
 // bespokeAddArguments is the torrent-add request arguments shape (kebab-case
 // download-dir, lowercase everything else). Empty fields are omitted so the
-// server applies its defaults.
+// server applies its defaults — except paused, which is always sent (see
+// jsonrpcAddParams).
 type bespokeAddArguments struct {
 	Metainfo    string   `json:"metainfo,omitempty"`
 	Filename    string   `json:"filename,omitempty"`
 	DownloadDir string   `json:"download-dir,omitempty"`
-	Paused      bool     `json:"paused,omitempty"`
+	Paused      bool     `json:"paused"`
 	Labels      []string `json:"labels,omitempty"`
 }
 
