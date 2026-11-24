@@ -1816,6 +1816,35 @@ func TestJSONRPCProtocolTorrentAdd(t *testing.T) {
 		assert.NotContains(t, params, "filename")
 	})
 
+	t.Run("unpaused sends paused false", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{
+				"jsonrpc": "2.0",
+				"result": {"torrent_added": {"id": 11, "name": "debian.iso", "hash_string": "deadbeef"}},
+				"id": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := jsonrpcProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{Metainfo: "YmFzZTY0"})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		// paused=false must be explicit, or the server's start-added-torrents
+		// default decides and --start is silently ignored.
+		params, ok := gotBody["params"].(map[string]any)
+		require.True(t, ok)
+		assert.Contains(t, params, "paused")
+		assert.Equal(t, false, params["paused"])
+	})
+
 	t.Run("duplicate", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`{
@@ -1897,6 +1926,35 @@ func TestBespokeProtocolTorrentAdd(t *testing.T) {
 		assert.Equal(t, true, args["paused"])
 		assert.Equal(t, []any{"linux"}, args["labels"])
 		assert.NotContains(t, args, "filename")
+	})
+
+	t.Run("unpaused sends paused false", func(t *testing.T) {
+		var rawBody []byte
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{
+				"arguments": {"torrent-added": {"id": 11, "name": "debian.iso", "hashString": "deadbeef"}},
+				"result": "success",
+				"tag": 1
+			}`))
+		}))
+		defer srv.Close()
+
+		tr := NewTransport(srv.URL)
+
+		_, err := bespokeProtocol{}.TorrentAdd(context.Background(), tr, AddRequest{Metainfo: "YmFzZTY0"})
+		require.NoError(t, err)
+
+		var gotBody map[string]any
+		require.NoError(t, json.Unmarshal(rawBody, &gotBody))
+
+		// paused=false must be explicit, or the server's start-added-torrents
+		// default decides and --start is silently ignored.
+		args, ok := gotBody["arguments"].(map[string]any)
+		require.True(t, ok)
+		assert.Contains(t, args, "paused")
+		assert.Equal(t, false, args["paused"])
 	})
 
 	t.Run("duplicate", func(t *testing.T) {
