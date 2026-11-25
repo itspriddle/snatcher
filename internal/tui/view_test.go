@@ -59,7 +59,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 	liveToast := live
 	liveToast.toast = "saved 3 settings"
 
-	return append(prowlarrFrameStates(t, w, h), []frameState{
+	return []frameState{
 		{"live", live},
 		{"live toast", liveToast},
 		{"picker", press(withServers(live, pickerServers()), "S")},
@@ -109,66 +109,7 @@ func frameStates(t *testing.T, w, h int) []frameState {
 		{"search blurred", press(searchFor(completedFiltered(t, base), "x86"), "enter")},
 		{"toast", press(base, "s")},
 		{"chord", press(base, "y")},
-	}...)
-}
-
-// prowlarrFrameStates are the Prowlarr window's shapes.
-func prowlarrFrameStates(t *testing.T, w, h int) []frameState {
-	t.Helper()
-
-	failing, failed := prowlarrModel(t, w, h)
-	failing.status.Store(500)
-	failed = runSearchFor(t, failed, "ubuntu")
-
-	_, empty := prowlarrModel(t, w, h)
-	_, results := searchModel(t, w, h)
-	_, catalog := prowlarrModel(t, w, h)
-	catalog = runKey(t, catalog, "f")
-
-	connecting, _ := pressCmd(withProwlarr(newTestModel(w, h), newProwlarrStub(t), prowlarrServers(), nil), "ctrl+p")
-
-	return []frameState{
-		{"prowlarr unconfigured", press(newTestModel(w, h), "ctrl+p")},
-		{"prowlarr connecting", connecting},
-		{"prowlarr empty", empty},
-		{"prowlarr error", failed},
-		{"prowlarr results", results},
-		{"prowlarr detail", press(results, "j", "enter")},
-		{"prowlarr menu", press(results, "m")},
-		{"prowlarr write", press(results, "w")},
-		{"prowlarr confirm", press(results, "a")},
-		{"prowlarr chord", press(results, "y")},
-		{"prowlarr catalog", catalog},
-		{"prowlarr sort", press(results, "o")},
-		{"prowlarr columns", press(results, "c")},
-		{"prowlarr picker", press(withProwlarr(results, newProwlarrStub(t), pickerServers(), nil), "S")},
 	}
-}
-
-// TestProwlarrGoldens pins the Prowlarr window: with no server, before a
-// search, with results at both reference sizes, with a release's detail, the
-// catalog modal, and the Prowlarr picker. The detail golden describes the
-// release with no stub URL in it, since the stub's port changes every run.
-func TestProwlarrGoldens(t *testing.T) {
-	assertGolden(t, "prowlarr_unconfigured", press(newTestModel(120, 40), "ctrl+p").render())
-
-	for _, size := range []struct {
-		name string
-		w, h int
-	}{{"120x40", 120, 40}, {"80x24", 80, 24}} {
-		_, empty := prowlarrModel(t, size.w, size.h)
-		assertGolden(t, "prowlarr_empty_"+size.name, empty.render())
-
-		_, results := searchModel(t, size.w, size.h)
-		assertGolden(t, "prowlarr_results_"+size.name, results.render())
-	}
-
-	_, results := searchModel(t, 120, 40)
-	assertGolden(t, "prowlarr_detail", press(results, "j", "enter").render())
-	assertGolden(t, "prowlarr_picker", press(withProwlarr(results, newProwlarrStub(t), pickerServers(), nil), "S").render())
-
-	_, catalog := prowlarrModel(t, 120, 40)
-	assertGolden(t, "prowlarr_catalog", runKey(t, catalog, "f").render())
 }
 
 // TestTorrentsGolden pins the default frame at both reference sizes.

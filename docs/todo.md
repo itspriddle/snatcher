@@ -29,7 +29,9 @@ one. The "unblocks" line on each milestone says which pane is waiting.
    settings window is built, not after~~ **done**
 4. ~~**M5** `server bandwidth`~~, ~~**M6** `torrent label`~~, and ~~**M7** small
    helpers~~ **done** - cheap, each unblocked a keybinding
-5. ~~**M8** Prowlarr - the only genuinely new backend; largest by far~~ **done**
+5. ~~**M8** Prowlarr~~ **removed** - shipped, then taken out: in practice
+   Prowlarr search wasn't useful, and browsing trackers + `torrent add` is the
+   workflow
 6. **M9** hygiene pass before the TUI starts
 
 ---
@@ -368,119 +370,12 @@ actions is flag wiring rather than a redesign.
 
 ---
 
-## M8. Prowlarr / search - **done**
+## M8. Prowlarr / search - **removed**
 
-**Unblocks:** the entire TUI Prowlarr window (TUI M8). The only genuinely new
-backend in this list - budget accordingly.
-
-### 8a. Connection + config
-
-- `Server` gains a type (`transmission` | `prowlarr`), defaulting to
-  `transmission` so existing config files load unchanged
-- `snatcher server add --type=prowlarr --url ... --api-key-stdin`; the API key
-  lives in the keyring keyed by URL, exactly like passwords (so M1's fallback
-  covers it too)
-- `server list` shows type; `server ping` works for both; `dial()` splits by
-  type and refuses a Prowlarr URL where a Transmission client is expected, with
-  a clear error
-- Resolution precedence mirrors the Transmission side (`--server` flag >
-  `SNATCHER_SERVER` > default), but search commands resolve the default
-  *Prowlarr* server
-
-### 8b. `internal/prowlarr` package
-
-Mirror the layering that already works for Transmission: transport (auth
-header, timeouts) → typed client → domain types, with `ErrAuth` /
-`ErrUnreachable` / `ErrServer` sentinels mapped the same way so the UI can tell
-"can't reach it" from "it said no".
-
-- Typed `Release` off Prowlarr's `ReleaseResource`: guid, title, indexer,
-  indexerId, age, publishDate, size, files, grabs, seeders, leechers, protocol,
-  categories, infoHash, downloadUrl, magnetUrl, infoUrl, commentUrl
-- `Search(query, indexerIDs, categories, limit, offset)` → `GET /api/v1/search`
-- `Grab(release)` → `POST /api/v1/search` **with the full ReleaseResource body**
-  (this is why grab needs the release object, not just an id)
-- `Indexers()` → `GET /api/v1/indexer`, `Categories()` →
-  `GET /api/v1/indexer/categories` - the TUI's dropdowns need both
-- `Download(release)` - fetch `downloadUrl` bytes for local `.torrent` writes
-- Auth is `X-Api-Key`. Never log it, never let it reach `--json` output
-- `docs/prowlarr.openapi.json` is the reference; `docs/torznab.xsd` for the
-  underlying spec
-
-### 8c. Commands
-
-```
-snatcher search <query> [--indexer ...] [--category ...] [--limit N] [--offset N] [--type search|tvsearch|moviesearch]
-snatcher search grab <query> <n>          # or --guid <guid> --indexer <id>
-snatcher search download <query> <n> [-o file]
-snatcher search indexers
-snatcher search categories
-snatcher api --prowlarr <path> ...        # raw escape hatch, mirrors `api`
-```
-
-- Result columns: age, title, indexer, size, grabs, seeders, leechers. Titles
-  and indexer names are hostile input - sanitize on plaintext, never on JSON
-- **Result references are stateless**: `search grab "query" 3` re-runs the
-  query and resolves index 3 from that result set. No cache file. This also
-  satisfies the grab API, which wants the whole release object anyway. `--guid`
-  + `--indexer` is the exact, no-re-run form for scripts
-- `--limit`/`--offset` are the paging surface; the vision's `--pages N` becomes
-  "fetch N pages and concatenate" on top of offset
-- `search download` writes the `.torrent` locally - this is the CLI equivalent
-  of the TUI's `w` key
-
-**Decision on record:** `search grab` delegates to Prowlarr's grab endpoint,
-which routes the release to *Prowlarr's* configured download client. That is
-not necessarily the server snatcher is pointed at - `grab` means "tell Prowlarr
-to grab it", not "add it to this server". Both the CLI help and the TUI's `a`
-key must say so plainly. Adding directly from `downloadUrl` (snatcher hands it
-to `torrent add` itself) stays available as a follow-up: `search download`
-already needs that code path, so it is cheap to add later if the delegation
-lands in the wrong place.
-
-**Done when:** a search can be run, paged, inspected as JSON, grabbed, and
-saved locally, with indexers and categories enumerable for the TUI dropdowns.
-
-**Shipped.** All of it: `internal/prowlarr` (transport -> typed client ->
-domain types, with its own `ErrAuth`/`ErrUnreachable`/`ErrServer` and no import
-of `internal/transmission` in either direction), a `type` on `config.Server`
-plus a `default_prowlarr_server`, `server add --type prowlarr
---api-key-stdin`, the `snatcher search` group (bare search, `grab`, `download`,
-`indexers`, `categories`), and `snatcher api --prowlarr`. No Transmission
-behavior changed, and a config file written before this milestone still loads,
-resolves, and round-trips byte-identically - pinned by a test, not by
-inspection.
-
-Five things differ from the sketch above. **`search` is a group that also runs
-a search of its own**, so `grab`, `download`, `indexers`, and `categories`
-shadow those four words as bare positional queries; `--query` is the escape,
-documented in `search --help` where the confusion happens. **The search type
-flag is `--search-type`, not `--type`** - `--type` was already spoken for by
-`server add` - and its values are `search`, `tvsearch`, `movie`, `music`,
-`book`. **Secrets are scoped by server type**: `SNATCHER_API_KEY` applies only
-to a Prowlarr alias and `SNATCHER_PASSWORD` only to a Transmission one, and
-`dial`/`dialProwlarr` refuse a server of the wrong type *before* any secret
-store is opened. **Each type carries its own default**: `server default
-<alias>` infers which one to move from the alias itself (no new flag), and
-`server remove` repoints only the default belonging to the removed server's
-type. **`server list` grew a `TYPE` column** in position 2 - the one deliberate
-break in the tab-separated contract, called out in the man page's OUTPUT
-section, with an additive `type` key on the JSON side.
-
-Two safety rules came out of the download path and are worth carrying into the
-TUI. The API key rides only to Prowlarr's own origin and is stripped by hand at
-any redirect that leaves it - Go copies custom headers across a cross-host
-redirect, and a test proves the leak returns the moment that line is deleted.
-And `search download` derives its filename from the release **title** only,
-never from `Content-Disposition`, sanitized to one path segment, refusing to
-overwrite, written 0600 through a temp file and a rename.
-
-One limitation is on record rather than hidden: **`--guid` can grab but cannot
-download.** A guid plus an indexer id is a reference, not a description, and
-Prowlarr resolves it only in the act of grabbing, so `search download --guid`
-is accepted, echoed, and then refused with the positional form named. The
-alternative - POSTing the reference to `/api/v1/search` to learn the download
-url - *is* the grab, which is the wrong verb for a local write.
+Shipped (a `search` group, `api --prowlarr`, and Prowlarr-typed servers), then
+removed along with the server `type` concept: in practice Prowlarr search wasn't
+useful, and browsing a tracker site then running `torrent add` is the workflow.
+snatcher is Transmission only.
 
 ---
 
@@ -489,7 +384,7 @@ url - *is* the grab, which is the wrong verb for a local write.
 - ~~`make release-check` green (`check` + `replace-check` + `vuln` +
   `race-test`)~~ green on 2026-09-12
 - ~~Man page reviewed end to end, not just coverage-gated~~ done in the
-  `torrent-detail` and `prowlarr-search` PRD reviews
+  `torrent-detail` PRD review and its successors
 - ~~README/help text reflects the new commands~~ done
 - ~~One pass over `docs/vision.md`'s command checklists so they match
   `.surface`~~ done - only `server doctor` is unticked, and it is backlog
@@ -508,9 +403,6 @@ url - *is* the grab, which is the wrong verb for a local write.
 - **`server doctor`** - connectivity/auth/config/port diagnostics, plus torrent
   health summaries (error states, low-ratio seeds, largest torrents). Wanted,
   but the least defined item in the vision and needs its own design pass.
-- **Direct add from search** - `search add` that hands `downloadUrl` to
-  `torrent add` on the snatcher server, bypassing Prowlarr's download client.
-  See the M8 decision note.
 - **Tracker mutation commands** - `torrent update --tracker/--clear-trackers`
   covers it today; a `torrent trackers add|remove` verb pair only if the TUI
   trackers tab wants direct editing.

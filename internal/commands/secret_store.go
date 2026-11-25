@@ -33,18 +33,6 @@ const envServer = "SNATCHER_SERVER"
 // counterpart to SNATCHER_SECRET_STORE=none.
 const envPassword = "SNATCHER_PASSWORD"
 
-// envAPIKey names the environment variable that supplies a Prowlarr API key for
-// one invocation.
-//
-// It is the Prowlarr counterpart to envPassword and behaves identically: it is a
-// read override sitting above every store, nothing writes to it, and "server
-// add" never consults it. The two are kept strictly apart by server type —
-// SNATCHER_PASSWORD is not consulted for a Prowlarr server and SNATCHER_API_KEY
-// is not consulted for a Transmission one — so exporting one to reach a
-// Transmission server cannot silently become the credential offered to a
-// Prowlarr instance, or the reverse.
-const envAPIKey = "SNATCHER_API_KEY" //nolint:gosec // G101 false positive: a variable name, not a credential
-
 // passwordFromEnv returns the password envPassword supplies and whether it
 // supplied one. An unset or empty value supplies nothing and defers to the
 // store; any other value is used verbatim, since leading or trailing whitespace
@@ -55,57 +43,14 @@ func passwordFromEnv() (string, bool) {
 	return password, password != ""
 }
 
-// apiKeyFromEnv returns the API key envAPIKey supplies and whether it supplied
-// one, with the same reading passwordFromEnv gives its variable.
-func apiKeyFromEnv() (string, bool) {
-	key := os.Getenv(envAPIKey)
-
-	return key, key != ""
-}
-
-// secretFromEnv returns the per-invocation secret override that applies to srv,
-// chosen by srv's type: SNATCHER_PASSWORD for a Transmission server,
-// SNATCHER_API_KEY for a Prowlarr one. Neither variable ever applies to the
-// other type.
-func secretFromEnv(srv config.Server) (string, bool) {
-	if srv.ResolvedType() == config.TypeProwlarr {
-		return apiKeyFromEnv()
-	}
-
-	return passwordFromEnv()
-}
-
-// secretNoun names the credential a server of serverType authenticates with, for
-// operator-facing text: a Transmission password, or a Prowlarr API key.
-//
-// One command handles one secret, so its noun is settled once and then threaded
-// through every message about it rather than re-derived at each site. That is
-// what stops a run which prompted for an API key from reporting a problem with a
-// password.
-func secretNoun(serverType string) string {
-	if serverType == config.TypeProwlarr {
-		return "API key"
-	}
-
-	return "password"
-}
-
 // storeUnavailableAdvice is the fatal counterpart to storeUnavailableRemedy: it
-// is returned when a secret has been typed and there is nowhere to put it, so it
-// names every way forward rather than only the preferred one. Like every other
-// unavailable message it names no provider internals.
-//
-// secret is the noun for what was typed (see secretNoun). The wording for a
-// password is unchanged from when this was a constant.
-func storeUnavailableAdvice(secret string) string {
-	return fmt.Sprintf(
-		"the OS secret store could not be reached, so the %[1]s cannot be stored and nothing was saved: "+
-			"install or start an OS secret service; "+
-			"or re-run with --store=file to keep the %[1]s in a plaintext file at mode 0600; "+
-			"or re-run with --store=none to register the server with no stored %[1]s",
-		secret,
-	)
-}
+// is returned when a password has been typed and there is nowhere to put it, so
+// it names every way forward rather than only the preferred one. Like every
+// other unavailable message it names no provider internals.
+const storeUnavailableAdvice = "the OS secret store could not be reached, so the password cannot be stored and nothing was saved: " +
+	"install or start an OS secret service; " +
+	"or re-run with --store=file to keep the password in a plaintext file at mode 0600; " +
+	"or re-run with --store=none to register the server with no stored password"
 
 // storeMode names which secret store a server's password lives in. The zero
 // value is not a mode; use resolveStoreMode, which supplies the default.
@@ -260,17 +205,14 @@ func addStoreMode(storeFlag string, flagChanged bool, prev config.Server) (store
 	return resolveStoreMode(prev)
 }
 
-// storeForPassword opens the store mode names and, when there is a secret to
+// storeForPassword opens the store mode names and, when there is a password to
 // store, probes up front that the store can hold one — without writing anything.
 //
-// Probing first is what keeps "server add" atomic. A secret with nowhere to go
+// Probing first is what keeps "server add" atomic. A password with nowhere to go
 // must abort the command, naming every way forward, rather than registering a
-// server that silently has none. An empty secret is not probed at all: there is
-// nothing to persist, so an unreachable store cannot lose anything.
-//
-// secret is the noun for what password holds (see secretNoun), so both refusals
-// call it what the operator was asked for.
-func storeForPassword(mode storeMode, serverURL, password, secret string) (secretStore, error) {
+// server that silently has no password. An empty password is not probed at all:
+// there is nothing to persist, so an unreachable store cannot lose anything.
+func storeForPassword(mode storeMode, serverURL, password string) (secretStore, error) {
 	store, err := openStore(mode)
 	if err != nil {
 		return nil, err
@@ -282,8 +224,8 @@ func storeForPassword(mode storeMode, serverURL, password, secret string) (secre
 
 	if mode == storeNone {
 		return nil, fmt.Errorf(
-			"the secret store for %q is %q: the %[3]s cannot be stored and would be discarded, so nothing was saved; re-run with an empty %[3]s, or choose a store with --store=keyring or --store=file",
-			serverURL, storeNone, secret,
+			"the secret store for %q is %q: the password cannot be stored and would be discarded, so nothing was saved; re-run with an empty password, or choose a store with --store=keyring or --store=file",
+			serverURL, storeNone,
 		)
 	}
 
@@ -292,7 +234,7 @@ func storeForPassword(mode storeMode, serverURL, password, secret string) (secre
 	// proves the store answered.
 	if _, err := store.Get(serverURL); err != nil && !errors.Is(err, secrets.ErrNotFound) {
 		if errors.Is(err, secrets.ErrUnavailable) {
-			return nil, errors.New(storeUnavailableAdvice(secret))
+			return nil, errors.New(storeUnavailableAdvice)
 		}
 
 		return nil, err

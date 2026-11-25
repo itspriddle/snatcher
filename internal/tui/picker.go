@@ -14,17 +14,12 @@ const pickerOverlayKind = "picker"
 // pickerMaxWidth caps the picker box, as confirmMaxWidth caps the confirm.
 const pickerMaxWidth = 60
 
-// pickerOverlay is S: a list of the configured servers of the type the window
-// in front uses, to switch to. The switch is for this session only, like
+// pickerOverlay is S: a list of the configured servers to switch to. The switch is for this session only, like
 // --server; it never writes a default.
 //
 // It is modal, like the confirm overlay. Its stack is ctxPicker alone, so q and
 // the window keys do nothing while it is open, and ctrl+c still quits.
 type pickerOverlay struct {
-	// prowlarr says the list is Prowlarr servers, which switch the Prowlarr
-	// window, rather than Transmission ones.
-	prowlarr bool
-
 	// servers are the configured servers, sorted by alias.
 	servers []ServerEntry
 
@@ -36,8 +31,8 @@ type pickerOverlay struct {
 }
 
 // newPicker builds the picker with its cursor on the current server.
-func newPicker(servers []ServerEntry, current string, prowlarr bool) pickerOverlay {
-	p := pickerOverlay{servers: servers, current: current, prowlarr: prowlarr}
+func newPicker(servers []ServerEntry, current string) pickerOverlay {
+	p := pickerOverlay{servers: servers, current: current}
 
 	for i, s := range servers {
 		if s.Name == current {
@@ -81,11 +76,6 @@ func (p pickerOverlay) modal(m Model, w, _ int) modal {
 		hostW = max(hostW, len([]rune(hosts[i])))
 	}
 
-	title := "Switch server"
-	if p.prowlarr {
-		title = "Switch Prowlarr server"
-	}
-
 	rows := make([]string, 0, len(p.servers))
 
 	for i, s := range p.servers {
@@ -93,7 +83,7 @@ func (p pickerOverlay) modal(m Model, w, _ int) modal {
 		rows = append(rows, cursorRow(m.styles, i == p.cursor, text, width))
 	}
 
-	return modal{title: title, rows: rows, focus: p.cursor, ctx: ctxPicker, width: width}
+	return modal{title: "Switch server", rows: rows, focus: p.cursor, ctx: ctxPicker, width: width}
 }
 
 // pointAt implements modalOverlay.
@@ -140,42 +130,32 @@ func hostOf(raw string) string {
 }
 
 // togglePicker is S: open the picker, or close it when it is the overlay on top.
-// It lists the servers of the type the window in front uses. Either window's
-// dial in flight refuses it: the two dialers share one error-writer swap.
+// A dial in flight refuses it.
 func (m Model) togglePicker() Model {
 	if top, ok := m.topOverlay(); ok && top.kind() == pickerOverlayKind {
 		return m.pop()
 	}
 
-	isProwlarr := m.window == windowProwlarr
-	list, current := m.deps.Servers, m.serverName
-
-	if isProwlarr {
-		list, current = m.deps.ProwlarrServers, m.prowlarr.serverName
-	}
-
 	switch {
-	case m.live.switching || m.prowlarr.dialing:
+	case m.live.switching:
 		m.toast = "switching servers…"
 
 		return m
-	case list == nil:
+	case m.deps.Servers == nil:
 		m.toast = "no server list"
 
 		return m
 	}
 
-	servers, err := list()
+	servers, err := m.deps.Servers()
 
 	switch {
 	case err != nil:
 		m.toast = "server list: " + err.Error()
-	case len(servers) == 0 && isProwlarr:
-		m.toast = "no Prowlarr server configured"
 	case len(servers) <= 1:
 		m.toast = "only one server configured"
 	default:
-		return m.push(newPicker(servers, current, isProwlarr))
+		return m.push(newPicker(servers, m.serverName))
 	}
 
 	return m
@@ -214,19 +194,10 @@ func (m Model) pickServer() (Model, tea.Cmd) {
 	m = m.pop()
 	name := p.servers[p.cursor].Name
 
-	current := m.serverName
-	if p.prowlarr {
-		current = m.prowlarr.serverName
-	}
-
-	if name == current {
+	if name == m.serverName {
 		m.toast = "already on " + name
 
 		return m, nil
-	}
-
-	if p.prowlarr {
-		return m.switchProwlarr(name)
 	}
 
 	if n := m.settings.dirtyCount(); n > 0 {

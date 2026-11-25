@@ -1,4 +1,4 @@
-ARG snatcher api 0 method|path
+ARG snatcher api 0 method
 ARG snatcher config get 0 key
 ARG snatcher config set 0 key
 ARG snatcher config set 1 value
@@ -24,11 +24,6 @@ CMD snatcher config get
 CMD snatcher config list
 CMD snatcher config set
 CMD snatcher config unset
-CMD snatcher search
-CMD snatcher search categories
-CMD snatcher search download
-CMD snatcher search grab
-CMD snatcher search indexers
 CMD snatcher server
 CMD snatcher server add
 CMD snatcher server bandwidth
@@ -82,8 +77,6 @@ FLAG snatcher --version type=bool
 FLAG snatcher api --field type=stringArray
 FLAG snatcher api --input type=string
 FLAG snatcher api --jq type=string
-FLAG snatcher api --method type=string
-FLAG snatcher api --prowlarr type=bool
 FLAG snatcher api --raw type=bool
 FLAG snatcher api --raw-field type=stringArray
 FLAG snatcher api --server type=string
@@ -95,48 +88,9 @@ FLAG snatcher config set --jq type=string
 FLAG snatcher config set --json type=bool
 FLAG snatcher config unset --jq type=string
 FLAG snatcher config unset --json type=bool
-FLAG snatcher search --category type=intSlice
-FLAG snatcher search --indexer type=intSlice
-FLAG snatcher search --jq type=string
-FLAG snatcher search --json type=bool
-FLAG snatcher search --limit type=int
-FLAG snatcher search --offset type=int
-FLAG snatcher search --pages type=int
-FLAG snatcher search --query type=string
-FLAG snatcher search --search-type type=string
-FLAG snatcher search --server type=string
-FLAG snatcher search categories --jq type=string
-FLAG snatcher search categories --json type=bool
-FLAG snatcher search categories --server type=string
-FLAG snatcher search download --category type=intSlice
-FLAG snatcher search download --guid type=string
-FLAG snatcher search download --indexer type=intSlice
-FLAG snatcher search download --jq type=string
-FLAG snatcher search download --json type=bool
-FLAG snatcher search download --limit type=int
-FLAG snatcher search download --offset type=int
-FLAG snatcher search download --output type=string
-FLAG snatcher search download --pages type=int
-FLAG snatcher search download --search-type type=string
-FLAG snatcher search download --server type=string
-FLAG snatcher search grab --category type=intSlice
-FLAG snatcher search grab --guid type=string
-FLAG snatcher search grab --indexer type=intSlice
-FLAG snatcher search grab --jq type=string
-FLAG snatcher search grab --json type=bool
-FLAG snatcher search grab --limit type=int
-FLAG snatcher search grab --offset type=int
-FLAG snatcher search grab --pages type=int
-FLAG snatcher search grab --search-type type=string
-FLAG snatcher search grab --server type=string
-FLAG snatcher search indexers --jq type=string
-FLAG snatcher search indexers --json type=bool
-FLAG snatcher search indexers --server type=string
-FLAG snatcher server add --api-key-stdin type=bool
 FLAG snatcher server add --name type=string
 FLAG snatcher server add --password-stdin type=bool
 FLAG snatcher server add --store type=string
-FLAG snatcher server add --type type=string
 FLAG snatcher server add --url type=string
 FLAG snatcher server add --username type=string
 FLAG snatcher server bandwidth alt --jq type=string

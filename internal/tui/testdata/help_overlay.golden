@@ -21,11 +21,11 @@
 │   │   K      queue up                                                     esc     back                           │   ┃
 │   │   L      labels                   navigation                          :       command palette                │   ┃
 │   │   M      move                       ↑/k        up                     ctrl+t  torrents window                │   ┃
-│   │   m      action menu                ↓/j        down                   ctrl+p  prowlarr window                │   ┃
-│   │                                     g/home     top                    ,       settings window                │   ┃
-│   │ torrents                            G/end      bottom                 S       switch server                  │   ┃
-│   │   {  toggle filter pane             ctrl+u     ½ page up              t       toggle alt-speed               │   ┃
-│   │   1  detail: overview               ctrl+d     ½ page down            R       refresh                        │   ┃
+│   │   m      action menu                ↓/j        down                   ,       settings window                │   ┃
+│   │                                     g/home     top                    S       switch server                  │   ┃
+│   │ torrents                            G/end      bottom                 t       toggle alt-speed               │   ┃
+│   │   {  toggle filter pane             ctrl+u     ½ page up              R       refresh                        │   ┃
+│   │   1  detail: overview               ctrl+d     ½ page down                                                   │   ┃
 │   │   2  detail: files                  pgup       page up                                                       │   ┃
 │   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   ┃
 │                      │┃                                                                                              ┃

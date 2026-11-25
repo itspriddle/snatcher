@@ -162,7 +162,7 @@ func TestTextInputStackOwnsTheKeyboard(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, actionInputBlur, action)
 
-	for _, k := range []string{"q", "?", ":", ",", "S", "ctrl+t", "ctrl+p"} {
+	for _, k := range []string{"q", "?", ":", ",", "S", "ctrl+t"} {
 		_, ok := lookup(stack, stringKey(k))
 		assert.Falsef(t, ok, "%q must reach the focused input, not a global action", k)
 	}
@@ -180,7 +180,7 @@ func TestConfirmStackIsModal(t *testing.T) {
 		assert.Equal(t, want, action)
 	}
 
-	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "ctrl+p", "S", "R", "t"} {
+	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "S", "R", "t"} {
 		_, ok := lookup(stack, stringKey(k))
 		assert.Falsef(t, ok, "%q must do nothing while a confirm is open", k)
 	}
@@ -202,7 +202,7 @@ func TestPickerStackIsModal(t *testing.T) {
 		assert.Equal(t, want, action)
 	}
 
-	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "ctrl+p", "R", "t", "y", "n"} {
+	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "R", "t", "y", "n"} {
 		_, ok := lookup(stack, stringKey(k))
 		assert.Falsef(t, ok, "%q must do nothing while the picker is open", k)
 	}
@@ -224,7 +224,7 @@ func assertModalStack(t *testing.T, o overlay, want map[string]Action) {
 		assert.Equalf(t, action, got, "%q in %s", k, o.kind())
 	}
 
-	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "ctrl+p", "S", "R", "t", "s", "d", "f", "/"} {
+	for _, k := range []string{"q", "?", ",", ":", "ctrl+t", "S", "R", "t", "s", "d", "f", "/"} {
 		if _, listed := want[k]; listed {
 			continue
 		}
@@ -300,59 +300,6 @@ func TestPaletteStackIsModal(t *testing.T) {
 		_, ok := lookup(paletteOverlay{}.contexts(), stringKey(k))
 		assert.Falsef(t, ok, "%q must type into the palette", k)
 	}
-}
-
-// TestProwlarrModalStacksAreModal pins the Prowlarr window's three modals and
-// its y chord: their keys resolve, and nothing global does.
-func TestProwlarrModalStacksAreModal(t *testing.T) {
-	assertModalStack(t, catalogPickOverlay{}, map[string]Action{
-		"up": actionCatalogUp, "k": actionCatalogUp, "down": actionCatalogDown, "j": actionCatalogDown,
-		"space": actionCatalogToggle, "enter": actionCatalogApply, "f": actionReleaseFilter,
-	})
-	assertModalStack(t, releaseSortOverlay{}, map[string]Action{
-		"up": actionReleaseSortUp, "k": actionReleaseSortUp, "down": actionReleaseSortDown, "j": actionReleaseSortDown,
-		"r": actionReleaseSortReverse, "enter": actionReleaseSortSelect, "o": actionReleaseSort,
-	})
-	assertModalStack(t, releaseColumnsOverlay{}, map[string]Action{
-		"up": actionReleaseColumnsUp, "k": actionReleaseColumnsUp, "down": actionReleaseColumnsDown,
-		"j": actionReleaseColumnsDown, "space": actionReleaseColumnsToggle, "K": actionReleaseColumnsMoveUp,
-		"J": actionReleaseColumnsMoveDown, "enter": actionReleaseColumnsApply, "c": actionReleaseColumns,
-	})
-
-	chord := []Context{chordYankRelease.context()}
-
-	for k, want := range map[string]Action{"u": actionYankInfoURL, "m": actionYankReleaseMagnet, "d": actionYankDownloadURL} {
-		got, ok := lookup(chord, stringKey(k))
-		require.Truef(t, ok, "%q must resolve in the release yank chord", k)
-		assert.Equal(t, want, got)
-	}
-
-	for _, k := range []string{"q", "h", "n", "p", "y"} {
-		_, ok := lookup(chord, stringKey(k))
-		assert.Falsef(t, ok, "%q must cancel the release yank chord", k)
-	}
-}
-
-// TestProwlarrPaneStacks pins what each Prowlarr pane responds to: the release
-// verbs live in the results and the detail, and the search pane has none.
-func TestProwlarrPaneStacks(t *testing.T) {
-	for _, pane := range []Pane{paneResults, paneResultDetail} {
-		action, ok := lookup(paneContexts(pane), stringKey("a"))
-		require.Truef(t, ok, "a in %s", pane)
-		assert.Equal(t, actionReleaseGrab, action)
-	}
-
-	_, ok := lookup(paneContexts(paneSearch), stringKey("a"))
-	assert.False(t, ok, "the search pane carries no release verbs")
-
-	action, _ := lookup(paneContexts(paneSearch), stringKey("enter"))
-	assert.Equal(t, actionSearchSubmit, action)
-
-	action, _ = lookup(paneContexts(paneResults), stringKey("enter"))
-	assert.Equal(t, actionReleaseDetailOpen, action)
-
-	action, _ = lookup(paneContexts(paneResults), stringKey("o"))
-	assert.Equal(t, actionReleaseSort, action, "o sorts releases here, not torrents")
 }
 
 // TestPaneContextsCoversEveryPane checks the static table answers for every

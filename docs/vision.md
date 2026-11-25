@@ -14,8 +14,6 @@ AI first development flow with good guardrails and careful planning.
 Anything TUI can do can be done with the CLI. Smart human outputs, ability to
 script easily (i.e. `--jq ...` filters like gh CLI).
 
-Prowlarr integration (torznab spec).
-
 ---
 
 CLI from alpha:
@@ -69,10 +67,6 @@ top-level `speed` command and no alias for one.
 - [x] `snatcher torrent files update ...` - file priority / wanted
 - [x] `snatcher torrent rename ...` - `torrent-rename-path`
 - [x] `snatcher config get|set|list|unset` - snatcher's own settings
-- [x] `snatcher search ["query"] ...` - search for torrents with Prowlarr. Shipped as a group that both runs a search of its own and carries `grab`, `download`, `indexers`, and `categories`, so those four words are shadowed as bare positional queries - `--query` is the documented escape, called out in `search --help`. Results keep Prowlarr's own order (no client-side sort, filter, or de-duplication) and are numbered from 1 in a `#` column that is also the `index` field in `--json`, so a human reading the table and a script reading JSON name a release the same way.
-    - [x] `snatcher server add --type=search|prowlarr ...`  /  - set up prowlarr connection. Shipped as `--type prowlarr` with no `search` synonym, plus `--api-key-stdin` beside `--password-stdin`; the API key goes to the same `keyring`/`file`/`none` store a password does, keyed by server URL. Each type gets its own default (`default_prowlarr_server`), so registering Prowlarr never shadows the Transmission server, and `SNATCHER_API_KEY` is scoped to Prowlarr aliases exactly as `SNATCHER_PASSWORD` is to Transmission ones.
-    - [x] `snatcher api --search|--prowlarr ...` - raw API access to prowlarr search. Shipped as `--prowlarr` only, taking a REST *path* rather than an RPC method (a bare `indexer` expands to `/api/v1/indexer`), with `-X`/`--method`, `-f`/`-F`/`--input` as query parameters for GET/DELETE and a JSON body otherwise, and the response body emitted raw rather than wrapped in Transmission's `result`/`arguments`/`tag` envelope.
-    - [x] `--pages N` see if we can work needing to 'grab more' from prowlarr. Shipped as N sequential requests stepping the offset by `--limit`, concatenated in order and stopping early on a short page. `--limit` is always sent so the offsets stay deterministic; an indexer that ignores paging is Prowlarr's problem to fix, not snatcher's to paper over.
 
 Sequenced in `docs/todo.md` (CLI) and `docs/tui-todo.md` (TUI).
 
@@ -110,7 +104,6 @@ Sequenced in `docs/todo.md` (CLI) and `docs/tui-todo.md` (TUI).
 
 - Window/pane based layout (like a vim window)
     - Torrents (Default)
-    - Tracker Search (Prowlarr)
     - Settings
     - (V2) File manager, view by size and seeding info to determine whether to delete
 
@@ -156,11 +149,11 @@ row without any confirmation to say so. The status bar's mark count is the only
 other tell, and it is not enough.
 
 **A focused text input owns the keyboard.** While a text input has focus (the
-search fields, a settings field, a form in a modal) every key goes to the
+`/` search field, a settings field, a form in a modal) every key goes to the
 input: printable characters insert, and the readline chords (`ctrl-a`/`e`,
 `ctrl-w`, `ctrl-u`, `ctrl-k`, `ctrl-d`, `ctrl-p`/`n`) keep their readline
 meaning. Only two keys escape: `esc` blurs the input (ladder rung 2) and
-`enter` submits it. So `q`, `?`, `:`, `,`, `S`, `ctrl-t`, and `ctrl-p` do
+`enter` submits it. So `q`, `?`, `:`, `,`, `S`, and `ctrl-t` do
 nothing special until the input is blurred - switching windows from a search
 field is `esc` then the chord. This is the rule that makes typing a `?` into a
 query possible; it is not a per-input exception.
@@ -205,7 +198,7 @@ applicable step runs, and only that step:
    prefix while one is live
 1. close the topmost overlay (modal, action menu, palette, help)
 2. blur the focused text input (keeping its contents)
-3. return focus to the window's main pane (torrent list, search results) from
+3. return focus to the window's main pane (the torrent list) from
    a detail or filter pane
 4. clear the active search
 5. clear marks
@@ -234,7 +227,7 @@ what an existing key does, by calling the same transition; it never adds a
 capability the keyboard lacks, and it never adds a binding.
 
 - A click focuses the pane under it. A right click does too.
-- A click on a row (torrents, files, peers, trackers, releases) moves the
+- A click on a row (torrents, files, peers, trackers) moves the
   cursor there. A click on the cursor row of the already focused list is
   `enter`; a right click is `m` over that row (the file menu on the files tab).
 - A click on a sidebar row focuses it and applies the filter, as the cursor
@@ -247,7 +240,7 @@ capability the keyboard lacks, and it never adds a binding.
   `[ Save ]` or `[ Revert ]` presses it.
 - A click on a modal's row moves the cursor there and runs the row's own key:
   `enter` in the menu, palette, picker, sort, filter, and form, `space` in the
-  columns and categories/indexers checklists.
+  columns checklist.
 - A click outside the topmost overlay closes it (esc ladder rung 1). Nothing
   under an open overlay is reachable.
 - A click blurs a focused text input first (rung 2), unless it lands on that
@@ -268,18 +261,12 @@ capability the keyboard lacks, and it never adds a binding.
   keeps "anything the TUI can do, the CLI can do" honest without inventing
   thirty more chords.
 - `ctrl-t` - open torrents window
-- `ctrl-p` - open prowlarr window
 - `,` - open settings window
-- `S` - server picker (named servers from config). The picker lists servers of
-  the **type the current window uses**: Transmission aliases from the torrents
-  and settings windows, Prowlarr aliases from the prowlarr window. Switching
-  one never changes the other, exactly as `default_server` and
-  `default_prowlarr_server` are independent in the CLI.
+- `S` - server picker (named servers from config)
 - `t` - toggle alt-speed (Transmission calls it turtle mode). A server session
   setting, so it is not scoped to the torrents window
-- `R` - force a refresh: re-poll the server in the torrents window, resubmit
-  the current search in the prowlarr window, re-read settings in the settings
-  window
+- `R` - force a refresh: re-poll the server in the torrents window, re-read
+  settings in the settings window
 - `esc` - the ladder above
 
 
@@ -449,94 +436,6 @@ Peers:
 Trackers:
 
 - table/list: announce url, status, next update, seeds, peers, downloads
-
-#### Prowlarr Window Global 
-
-```
-+------------------------------------------------------------------------------+
-|                                                                              |
-| [search query]  [category dropdown]  [indexer dropdown]                      |
-|                                                                              |
-+------------------------------------------------------------------------------+
-| Title    Size  ...                                                           |
-| Foobar   1gb                                                                 |
-|                                                                              |
-|                                                                              |
-|                                                                              |
-|                                                                              |
-|                                                                              |
-+------------------------------------------------------------------------------+
-| Name   Foobar                                                                |
-| Size   1gb                                                                   |
-| ...    ...                                                                   |
-|                                                                              |
-+------------------------------------------------------------------------------+
-```
-
-Panes: search (top), results (main), detail (bottom, toggled with `}`).
-Navigation and pane focus are per the Principles; there are no marks in this
-window in v1, so every action acts on the cursor row.
-
-#### Prowlarr Window > Search Pane (Top)
-
-Text area to enter a search. Categories and indexers are not inline dropdowns:
-`f` opens a modal multi-select (one checkbox section each, nothing checked
-meaning "all"), and the pane shows a summary of the selection beside the query
-(`categories: 2  indexers: all`).
-
-- `enter` - submit search, show results in main listing pane
-- `esc` - if search field focused, unfocus, stay in prowlarr window/search
-  pane (rung 2). if not focused, back to torrent window (rung 6)
-
-#### Prowlarr Window > Main Listing
-
-Empty by default
-
-cols: age, title, indexer, size, grabs, peers, seeders
-
-- `/` - focus search field (`ctrl-l` is off limits - it is the universal
-  redraw. Readline helpers like `ctrl-w` inside the field are fine.)
-- `f` - set categories/indexers for search query (ask to resubmit if live results already)
-- `enter` - in search, submit and show results. on a result, open the detail pane
-- `O` - open in tracker (browser)
-- `o` - sort using torznab fields
-- `c` - configure visible columns
-- `y` + a second key - yank to clipboard:
-    - `y u` - tracker / info URL
-    - `y m` - magnet URL
-    - `y d` - download URL
-- `+` - fetch more results (append to the table)
-- `a` - grab (see the note below)
-- `w` - write the .torrent file locally
-- `m` - action menu (grab, write locally, open in tracker, yanks)
-- `P` - open Prowlarr
-- `esc` - back to torrent window (rung 6; a live search is not "an active
-  search" in the ladder's sense - rung 4 is the torrents window's `/` filter)
-
-**Note on `a` (grab).** Prowlarr's grab endpoint hands the release to the
-download client **Prowlarr** is configured with, which is not necessarily the
-server snatcher is pointed at. So `a` here means "tell Prowlarr to grab it",
-not "add it to this server". Adding directly from the release's download URL is
-a possible follow-up, not v1. `enter` never launches a browser - `O` does.
-
-`a` confirms, naming the release and saying where it goes ("Grab <title>
-[indexer]? It goes to Prowlarr's download client, not this server."): one
-release is one question, and it keeps `a` symmetric with the torrents window's
-`a`, which also opens a UI before acting.
-
-#### Prowlarr Window > Detail Pane
-
-Similar to torrent details, but with fields relevant to prowlarr results.
-include URL to tracker displayed here (not exposed in list pane)
-
-fields: age, title, indexer, size, grabs, peers, seeders
-
-- `O` - open in tracker
-- `y` + `u` / `m` / `d` - yank tracker URL / magnet URL / download URL
-- `a` - grab (same semantics as the list pane)
-- `w` - write the .torrent file locally
-- `m` - action menu
-- `esc` - focus the results list (rung 3)
 
 #### Settings Window
 

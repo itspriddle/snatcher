@@ -104,7 +104,7 @@ func (m Model) searchInputWidth() int {
 		used += lipgloss.Width("filter: " + f.text() + footerGap)
 	}
 
-	return max(1, m.torrentsLayout().list.inner().w-used)
+	return max(1, m.layout().list.inner().w-used)
 }
 
 // searchForward hands a message to the field. When it changes the text, the

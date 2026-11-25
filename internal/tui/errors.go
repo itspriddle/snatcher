@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/itspriddle/snatcher/internal/output"
-	"github.com/itspriddle/snatcher/internal/prowlarr"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
 
@@ -34,8 +33,7 @@ type errorClass struct {
 
 // errorClasses are the sentinels with wording of their own, checked in order.
 // Each asks something different of the user — fix credentials, upgrade the
-// server, or wait — and Prowlarr's say which backend is asking, since the
-// status bar can carry both at once.
+// server, or wait.
 var errorClasses = []errorClass{
 	{
 		sentinel: transmission.ErrAuth,
@@ -59,25 +57,6 @@ var errorClasses = []errorClass{
 		sentinel:  transmission.ErrServer,
 		short:     "server error",
 		long:      "server error: ",
-		hint:      retryHint,
-		appendErr: true,
-	},
-	{
-		sentinel: prowlarr.ErrAuth,
-		short:    "auth failed",
-		long:     "Prowlarr authentication failed: check the server's API key",
-		hint:     "check the API key with `snatcher server add --type prowlarr`, then " + retryHint,
-	},
-	{
-		sentinel: prowlarr.ErrUnreachable,
-		short:    "unreachable",
-		long:     "Prowlarr unreachable: check the URL and that Prowlarr is running",
-		hint:     retryHint,
-	},
-	{
-		sentinel:  prowlarr.ErrServer,
-		short:     "server error",
-		long:      "Prowlarr error: ",
 		hint:      retryHint,
 		appendErr: true,
 	},

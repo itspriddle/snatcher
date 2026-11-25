@@ -180,27 +180,22 @@ type columnsOverlay struct {
 	cursor int
 }
 
-// newColumnsOverlay builds the modal for the columns currently shown.
+// newColumnsOverlay builds the modal for the columns currently shown: the
+// shown keys first, in their order, then the rest in registry order.
 func newColumnsOverlay(keys []string) columnsOverlay {
-	return columnsOverlay{rows: columnRows(keys, allColumnKeys)}
-}
-
-// columnRows is a columns modal's rows: the shown keys first, in their order,
-// then the rest of all in its order.
-func columnRows(keys, all []string) []columnRow {
-	rows := make([]columnRow, 0, len(all))
+	rows := make([]columnRow, 0, len(allColumnKeys))
 
 	for _, k := range keys {
 		rows = append(rows, columnRow{key: k, on: true})
 	}
 
-	for _, k := range all {
+	for _, k := range allColumnKeys {
 		if !slices.Contains(keys, k) {
 			rows = append(rows, columnRow{key: k})
 		}
 	}
 
-	return rows
+	return columnsOverlay{rows: rows}
 }
 
 // kind implements overlay.
@@ -257,43 +252,9 @@ func (o columnsOverlay) view(m Model, w, h int) string {
 	return m.modalBox(o.modal(m, w, h), h)
 }
 
-// modal implements modalOverlay.
-func (o columnsOverlay) modal(m Model, w, _ int) modal {
-	return o.render(m, w, "Columns", ctxColumns, func(key string) string {
-		def, _ := columnDef(key)
-
-		return def.title
-	})
-}
-
-// pointAt implements modalOverlay.
-func (o columnsOverlay) pointAt(i int) (overlay, bool) {
-	o, ok := o.point(i)
-
-	return o, ok
-}
-
-// point moves the cursor to row i, when there is one.
-func (o columnsOverlay) point(i int) (columnsOverlay, bool) {
-	if i < 0 || i >= len(o.rows) {
-		return o, false
-	}
-
-	o.cursor = i
-
-	return o, true
-}
-
-// clickAction implements modalOverlay: a click shows or hides the column, as
-// space does. enter still applies.
-func (columnsOverlay) clickAction() Action { return actionColumnsToggle }
-
-// wheelActions implements modalOverlay.
-func (columnsOverlay) wheelActions() (up, down Action) { return actionColumnsUp, actionColumnsDown }
-
-// render lays out a columns modal. A row reads "[x] name  Name": the key as the
+// modal implements modalOverlay. A row reads "[x] name  Name": the key as the
 // modal applies it, and the heading the table draws.
-func (o columnsOverlay) render(m Model, w int, title string, ctx Context, heading func(string) string) modal {
+func (o columnsOverlay) modal(m Model, w, _ int) modal {
 	width := min(overlayContentWidth(w), columnsMaxWidth)
 
 	keyW := 0
@@ -309,11 +270,31 @@ func (o columnsOverlay) render(m Model, w int, title string, ctx Context, headin
 			box = "[x] "
 		}
 
-		rows = append(rows, cursorRow(m.styles, i == o.cursor, box+padLine(r.key, keyW)+"  "+heading(r.key), width))
+		def, _ := columnDef(r.key)
+
+		rows = append(rows, cursorRow(m.styles, i == o.cursor, box+padLine(r.key, keyW)+"  "+def.title, width))
 	}
 
-	return modal{title: title, rows: rows, focus: o.cursor, ctx: ctx, width: width}
+	return modal{title: "Columns", rows: rows, focus: o.cursor, ctx: ctxColumns, width: width}
 }
+
+// pointAt implements modalOverlay.
+func (o columnsOverlay) pointAt(i int) (overlay, bool) {
+	if i < 0 || i >= len(o.rows) {
+		return o, false
+	}
+
+	o.cursor = i
+
+	return o, true
+}
+
+// clickAction implements modalOverlay: a click shows or hides the column, as
+// space does. enter still applies.
+func (columnsOverlay) clickAction() Action { return actionColumnsToggle }
+
+// wheelActions implements modalOverlay.
+func (columnsOverlay) wheelActions() (up, down Action) { return actionColumnsUp, actionColumnsDown }
 
 // toggleColumns is c: open the modal, or close it when it is the overlay on top.
 func (m Model) toggleColumns() Model {

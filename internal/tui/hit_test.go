@@ -49,18 +49,6 @@ func TestHitTestFindsEveryPane(t *testing.T) {
 	}
 }
 
-// TestHitTestFindsProwlarrPanes checks the Prowlarr window's three panes.
-func TestHitTestFindsProwlarrPanes(t *testing.T) {
-	m := newTestModel(120, 40)
-	m.window, m.prowlarr.detailOpen = windowProwlarr, true
-	m = m.resize(120, 40)
-	l := m.layout()
-
-	assert.Equal(t, hit{kind: hitSearch, pane: paneSearch}, m.hitTest(5, l.search.y+1))
-	assert.Equal(t, paneResults, m.hitTest(5, l.list.y+l.list.h-1).pane)
-	assert.Equal(t, hit{kind: hitPane, pane: paneResultDetail}, m.hitTest(5, l.detail.y+2))
-}
-
 // TestHitTestResolvesTorrentTargets checks the list's rows and headings, the
 // sidebar's rows, and the footer resolve to what is drawn there.
 func TestHitTestResolvesTorrentTargets(t *testing.T) {
@@ -339,19 +327,16 @@ func TestEveryModalBoxOverlayIsClickable(t *testing.T) {
 // clickableOverlays names every modalOverlay; the assignments below fail to
 // compile if one stops implementing it.
 var clickableOverlays = []string{
-	"menuOverlay", "paletteOverlay", "sortOverlay", "releaseSortOverlay", "columnsOverlay",
-	"releaseColumnsOverlay", "filterPickOverlay", "catalogPickOverlay", "formOverlay", "pickerOverlay",
+	"menuOverlay", "paletteOverlay", "sortOverlay", "columnsOverlay",
+	"filterPickOverlay", "formOverlay", "pickerOverlay",
 }
 
 var (
 	_ modalOverlay = menuOverlay{}
 	_ modalOverlay = paletteOverlay{}
 	_ modalOverlay = sortOverlay{}
-	_ modalOverlay = releaseSortOverlay{}
 	_ modalOverlay = columnsOverlay{}
-	_ modalOverlay = releaseColumnsOverlay{}
 	_ modalOverlay = filterPickOverlay{}
-	_ modalOverlay = catalogPickOverlay{}
 	_ modalOverlay = formOverlay{}
 	_ modalOverlay = pickerOverlay{}
 )

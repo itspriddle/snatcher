@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -407,10 +406,8 @@ func TestServerListPlaintext(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	require.Len(t, lines, 2)
 
-	// A server registered before the type field existed reports "transmission"
-	// rather than an empty column.
-	assert.Equal(t, "local\ttransmission\t"+localURL+"\talice\tyes\tyes", lines[0])
-	assert.Equal(t, "seedbox\ttransmission\t"+seedboxURL+"\tbob\tno\tno", lines[1])
+	assert.Equal(t, "local\t"+localURL+"\talice\tyes\tyes", lines[0])
+	assert.Equal(t, "seedbox\t"+seedboxURL+"\tbob\tno\tno", lines[1])
 }
 
 func TestServerListJSON(t *testing.T) {
@@ -468,7 +465,7 @@ func TestWriteServerListTableEmpty(t *testing.T) {
 
 func TestWriteServerListTableHeader(t *testing.T) {
 	rows := [][]string{
-		{"local", "transmission", "http://local:9091/rpc", "alice", "yes", "yes"},
+		{"local", "http://local:9091/rpc", "alice", "yes", "yes"},
 	}
 
 	var buf bytes.Buffer
@@ -481,10 +478,9 @@ func TestWriteServerListTableHeader(t *testing.T) {
 	// The header row carries the documented columns in order.
 	header := lines[0]
 	assert.True(t, strings.HasPrefix(header, "NAME"))
-	assert.Equal(t,
-		[]string{"NAME", "TYPE", "URL", "USERNAME", "SECRET", "DEFAULT"},
-		strings.Fields(header),
-	)
+	for _, col := range []string{"NAME", "URL", "USERNAME", "SECRET", "DEFAULT"} {
+		assert.Contains(t, header, col)
+	}
 
 	assert.Contains(t, out, "local")
 	assert.Contains(t, out, "http://local:9091/rpc")
@@ -495,7 +491,6 @@ func TestWriteServerListPlaintextSanitizesControlChars(t *testing.T) {
 	results := []serverListResult{
 		{
 			Name:         "\x1b[2Jevil",
-			Type:         "trans\x1bmission",
 			ServerURL:    "http://h\x1bost:9091/rpc",
 			Username:     "ali\x07ce",
 			SecretStored: true,
@@ -514,7 +509,6 @@ func TestWriteServerListPlaintextSanitizesControlChars(t *testing.T) {
 	assert.NotContains(t, out, "\x1b", "raw ESC must not reach the plaintext output")
 	assert.NotContains(t, out, "\x07", "raw BEL must not reach the plaintext output")
 	assert.Contains(t, out, "[2Jevil", "visible text survives sanitization")
-	assert.Contains(t, out, "transmission")
 	assert.Contains(t, out, "http://host:9091/rpc")
 	assert.Contains(t, out, "alice")
 }
@@ -809,6 +803,55 @@ func TestServerRemoveNamedServer(t *testing.T) {
 	assert.Equal(t, "localpw", localPW)
 }
 
+func TestServerRemoveOmittedAliasHonorsSnatcherServer(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: "http://local:9091/rpc"},
+			"seedbox": {URL: "http://seedbox:9091/rpc"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	// An omitted alias resolves the way dial does: SNATCHER_SERVER outranks the
+	// default, so the server removed is the one every other command would use.
+	t.Setenv(envServer, "seedbox")
+
+	out, _, err := runServer(t, "", "remove", "--config", cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, out, `"seedbox"`)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	_, ok := cfg.Servers["seedbox"]
+	assert.False(t, ok)
+	assert.Contains(t, cfg.Servers, "local")
+	assert.Equal(t, "local", cfg.DefaultServer)
+}
+
+func TestServerRemoveUnknownSnatcherServerIsRejected(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers:       map[string]config.Server{"local": {URL: "http://local:9091/rpc"}},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	// A stale SNATCHER_SERVER must not fall through to removing the default.
+	t.Setenv(envServer, "gone")
+
+	_, _, err := runServer(t, "", "remove", "--config", cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown server "gone"`)
+
+	cfg, loadErr := config.Load(cfgPath)
+	require.NoError(t, loadErr)
+	assert.Contains(t, cfg.Servers, "local")
+}
+
 func TestServerRemoveDefaultRepointsToSoleRemaining(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
@@ -996,8 +1039,8 @@ func TestServerListToleratesUnavailableStore(t *testing.T) {
 	// The column shape is unchanged: unknown secret status renders as "no".
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	require.Len(t, lines, 2)
-	assert.Equal(t, "local\ttransmission\t"+localURL+"\talice\tno\tyes", lines[0])
-	assert.Equal(t, "seedbox\ttransmission\t"+seedboxURL+"\tbob\tno\tno", lines[1])
+	assert.Equal(t, "local\t"+localURL+"\talice\tno\tyes", lines[0])
+	assert.Equal(t, "seedbox\t"+seedboxURL+"\tbob\tno\tno", lines[1])
 
 	// One note for the whole listing, not one per server.
 	assert.Equal(t, 1, strings.Count(errOut, "secret store could not be reached"))
@@ -1176,1017 +1219,4 @@ func TestServerRegistrySubcommands(t *testing.T) {
 	for name, ok := range found {
 		assert.Truef(t, ok, "missing subcommand %q", name)
 	}
-}
-
-// prowlarrStub emulates a Prowlarr instance answering the system status probe,
-// recording the API key header it was sent (the empty string when none was) so a
-// test can assert exactly which credential reached the wire.
-type prowlarrStub struct {
-	apiKey *string
-}
-
-func (s prowlarrStub) handler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		*s.apiKey = r.Header.Get("X-Api-Key")
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"appName":"Prowlarr","instanceName":"Prowlarr","version":"1.30.2.4939"}`))
-	}
-}
-
-// newProwlarrStub starts a Prowlarr stub and returns its URL alongside a pointer
-// to the API key header of the most recent request.
-func newProwlarrStub(t *testing.T) (string, *string) {
-	t.Helper()
-
-	sent := new(string)
-	srv := httptest.NewServer(prowlarrStub{apiKey: sent}.handler())
-	t.Cleanup(srv.Close)
-
-	return srv.URL, sent
-}
-
-func TestServerAddProwlarrStoresTypeAndAPIKey(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	const prowlarrURL = "http://prowlarr:9696"
-
-	out, errOut, err := runServer(t, "abc123\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", prowlarrURL,
-		"--api-key-stdin",
-	)
-	require.NoError(t, err)
-	assert.Contains(t, out, "Saved credentials")
-	assert.Empty(t, errOut)
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-
-	srv := cfg.Servers["prowlarr:9696"]
-	assert.Equal(t, prowlarrURL, srv.URL)
-	assert.Equal(t, config.TypeProwlarr, srv.ResolvedType())
-	assert.Empty(t, srv.Username)
-
-	// The key lands in the secret store keyed by URL, never in config.
-	key, getErr := secrets.Get(srv.URL)
-	require.NoError(t, getErr)
-	assert.Equal(t, "abc123", key)
-
-	raw, readErr := os.ReadFile(cfgPath)
-	require.NoError(t, readErr)
-	assert.NotContains(t, string(raw), "abc123")
-}
-
-func TestServerAddProwlarrTypeIsCaseInsensitive(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "k\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "  PROWLARR ",
-		"--url", "http://prowlarr:9696",
-		"--api-key-stdin",
-	)
-	require.NoError(t, err)
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Equal(t, config.TypeProwlarr, cfg.Servers["prowlarr:9696"].ResolvedType())
-}
-
-func TestServerAddRejectsUnknownType(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "pw\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "sonarr",
-		"--url", "http://host:9091/transmission/rpc",
-		"--password-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `invalid --type "sonarr"`)
-	assert.Contains(t, err.Error(), `"transmission", "prowlarr"`)
-
-	// Nothing is written when the type is rejected.
-	_, loadErr := config.Load(cfgPath)
-	require.ErrorIs(t, loadErr, config.ErrNotConfigured)
-}
-
-func TestServerAddTransmissionOmitsTheTypeKey(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "pw\n",
-		"add",
-		"--config", cfgPath,
-		"--url", "http://host:9091/transmission/rpc",
-		"--password-stdin",
-	)
-	require.NoError(t, err)
-
-	// A Transmission server records no type at all, so a config written by a
-	// version that predates the field stays byte-identical through a re-add.
-	raw, readErr := os.ReadFile(cfgPath)
-	require.NoError(t, readErr)
-	assert.NotContains(t, string(raw), `"type"`)
-}
-
-func TestServerAddRejectsAPIKeyStdinForATransmissionServer(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "k\n",
-		"add",
-		"--config", cfgPath,
-		"--url", "http://host:9091/transmission/rpc",
-		"--api-key-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--api-key-stdin only applies to a Prowlarr server")
-	assert.Contains(t, err.Error(), "--password-stdin")
-}
-
-func TestServerAddRejectsPasswordStdinForAProwlarrServer(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "pw\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", "http://prowlarr:9696",
-		"--password-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--password-stdin does not apply to a Prowlarr server")
-	assert.Contains(t, err.Error(), "--api-key-stdin")
-}
-
-func TestServerAddRejectsUsernameForAProwlarrServer(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "k\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", "http://prowlarr:9696",
-		"--username", "alice",
-		"--api-key-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--username does not apply to a Prowlarr server")
-	assert.Contains(t, err.Error(), "API key")
-}
-
-// TestServerAddValidatesFlagsBeforeReadingTheSecret proves the combination check
-// runs ahead of everything else: the run is rejected with a URL that would also
-// have failed, so the flag error is the one that surfaces and nothing is read
-// from stdin or written to disk.
-func TestServerAddValidatesFlagsBeforeReadingTheSecret(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "k\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--password-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--password-stdin does not apply to a Prowlarr server")
-	assert.NotContains(t, err.Error(), "--url is required")
-
-	_, loadErr := config.Load(cfgPath)
-	require.ErrorIs(t, loadErr, config.ErrNotConfigured)
-}
-
-func TestServerAddProwlarrEmptyAPIKeyWarns(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	out, errOut, err := runServer(t, "\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", "http://prowlarr:9696",
-		"--api-key-stdin",
-	)
-	require.NoError(t, err)
-	assert.Contains(t, out, "no API key stored")
-	assert.Contains(t, errOut, "search commands will fail")
-	assert.Contains(t, errOut, envAPIKey)
-
-	// The server is registered even so; only the secret is missing.
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Equal(t, config.TypeProwlarr, cfg.Servers["prowlarr:9696"].ResolvedType())
-
-	_, getErr := secrets.Get("http://prowlarr:9696")
-	require.ErrorIs(t, getErr, secrets.ErrNotFound)
-}
-
-// TestServerAddProwlarrStoreNoneNamesTheAPIKey pins the noun on the failure
-// path, not just the success one: a run that prompts for an API key must not
-// turn around and report a problem with a "password".
-func TestServerAddProwlarrStoreNoneNamesTheAPIKey(t *testing.T) {
-	t.Setenv(envSecretStore, "")
-	stateDir(t)
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	keyring.MockInit()
-
-	_, _, err := runServer(t, "abc123\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", "http://prowlarr:9696",
-		"--api-key-stdin",
-		"--store", "none",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "the API key cannot be stored")
-	assert.Contains(t, err.Error(), "re-run with an empty API key")
-	assert.NotContains(t, err.Error(), "password")
-
-	// The refusal is still atomic, exactly as it is for a password.
-	assert.NoFileExists(t, cfgPath)
-}
-
-// TestServerAddProwlarrUnavailableStoreNamesTheAPIKey covers the other fatal
-// store path: nowhere to put the key, so the advice names every way forward —
-// in the operator's own noun.
-func TestServerAddProwlarrUnavailableStoreNamesTheAPIKey(t *testing.T) {
-	t.Setenv(envSecretStore, "")
-	stateDir(t)
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	mockStoreUnavailable(t)
-
-	_, _, err := runServer(t, "abc123\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", "http://prowlarr:9696",
-		"--api-key-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "the API key cannot be stored")
-	assert.Contains(t, err.Error(), "keep the API key in a plaintext file")
-	assert.Contains(t, err.Error(), "no stored API key")
-	assert.NotContains(t, err.Error(), "password")
-	assert.NotContains(t, err.Error(), "dbus-launch")
-
-	assert.NoFileExists(t, cfgPath)
-}
-
-// TestServerAddProwlarrFileStoreNamesTheAPIKey covers the noun where it starts a
-// sentence, so capitalizeFirst is applied to whichever secret was stored.
-func TestServerAddProwlarrFileStoreNamesTheAPIKey(t *testing.T) {
-	t.Setenv(envSecretStore, "")
-	stateDir(t)
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	mockStoreUnavailable(t)
-
-	out, _, err := runServer(t, "abc123\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", "http://prowlarr:9696",
-		"--api-key-stdin",
-		"--store", "file",
-	)
-	require.NoError(t, err)
-	assert.Contains(t, out, "API key stored in plaintext at")
-	assert.NotContains(t, out, "Password")
-}
-
-// TestServerRemoveProwlarrWarnsAboutAStoredAPIKey pins the noun on the removal
-// warning, which reports what may survive in a store snatcher cannot reach.
-func TestServerRemoveProwlarrWarnsAboutAStoredAPIKey(t *testing.T) {
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	const url = "http://prowlarr:9696"
-
-	keyring.MockInit()
-	require.NoError(t, config.Save(config.Config{
-		Servers:               map[string]config.Server{"indexers": {URL: url, Type: config.TypeProwlarr}},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	mockStoreUnavailable(t)
-
-	out, errOut, err := runServer(t, "", "remove", "--config", cfgPath, "indexers")
-	require.NoError(t, err)
-	assert.Contains(t, out, "Removed server")
-
-	// The shared remedy still talks about passwords generically — it is the
-	// Transmission-facing wording this story must not disturb — but the
-	// consequence, which is about this server's own secret, is in its noun.
-	assert.Contains(t, errOut, "a stored API key for "+url+" may remain")
-	assert.NotContains(t, errOut, "a stored password")
-}
-
-func TestServerAddProwlarrRejectsEmbeddedCredentials(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := runServer(t, "k\n",
-		"add",
-		"--config", cfgPath,
-		"--type", "prowlarr",
-		"--url", "http://user:pass@prowlarr:9696",
-		"--api-key-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "embedded credentials")
-}
-
-func TestServerAddRefusesToChangeAnAliasTypeImplicitly(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"indexers": {URL: "http://prowlarr:9696", Type: config.TypeProwlarr},
-		},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	_, _, err := runServer(t, "pw\n",
-		"add",
-		"--config", cfgPath,
-		"--name", "indexers",
-		"--url", "http://prowlarr:9696",
-		"--password-stdin",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `server "indexers" is already a Prowlarr server`)
-	assert.Contains(t, err.Error(), "--type prowlarr")
-
-	// The registered type survives the refusal.
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Equal(t, config.TypeProwlarr, cfg.Servers["indexers"].ResolvedType())
-}
-
-func TestServerAddChangesAnAliasTypeWhenAsked(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"indexers": {URL: "http://prowlarr:9696", Type: config.TypeProwlarr},
-		},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	_, _, err := runServer(t, "pw\n",
-		"add",
-		"--config", cfgPath,
-		"--name", "indexers",
-		"--type", "transmission",
-		"--url", "http://host:9091/transmission/rpc",
-		"--password-stdin",
-	)
-	require.NoError(t, err)
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Equal(t, config.TypeTransmission, cfg.Servers["indexers"].ResolvedType())
-}
-
-// TestSecretFromEnvIsScopedToServerType proves the two read overrides never
-// cross: a Transmission password must not become the credential offered to a
-// Prowlarr instance, or the reverse.
-func TestSecretFromEnvIsScopedToServerType(t *testing.T) {
-	t.Setenv(envPassword, "pw")
-	t.Setenv(envAPIKey, "key")
-
-	password, ok := secretFromEnv(config.Server{})
-	require.True(t, ok)
-	assert.Equal(t, "pw", password)
-
-	apiKey, ok := secretFromEnv(config.Server{Type: config.TypeProwlarr})
-	require.True(t, ok)
-	assert.Equal(t, "key", apiKey)
-}
-
-func TestSecretFromEnvIgnoresTheOtherTypesVariable(t *testing.T) {
-	t.Setenv(envPassword, "pw")
-	t.Setenv(envAPIKey, "")
-
-	_, ok := secretFromEnv(config.Server{Type: config.TypeProwlarr})
-	assert.False(t, ok)
-
-	t.Setenv(envPassword, "")
-	t.Setenv(envAPIKey, "key")
-
-	_, ok = secretFromEnv(config.Server{})
-	assert.False(t, ok)
-}
-
-func TestDialProwlarrSendsTheStoredAPIKey(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	prowlarrURL, sentKey := newProwlarrStub(t)
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"indexers": {URL: prowlarrURL, Type: config.TypeProwlarr},
-		},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-	require.NoError(t, secrets.Set(prowlarrURL, "stored-key"))
-
-	client, dialedURL, err := dialProwlarr(dialCmd(t, cfgPath), "")
-	require.NoError(t, err)
-	assert.Equal(t, prowlarrURL, dialedURL)
-
-	status, err := client.SystemStatus(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, "Prowlarr", status.AppName)
-	assert.Equal(t, "stored-key", *sentKey)
-}
-
-func TestDialProwlarrPrefersTheAPIKeyVariable(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	prowlarrURL, sentKey := newProwlarrStub(t)
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"indexers": {URL: prowlarrURL, Type: config.TypeProwlarr},
-		},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-	require.NoError(t, secrets.Set(prowlarrURL, "stored-key"))
-
-	t.Setenv(envAPIKey, "env-key")
-
-	client, _, err := dialProwlarr(dialCmd(t, cfgPath), "")
-	require.NoError(t, err)
-
-	_, err = client.SystemStatus(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, "env-key", *sentKey)
-}
-
-// TestDialProwlarrIgnoresThePasswordVariable is the read-path half of the
-// scoping rule: an exported SNATCHER_PASSWORD, set for a Transmission server,
-// must never be sent to a Prowlarr instance as its API key.
-func TestDialProwlarrIgnoresThePasswordVariable(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	prowlarrURL, sentKey := newProwlarrStub(t)
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"indexers": {URL: prowlarrURL, Type: config.TypeProwlarr},
-		},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	t.Setenv(envPassword, "transmission-password")
-
-	client, _, err := dialProwlarr(dialCmd(t, cfgPath), "")
-	require.NoError(t, err)
-
-	_, err = client.SystemStatus(t.Context())
-	require.NoError(t, err)
-	assert.Empty(t, *sentKey)
-}
-
-func TestDialProwlarrHonorsTheServerEnvironmentVariable(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	prowlarrURL, _ := newProwlarrStub(t)
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"other":    {URL: "http://other:9696", Type: config.TypeProwlarr},
-			"indexers": {URL: prowlarrURL, Type: config.TypeProwlarr},
-		},
-		DefaultProwlarrServer: "other",
-	}, cfgPath))
-
-	t.Setenv(envServer, "indexers")
-
-	_, dialedURL, err := dialProwlarr(dialCmd(t, cfgPath), "")
-	require.NoError(t, err)
-	assert.Equal(t, prowlarrURL, dialedURL)
-}
-
-func TestDialProwlarrWithNoProwlarrServerConfigured(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers:       map[string]config.Server{"local": {URL: "http://local:9091/rpc"}},
-		DefaultServer: "local",
-	}, cfgPath))
-
-	_, _, err := dialProwlarr(dialCmd(t, cfgPath), "")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no Prowlarr server configured")
-	assert.Contains(t, err.Error(), "--type prowlarr")
-}
-
-func TestDialProwlarrWithNoDefaultProwlarrServer(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local": {URL: "http://local:9091/rpc"},
-			"one":   {URL: "http://one:9696", Type: config.TypeProwlarr},
-			"two":   {URL: "http://two:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer: "local",
-	}, cfgPath))
-
-	_, _, err := dialProwlarr(dialCmd(t, cfgPath), "")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no default Prowlarr server set")
-	assert.Contains(t, err.Error(), "snatcher server default <alias>")
-
-	// Only the Prowlarr aliases are offered, not every configured server.
-	assert.Contains(t, err.Error(), "one, two")
-	assert.NotContains(t, err.Error(), "local")
-}
-
-func TestDialProwlarrRejectsATransmissionAlias(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers:       map[string]config.Server{"local": {URL: "http://local:9091/rpc"}},
-		DefaultServer: "local",
-	}, cfgPath))
-
-	_, _, err := dialProwlarr(dialCmd(t, cfgPath), "local")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `server "local" is a Transmission server`)
-	assert.Contains(t, err.Error(), "needs a Prowlarr server")
-}
-
-func TestDialRejectsAProwlarrAlias(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"indexers": {URL: "http://prowlarr:9696", Type: config.TypeProwlarr},
-		},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	_, _, err := dial(dialCmd(t, cfgPath), "indexers")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `server "indexers" is a Prowlarr server`)
-	assert.Contains(t, err.Error(), "needs a Transmission server")
-	assert.Contains(t, err.Error(), "pass --server <alias>")
-}
-
-// TestDialTypeMismatchNamesTheEnvironmentVariable covers the case an operator is
-// least likely to guess: the offending alias came from an exported
-// SNATCHER_SERVER, not from anything on the command line.
-func TestDialTypeMismatchNamesTheEnvironmentVariable(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local":    {URL: "http://local:9091/rpc"},
-			"indexers": {URL: "http://prowlarr:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer: "local",
-	}, cfgPath))
-
-	t.Setenv(envServer, "indexers")
-
-	_, _, err := dial(dialCmd(t, cfgPath), "")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `server "indexers" is a Prowlarr server`)
-	assert.Contains(t, err.Error(), envServer)
-}
-
-func TestDialProwlarrNotConfigured(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	_, _, err := dialProwlarr(dialCmd(t, cfgPath), "")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not configured")
-}
-
-// TestServerAddDefaultsAreScopedToType proves the auto-default is per type: the
-// first server of each kind becomes that kind's default, and neither
-// registration — nor any later one — disturbs the other's.
-func TestServerAddDefaultsAreScopedToType(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	add := func(stdin string, args ...string) {
-		t.Helper()
-
-		_, _, err := runServer(t, stdin, append([]string{"add", "--config", cfgPath}, args...)...)
-		require.NoError(t, err)
-	}
-
-	add("pw\n", "--url", "http://host:9091/transmission/rpc", "--password-stdin")
-	add("key\n", "--type", "prowlarr", "--url", "http://prowlarr:9696", "--api-key-stdin")
-	add("pw\n", "--url", "http://seedbox:9091/transmission/rpc", "--password-stdin")
-	add("key\n", "--type", "prowlarr", "--url", "http://other:9696", "--api-key-stdin")
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-
-	assert.Equal(t, "host:9091", cfg.DefaultServer)
-	assert.Equal(t, "prowlarr:9696", cfg.DefaultProwlarrServer)
-}
-
-func TestServerDefaultSetsTheProwlarrDefault(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local": {URL: "http://local:9091/rpc"},
-			"one":   {URL: "http://one:9696", Type: config.TypeProwlarr},
-			"two":   {URL: "http://two:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer:         "local",
-		DefaultProwlarrServer: "one",
-	}, cfgPath))
-
-	// The type is inferred from the alias, with no flag, and the confirmation
-	// line says which of the two defaults moved.
-	out, _, err := runServer(t, "", "default", "two", "--config", cfgPath)
-	require.NoError(t, err)
-	assert.Contains(t, out, `Default Prowlarr server set to "two"`)
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Equal(t, "two", cfg.DefaultProwlarrServer)
-	assert.Equal(t, "local", cfg.DefaultServer, "the Transmission default is untouched")
-}
-
-func TestServerDefaultSetsTheTransmissionDefaultOnly(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local":    {URL: "http://local:9091/rpc"},
-			"seedbox":  {URL: "http://seedbox:9091/rpc"},
-			"indexers": {URL: "http://prowlarr:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer:         "local",
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	out, _, err := runServer(t, "", "default", "seedbox", "--config", cfgPath)
-	require.NoError(t, err)
-	assert.Contains(t, out, `Default server set to "seedbox"`)
-	assert.NotContains(t, out, "Prowlarr")
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Equal(t, "seedbox", cfg.DefaultServer)
-	assert.Equal(t, "indexers", cfg.DefaultProwlarrServer, "the Prowlarr default is untouched")
-}
-
-func TestServerRemoveRepointsTheProwlarrDefaultWithinItsType(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local": {URL: "http://local:9091/rpc"},
-			"one":   {URL: "http://one:9696", Type: config.TypeProwlarr},
-			"two":   {URL: "http://two:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer:         "local",
-		DefaultProwlarrServer: "one",
-	}, cfgPath))
-
-	_, _, err := runServer(t, "", "remove", "one", "--config", cfgPath)
-	require.NoError(t, err)
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-
-	// Exactly one Prowlarr instance is left, so it inherits the Prowlarr
-	// default; the Transmission default is neither consulted nor changed.
-	assert.Equal(t, "two", cfg.DefaultProwlarrServer)
-	assert.Equal(t, "local", cfg.DefaultServer)
-}
-
-func TestServerRemoveClearsTheProwlarrDefaultWhenSeveralRemain(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local": {URL: "http://local:9091/rpc"},
-			"one":   {URL: "http://one:9696", Type: config.TypeProwlarr},
-			"two":   {URL: "http://two:9696", Type: config.TypeProwlarr},
-			"three": {URL: "http://three:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer:         "local",
-		DefaultProwlarrServer: "one",
-	}, cfgPath))
-
-	_, _, err := runServer(t, "", "remove", "one", "--config", cfgPath)
-	require.NoError(t, err)
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Empty(t, cfg.DefaultProwlarrServer)
-	assert.Equal(t, "local", cfg.DefaultServer)
-}
-
-// TestServerRemoveDoesNotRepointAcrossTypes is the regression the per-type split
-// exists for: repointing the Transmission default at the sole remaining server
-// when that server is a Prowlarr instance would leave every Transmission command
-// failing with a type error.
-func TestServerRemoveDoesNotRepointAcrossTypes(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local":    {URL: "http://local:9091/rpc"},
-			"indexers": {URL: "http://prowlarr:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer:         "local",
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	_, _, err := runServer(t, "", "remove", "local", "--config", cfgPath)
-	require.NoError(t, err)
-
-	cfg, loadErr := config.Load(cfgPath)
-	require.NoError(t, loadErr)
-	assert.Empty(t, cfg.DefaultServer, "the sole survivor is a Prowlarr instance, not a Transmission default")
-	assert.Equal(t, "indexers", cfg.DefaultProwlarrServer)
-}
-
-func TestServerListShowsTypeAndPerTypeDefault(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	const localURL = "http://local:9091/transmission/rpc"
-	const prowlarrURL = "http://prowlarr:9696"
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local":    {URL: localURL, Username: "alice"},
-			"indexers": {URL: prowlarrURL, Type: config.TypeProwlarr},
-		},
-		DefaultServer:         "local",
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	out, _, err := runServer(t, "", "list", "--config", cfgPath)
-	require.NoError(t, err)
-
-	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	require.Len(t, lines, 2)
-
-	// The type is column 2, and both aliases are the default for their own type,
-	// so both say yes.
-	assert.Equal(t, strings.Join([]string{"indexers", "prowlarr", prowlarrURL, "", "no", "yes"}, "\t"), lines[0])
-	assert.Equal(t, strings.Join([]string{"local", "transmission", localURL, "alice", "no", "yes"}, "\t"), lines[1])
-}
-
-func TestServerListJSONCarriesTheType(t *testing.T) {
-	keyring.MockInit()
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-
-	require.NoError(t, config.Save(config.Config{
-		Servers: map[string]config.Server{
-			"local":    {URL: "http://local:9091/rpc", Username: "alice"},
-			"indexers": {URL: "http://prowlarr:9696", Type: config.TypeProwlarr},
-			"spare":    {URL: "http://spare:9696", Type: config.TypeProwlarr},
-		},
-		DefaultServer:         "local",
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-
-	out, _, err := runServer(t, "", "list", "--config", cfgPath, "--json")
-	require.NoError(t, err)
-
-	var results []serverListResult
-	require.NoError(t, json.Unmarshal([]byte(out), &results))
-	require.Len(t, results, 3)
-
-	assert.Equal(t, "indexers", results[0].Name)
-	assert.Equal(t, config.TypeProwlarr, results[0].Type)
-	assert.True(t, results[0].IsDefault)
-
-	assert.Equal(t, "local", results[1].Name)
-	assert.Equal(t, config.TypeTransmission, results[1].Type, "an absent type reports transmission, not an empty string")
-	assert.True(t, results[1].IsDefault)
-
-	assert.Equal(t, "spare", results[2].Name)
-	assert.Equal(t, config.TypeProwlarr, results[2].Type)
-	assert.False(t, results[2].IsDefault, "only the alias named by default_prowlarr_server is the Prowlarr default")
-}
-
-// TestServerListShowsAStoredAPIKey covers the positive half of the secret
-// column for the second server type: an API key is stored under the server's URL
-// exactly as a password is, so one type-agnostic lookup reports both. The
-// existing type tests store no secret, which would let a Prowlarr row read "no"
-// forever without anything noticing.
-func TestServerListShowsAStoredAPIKey(t *testing.T) {
-	keyring.MockInit()
-
-	const prowlarrURL = "http://prowlarr:9696"
-
-	cfgPath := saveProwlarrOnlyConfig(t, prowlarrURL, "abc123")
-
-	out, errOut, err := runServer(t, "", "list", "--config", cfgPath)
-	require.NoError(t, err)
-
-	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	require.Len(t, lines, 1)
-
-	assert.Equal(t,
-		strings.Join([]string{"indexers", "prowlarr", prowlarrURL, "", "yes", "yes"}, "\t"),
-		lines[0],
-		"a stored API key reads yes in the SECRET column")
-
-	assert.NotContains(t, out+errOut, "abc123", "the column reports presence, never the key itself")
-}
-
-// saveProwlarrOnlyConfig registers url as the sole configured server: a Prowlarr
-// instance aliased "indexers", holding apiKey, and the Prowlarr default.
-func saveProwlarrOnlyConfig(t *testing.T, url, apiKey string) string {
-	t.Helper()
-
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{
-		Servers:               map[string]config.Server{"indexers": {URL: url, Type: config.TypeProwlarr}},
-		DefaultProwlarrServer: "indexers",
-	}, cfgPath))
-	require.NoError(t, secrets.Set(url, apiKey))
-
-	return cfgPath
-}
-
-func TestServerPingProwlarrJSON(t *testing.T) {
-	keyring.MockInit()
-
-	url, sent := newProwlarrStub(t)
-	cfgPath := saveProwlarrOnlyConfig(t, url, "abc123")
-
-	out, _, err := runServer(t, "", "ping", "indexers", "--config", cfgPath, "--json")
-	require.NoError(t, err)
-
-	var result prowlarrPingResult
-	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	assert.True(t, result.Connected)
-	assert.Equal(t, url, result.ServerURL)
-	assert.Equal(t, config.TypeProwlarr, result.Type)
-	assert.Equal(t, "1.30.2.4939", result.Version)
-	assert.Equal(t, "Prowlarr", result.AppName)
-
-	// The stored API key reached the wire, and nothing echoed it back.
-	assert.Equal(t, "abc123", *sent)
-	assert.NotContains(t, out, "abc123")
-}
-
-func TestServerPingProwlarrPlaintext(t *testing.T) {
-	keyring.MockInit()
-
-	url, _ := newProwlarrStub(t)
-	cfgPath := saveProwlarrOnlyConfig(t, url, "abc123")
-
-	out, _, err := runServer(t, "", "ping", "indexers", "--config", cfgPath)
-	require.NoError(t, err)
-
-	assert.Contains(t, out, "Connected to "+url)
-	assert.Contains(t, out, config.TypeProwlarr)
-	assert.Contains(t, out, "1.30.2.4939")
-	assert.Contains(t, out, "Prowlarr")
-	assert.NotContains(t, out, "abc123")
-}
-
-// TestServerPingProwlarrSanitizesServerStrings covers the untrusted half of the
-// new plaintext path: the application name and version come straight off the
-// wire, so plaintext strips their control sequences while JSON keeps them.
-func TestServerPingProwlarrSanitizesServerStrings(t *testing.T) {
-	keyring.MockInit()
-
-	esc := string(rune(0o33))
-	bel := string(rune(0o7))
-	appName := "Pro" + esc + "[2Jwlarr"
-	version := "1.0" + bel + ".0"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"appName":      appName,
-			"instanceName": "x",
-			"version":      version,
-		})
-	}))
-	t.Cleanup(srv.Close)
-
-	cfgPath := saveProwlarrOnlyConfig(t, srv.URL, "abc123")
-
-	out, _, err := runServer(t, "", "ping", "indexers", "--config", cfgPath)
-	require.NoError(t, err)
-	assert.NotContains(t, out, esc, "raw ESC must not reach the plaintext output")
-	assert.NotContains(t, out, bel, "raw BEL must not reach the plaintext output")
-	assert.Contains(t, out, "Pro[2Jwlarr", "visible text survives sanitization")
-
-	jsonOut, _, err := runServer(t, "", "ping", "indexers", "--config", cfgPath, "--json")
-	require.NoError(t, err)
-
-	var result prowlarrPingResult
-	require.NoError(t, json.Unmarshal([]byte(jsonOut), &result))
-	assert.Equal(t, appName, result.AppName, "the machine contract is never sanitized")
-	assert.Equal(t, version, result.Version)
-}
-
-func TestServerPingTransmissionReportsItsType(t *testing.T) {
-	keyring.MockInit()
-	srv := httptest.NewServer(transmissionStub{
-		rpcVersionHeader: "6.0.0",
-		responses: map[string]string{
-			"session_get": `{
-				"jsonrpc": "2.0",
-				"result": {"version": "4.1.0 (ae226418eb)", "rpc_version_semver": "6.0.0"},
-				"id": 1
-			}`,
-		},
-	}.handler())
-	defer srv.Close()
-
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, config.Save(config.Config{
-		Servers:       map[string]config.Server{"test": {URL: srv.URL}},
-		DefaultServer: "test",
-	}, cfgPath))
-
-	out, _, err := runServer(t, "", "ping", "--config", cfgPath, "--json")
-	require.NoError(t, err)
-
-	// The Transmission shape is otherwise unchanged; it only gains the type, and
-	// never grows the Prowlarr-only keys.
-	var result serverPingResult
-	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	assert.Equal(t, config.TypeTransmission, result.Type)
-	assert.Equal(t, "jsonrpc-2.0", result.Protocol)
-	assert.Equal(t, "6.0.0", result.RPCVersionSemver)
-	assert.NotContains(t, out, "app_name")
-}
-
-func TestServerPingProwlarrThroughTheServerEnvironmentVariable(t *testing.T) {
-	keyring.MockInit()
-
-	url, _ := newProwlarrStub(t)
-	cfgPath := saveProwlarrOnlyConfig(t, url, "abc123")
-
-	t.Setenv(envServer, "indexers")
-
-	// No alias on the command line: the variable selects the instance, and ping
-	// dispatches on the type it resolves to rather than on how it was named.
-	out, _, err := runServer(t, "", "ping", "--config", cfgPath, "--json")
-	require.NoError(t, err)
-
-	var result prowlarrPingResult
-	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	assert.Equal(t, config.TypeProwlarr, result.Type)
-	assert.Equal(t, url, result.ServerURL)
-}
-
-// TestServerPingWithNoAliasNeedsATransmissionDefault documents the deliberate
-// fallback: an omitted alias resolves the Transmission default, which is what
-// every invocation resolved to before Prowlarr existed. A Prowlarr instance is
-// pinged by naming it, or through SNATCHER_SERVER.
-func TestServerPingWithNoAliasNeedsATransmissionDefault(t *testing.T) {
-	keyring.MockInit()
-
-	url, _ := newProwlarrStub(t)
-	cfgPath := saveProwlarrOnlyConfig(t, url, "abc123")
-
-	_, _, err := runServer(t, "", "ping", "--config", cfgPath)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no default server set")
 }

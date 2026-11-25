@@ -5,8 +5,6 @@ func (m Model) focusedPane() Pane {
 	switch m.window {
 	case windowSettings:
 		return paneSettings
-	case windowProwlarr:
-		return m.prowlarr.focus
 	case windowTorrents:
 	}
 
@@ -18,8 +16,6 @@ func (m Model) openPanes() []Pane {
 	switch m.window {
 	case windowSettings:
 		return []Pane{paneSettings}
-	case windowProwlarr:
-		return m.prowlarr.openPanes()
 	case windowTorrents:
 	}
 
@@ -32,8 +28,6 @@ func (m Model) mainPane() Pane {
 	switch m.window {
 	case windowSettings:
 		return paneSettings
-	case windowProwlarr:
-		return paneResults
 	case windowTorrents:
 	}
 
@@ -48,10 +42,6 @@ func (m Model) mainPane() Pane {
 func (m Model) setFocus(p Pane) Model {
 	switch m.window {
 	case windowSettings:
-		return m
-	case windowProwlarr:
-		m.prowlarr = m.prowlarr.setFocus(p)
-
 		return m
 	case windowTorrents:
 	}
@@ -89,8 +79,6 @@ func (m Model) focusDirection(dir Action) Model {
 	switch m.window {
 	case windowSettings:
 		return m
-	case windowProwlarr:
-		return m.setFocus(m.prowlarr.neighbor(dir))
 	case windowTorrents:
 	}
 

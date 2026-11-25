@@ -94,68 +94,30 @@ const (
 
 	// ctxChordWindow is the second key of the ctrl+w chord.
 	ctxChordWindow
-
-	// ctxProwlarr holds the Prowlarr window's own keys, shared by all three of
-	// its panes.
-	ctxProwlarr
-
-	// ctxProwlarrRelease holds the verbs on the release under the cursor. It is
-	// live in the results pane and the release detail pane, both of which show
-	// that release.
-	ctxProwlarrRelease
-
-	// ctxProwlarrResults holds the results pane's own keys.
-	ctxProwlarrResults
-
-	// ctxProwlarrSearch holds the search pane's keys while its query input is
-	// blurred.
-	ctxProwlarrSearch
-
-	// ctxCatalogPick is the whole stack while the Prowlarr f modal is open.
-	ctxCatalogPick
-
-	// ctxReleaseSort is the whole stack while the Prowlarr o modal is open. It
-	// is not ctxSort: that context's o closes the torrent sort modal.
-	ctxReleaseSort
-
-	// ctxReleaseColumns is the whole stack while the Prowlarr c modal is open.
-	ctxReleaseColumns
-
-	// ctxChordYankRelease is the second key of the y chord in the Prowlarr
-	// window.
-	ctxChordYankRelease
 )
 
 // contextNames names each Context for test failures and help column headings.
 var contextNames = map[Context]string{
-	ctxGlobal:           "global",
-	ctxNav:              "navigation",
-	ctxTorrents:         "torrents",
-	ctxTorrentList:      "torrent list",
-	ctxTorrentFilter:    "filter",
-	ctxTorrentDetail:    "detail",
-	ctxTorrentFiles:     "files",
-	ctxSettings:         "settings",
-	ctxTextInput:        "input",
-	ctxHelp:             "help",
-	ctxConfirm:          "confirm",
-	ctxPicker:           "server picker",
-	ctxSort:             "sort",
-	ctxColumns:          "columns",
-	ctxFilterPick:       "filter picker",
-	ctxForm:             "form",
-	ctxMenu:             "action menu",
-	ctxPalette:          "command palette",
-	ctxChordYank:        "yank",
-	ctxChordWindow:      "window",
-	ctxProwlarr:         "prowlarr",
-	ctxProwlarrRelease:  "release",
-	ctxProwlarrResults:  "results",
-	ctxProwlarrSearch:   "search",
-	ctxCatalogPick:      "categories and indexers",
-	ctxReleaseSort:      "sort releases",
-	ctxReleaseColumns:   "release columns",
-	ctxChordYankRelease: "yank",
+	ctxGlobal:        "global",
+	ctxNav:           "navigation",
+	ctxTorrents:      "torrents",
+	ctxTorrentList:   "torrent list",
+	ctxTorrentFilter: "filter",
+	ctxTorrentDetail: "detail",
+	ctxTorrentFiles:  "files",
+	ctxSettings:      "settings",
+	ctxTextInput:     "input",
+	ctxHelp:          "help",
+	ctxConfirm:       "confirm",
+	ctxPicker:        "server picker",
+	ctxSort:          "sort",
+	ctxColumns:       "columns",
+	ctxFilterPick:    "filter picker",
+	ctxForm:          "form",
+	ctxMenu:          "action menu",
+	ctxPalette:       "command palette",
+	ctxChordYank:     "yank",
+	ctxChordWindow:   "window",
 }
 
 // String names a Context for test failures and help column headings.
@@ -184,7 +146,6 @@ const (
 	actionRefresh        Action = "app.refresh"
 	actionPalette        Action = "palette.open"
 	actionWindowTorrents Action = "window.torrents"
-	actionWindowProwlarr Action = "window.prowlarr"
 	actionWindowSettings Action = "window.settings"
 	actionServerPicker   Action = "server.picker"
 	actionServerAltSpeed Action = "server.alt-speed"
@@ -308,45 +269,6 @@ const (
 	actionFocusRight Action = "focus.right"
 )
 
-// The Prowlarr window's actions.
-const (
-	actionReleaseSearchFocus Action = "release.search-focus"
-	actionReleaseFilter      Action = "release.filter"
-	actionReleaseSort        Action = "release.sort"
-	actionReleaseColumns     Action = "release.columns"
-	actionProwlarrOpen       Action = "prowlarr.open"
-
-	actionReleaseGrab       Action = "release.grab"
-	actionReleaseWrite      Action = "release.write"
-	actionReleaseOpen       Action = "release.open"
-	actionReleaseYankChord  Action = "release.yank-chord"
-	actionReleaseMenu       Action = "release.menu"
-	actionReleaseDetailOpen Action = "release.detail-open"
-	actionReleaseMore       Action = "release.more"
-	actionSearchSubmit      Action = "search.submit"
-
-	actionYankInfoURL       Action = "yank.info-url"
-	actionYankReleaseMagnet Action = "yank.release-magnet"
-	actionYankDownloadURL   Action = "yank.download-url"
-
-	actionCatalogUp     Action = "catalog.up"
-	actionCatalogDown   Action = "catalog.down"
-	actionCatalogToggle Action = "catalog.toggle"
-	actionCatalogApply  Action = "catalog.apply"
-
-	actionReleaseSortUp      Action = "release-sort.up"
-	actionReleaseSortDown    Action = "release-sort.down"
-	actionReleaseSortReverse Action = "release-sort.reverse"
-	actionReleaseSortSelect  Action = "release-sort.select"
-
-	actionReleaseColumnsUp       Action = "release-columns.up"
-	actionReleaseColumnsDown     Action = "release-columns.down"
-	actionReleaseColumnsToggle   Action = "release-columns.toggle"
-	actionReleaseColumnsMoveUp   Action = "release-columns.move-up"
-	actionReleaseColumnsMoveDown Action = "release-columns.move-down"
-	actionReleaseColumnsApply    Action = "release-columns.apply"
-)
-
 // The actions T5 leaves without a key: rename, which is single-torrent and rare,
 // and force start and the queue's two ends, the long tail of s, J, and K. They
 // live in the action menu and the palette.
@@ -447,20 +369,15 @@ var paletteHidden = map[Action]bool{
 	actionSettingsPrevTab: true, actionSettingsNextTab: true,
 	actionSettingsNextField: true, actionSettingsPrevField: true,
 	actionSettingsEdit: true, actionSettingsFieldUp: true, actionSettingsFieldDown: true,
-
-	actionReleaseYankChord: true, actionReleaseMenu: true, actionSearchSubmit: true,
 }
 
-// paletteChords are the chord contexts the palette flattens into a pane's stack:
-// each is listed after the context whose key starts it, its entries named and
+// paletteChord is the chord context the palette flattens into a pane's stack:
+// it is listed after the context whose key starts it, its entries named and
 // keyed with the chord's prefix ("yank magnet link", "y m").
-var paletteChords = []struct {
+var paletteChord = struct {
 	ctx, after             Context
 	labelPrefix, keyPrefix string
-}{
-	{ctx: ctxChordYank, after: ctxTorrentList, labelPrefix: "yank ", keyPrefix: "y "},
-	{ctx: ctxChordYankRelease, after: ctxProwlarrRelease, labelPrefix: "yank ", keyPrefix: "y "},
-}
+}{ctx: ctxChordYank, after: ctxTorrentList, labelPrefix: "yank ", keyPrefix: "y "}
 
 // Binding is one row of the registry: a key, the context it is live in, and the
 // action it runs. Nothing else in the TUI declares a keybinding — components are
@@ -504,7 +421,6 @@ var registry = []Binding{
 	bind(ctxGlobal, actionEscape, "esc", "back", "esc"),
 	bind(ctxGlobal, actionPalette, ":", "command palette", ":"),
 	bind(ctxGlobal, actionWindowTorrents, "ctrl+t", "torrents window", "ctrl+t"),
-	bind(ctxGlobal, actionWindowProwlarr, "ctrl+p", "prowlarr window", "ctrl+p"),
 	bind(ctxGlobal, actionWindowSettings, ",", "settings window", ","),
 	bind(ctxGlobal, actionServerPicker, "S", "switch server", "S"),
 	bind(ctxGlobal, actionServerAltSpeed, "t", "toggle alt-speed", "t"),
@@ -568,27 +484,6 @@ var registry = []Binding{
 	bind(ctxTorrentFiles, actionFileMark, "space", "mark file", "space"),
 	bind(ctxTorrentFiles, actionFileMenu, "m", "file menu", "m"),
 
-	// Prowlarr window — shared by its three panes.
-	bind(ctxProwlarr, actionReleaseSearchFocus, "/", "search", "/"),
-	bind(ctxProwlarr, actionReleaseFilter, "f", "categories/indexers", "f"),
-	bind(ctxProwlarr, actionReleaseSort, "o", "sort", "o"),
-	bind(ctxProwlarr, actionReleaseColumns, "c", "columns", "c"),
-	bind(ctxProwlarr, actionProwlarrOpen, "P", "open Prowlarr", "P"),
-
-	// Release verbs — the cursor release, from the results or its detail.
-	bind(ctxProwlarrRelease, actionReleaseGrab, "a", "grab via Prowlarr's download client", "a"),
-	bind(ctxProwlarrRelease, actionReleaseWrite, "w", "write .torrent", "w"),
-	bind(ctxProwlarrRelease, actionReleaseOpen, "O", "open in browser", "O"),
-	bind(ctxProwlarrRelease, actionReleaseYankChord, "y", "yank…", "y"),
-	bind(ctxProwlarrRelease, actionReleaseMenu, "m", "action menu", "m"),
-
-	// Results pane.
-	bind(ctxProwlarrResults, actionReleaseDetailOpen, "enter", "open detail", "enter"),
-	bind(ctxProwlarrResults, actionReleaseMore, "+", "fetch more results", "+"),
-
-	// Search pane, with its input blurred.
-	bind(ctxProwlarrSearch, actionSearchSubmit, "enter", "search", "enter"),
-
 	// Settings window — owns tab and up/down itself, per vision.md.
 	bind(ctxSettings, actionSettingsPrevTab, "[", "previous tab", "["),
 	bind(ctxSettings, actionSettingsNextTab, "]", "next tab", "]"),
@@ -644,32 +539,6 @@ var registry = []Binding{
 	bind(ctxFilterPick, actionTorrentFilter, "f", "close", "f"),
 	bind(ctxFilterPick, actionEscape, "esc", "cancel", "esc"),
 
-	// Categories/indexers modal — f closes it as it opened it.
-	bind(ctxCatalogPick, actionCatalogToggle, "space", "select", "space"),
-	bind(ctxCatalogPick, actionCatalogApply, "enter", "apply", "enter"),
-	bind(ctxCatalogPick, actionCatalogUp, "↑/k", "up", "up", "k"),
-	bind(ctxCatalogPick, actionCatalogDown, "↓/j", "down", "down", "j"),
-	bind(ctxCatalogPick, actionReleaseFilter, "f", "close", "f"),
-	bind(ctxCatalogPick, actionEscape, "esc", "cancel", "esc"),
-
-	// Release sort modal — the torrent sort modal's keys, for releases.
-	bind(ctxReleaseSort, actionReleaseSortUp, "↑/k", "up", "up", "k"),
-	bind(ctxReleaseSort, actionReleaseSortDown, "↓/j", "down", "down", "j"),
-	bind(ctxReleaseSort, actionReleaseSortReverse, "r", "reverse", "r"),
-	bind(ctxReleaseSort, actionReleaseSortSelect, "enter", "apply", "enter"),
-	bind(ctxReleaseSort, actionReleaseSort, "o", "close", "o"),
-	bind(ctxReleaseSort, actionEscape, "esc", "cancel", "esc"),
-
-	// Release columns modal — the torrent columns modal's keys, for releases.
-	bind(ctxReleaseColumns, actionReleaseColumnsToggle, "space", "show/hide", "space"),
-	bind(ctxReleaseColumns, actionReleaseColumnsApply, "enter", "apply", "enter"),
-	bind(ctxReleaseColumns, actionReleaseColumnsMoveUp, "K", "move up", "K"),
-	bind(ctxReleaseColumns, actionReleaseColumnsMoveDown, "J", "move down", "J"),
-	bind(ctxReleaseColumns, actionReleaseColumnsUp, "↑/k", "up", "up", "k"),
-	bind(ctxReleaseColumns, actionReleaseColumnsDown, "↓/j", "down", "down", "j"),
-	bind(ctxReleaseColumns, actionReleaseColumns, "c", "close", "c"),
-	bind(ctxReleaseColumns, actionEscape, "esc", "cancel", "esc"),
-
 	// Form — tab moves rows and up/down stay unbound, the settings window's rule:
 	// a row's widget owns its own keys.
 	bind(ctxForm, actionFormNext, "tab", "next row", "tab"),
@@ -706,12 +575,6 @@ var registry = []Binding{
 	bind(ctxChordYank, actionYankHash, "h", "info hash", "h"),
 	bind(ctxChordYank, actionYankName, "n", "name", "n"),
 	bind(ctxChordYank, actionYankPath, "p", "download path", "p"),
-
-	// The Prowlarr window's y chord. The URLs are yanked with the API key
-	// stripped.
-	bind(ctxChordYankRelease, actionYankInfoURL, "u", "info URL", "u"),
-	bind(ctxChordYankRelease, actionYankReleaseMagnet, "m", "magnet link", "m"),
-	bind(ctxChordYankRelease, actionYankDownloadURL, "d", "download URL", "d"),
 
 	// The ctrl+w chord's second key.
 	bind(ctxChordWindow, actionFocusLeft, "h", "focus left", "h"),
@@ -803,15 +666,6 @@ const (
 
 	// paneSettings is the settings window's single pane.
 	paneSettings
-
-	// paneSearch is the Prowlarr window's search pane (top).
-	paneSearch
-
-	// paneResults is the Prowlarr window's results table (main).
-	paneResults
-
-	// paneResultDetail is the Prowlarr window's release detail pane (bottom).
-	paneResultDetail
 )
 
 // String names a Pane for test failures and the ctrl+w chord's status line.
@@ -825,12 +679,6 @@ func (p Pane) String() string {
 		return "detail"
 	case paneSettings:
 		return "settings"
-	case paneSearch:
-		return "search"
-	case paneResults:
-		return "results"
-	case paneResultDetail:
-		return "release detail"
 	}
 
 	return "unknown"
@@ -838,7 +686,7 @@ func (p Pane) String() string {
 
 // allPanes is every Pane, for tests that must iterate the whole set rather than
 // a list that can silently fall behind the enum.
-var allPanes = []Pane{paneFilter, paneList, paneDetail, paneSettings, paneSearch, paneResults, paneResultDetail}
+var allPanes = []Pane{paneFilter, paneList, paneDetail, paneSettings}
 
 // paneContexts is the static context stack for each pane, most specific first.
 // It is the table the collision test iterates: every stack a key press can be
@@ -856,12 +704,6 @@ func paneContexts(p Pane) []Context {
 		// Settings owns tab, enter, and up/down itself (vision.md: "up/down
 		// belong to the focused field"), so it does not sit on top of ctxNav.
 		return []Context{ctxSettings, ctxGlobal}
-	case paneSearch:
-		return []Context{ctxProwlarrSearch, ctxProwlarr, ctxNav, ctxGlobal}
-	case paneResults:
-		return []Context{ctxProwlarrRelease, ctxProwlarrResults, ctxProwlarr, ctxNav, ctxGlobal}
-	case paneResultDetail:
-		return []Context{ctxProwlarrRelease, ctxProwlarr, ctxNav, ctxGlobal}
 	}
 
 	return []Context{ctxGlobal}
@@ -878,15 +720,11 @@ var modalStacks = [][]Context{
 	{ctxSort},
 	{ctxColumns},
 	{ctxFilterPick},
-	{ctxCatalogPick},
-	{ctxReleaseSort},
-	{ctxReleaseColumns},
 	{ctxForm},
 	{ctxMenu},
 	{ctxPalette, ctxTextInput},
 	{ctxChordYank},
 	{ctxChordWindow},
-	{ctxChordYankRelease},
 	{ctxTextInput},
 }
 

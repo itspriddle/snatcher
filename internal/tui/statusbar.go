@@ -150,50 +150,8 @@ func (m Model) stateSegments() []barSegment {
 		segs = append(segs, fixed(fmt.Sprintf("unsaved: %d", n)))
 	}
 
-	if m.window == windowProwlarr {
-		segs = append(segs, m.prowlarrSegments()...)
-	}
-
 	if m.chord.pending() {
 		segs = append(segs, fixed("pending: "+m.chord.label()))
-	}
-
-	return segs
-}
-
-// prowlarrSegments are the Prowlarr window's own: the server it is on, or why it
-// is on none, and how many results the table holds, with a "+" while + can fetch
-// more. Neither degrades: they say what a search will be run against and how
-// much of it is on screen.
-func (m Model) prowlarrSegments() []barSegment {
-	w := m.prowlarr
-
-	var segs []barSegment
-
-	switch {
-	case w.dialing:
-		segs = append(segs, fixed("prowlarr: "+output.SanitizeTerminal(w.pending)+"…"))
-	case w.client == nil && w.dialErr != nil:
-		segs = append(segs, fixed(m.styles.Toast.Render("prowlarr: ! "+errorShort(w.dialErr))))
-	case w.client == nil:
-	case w.err != nil:
-		segs = append(segs, fixed(m.styles.Toast.Render("prowlarr: ! "+errorShort(w.err))))
-	default:
-		name := "prowlarr: " + output.SanitizeTerminal(w.serverName)
-		if v := output.SanitizeTerminal(w.status.Version); v != "" {
-			name += " (v" + v + ")"
-		}
-
-		segs = append(segs, fixed(name))
-	}
-
-	if (w.searched && !w.inFlight) || len(w.results) > 0 {
-		count := fmt.Sprintf("results: %d", len(w.results))
-		if !w.exhausted {
-			count += "+"
-		}
-
-		segs = append(segs, fixed(count))
 	}
 
 	return segs
