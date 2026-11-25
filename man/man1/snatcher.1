@@ -43,23 +43,6 @@ Run
 .B snatcher server add
 once to configure a server before using the other commands.
 .PP
-One command group,
-.BR "snatcher search" ,
-talks to
-.B Prowlarr
-rather than to Transmission. It searches the indexers a Prowlarr instance is
-configured with, lists those indexers and the torznab categories they use,
-hands a release back to Prowlarr to grab, and writes a release's
-.B .torrent
-file to this machine. A Prowlarr instance is registered as a server alias of
-its own with
-.BR "snatcher server add \-\-type prowlarr" ,
-and its API key lives in the same secret store a Transmission password does.
-Searching finds a release; putting one on
-.I this
-server is still
-.BR "snatcher torrent add" .
-.PP
 Every command that produces output renders in one of three modes with a fixed
 precedence:
 .BR \-\-jq " \(-> " \-\-json " \(-> plaintext."
@@ -177,7 +160,6 @@ or any subcommand and exit.
 These options are accepted by the
 .BR server ,
 .BR torrent ,
-.BR search ,
 and
 .B config
 subcommands. They do not all apply everywhere: the named-server registry
@@ -218,16 +200,7 @@ It is also absent from
 .BR "snatcher server show" ,
 which names the server it reports on with a positional
 .I alias
-instead. On
-.B snatcher search
-\(em and on
-.B "snatcher api"
-with
-.B \-\-prowlarr
-\(em the alias must name a
-.B prowlarr
-server rather than a Transmission one, and an omitted alias falls back to the
-configured default Prowlarr server.
+instead.
 .TP
 .B \-\-json
 Emit JSON instead of plaintext.
@@ -248,34 +221,16 @@ BitTorrent listening port, global speed limits, and download-path free space
 .RB ( show ", " update ", " reset ", " stats ", " port ", " bandwidth ", " free-space ).
 .TP
 .B snatcher server add \fR[\fIoptions\fR]
-Add or update a named server. Its URL, type, and username are stored in the
-config file under the server's alias and its secret in a secret store, by
-default the OS keyring. Two kinds of server can be registered, chosen with
-.BR \-\-type :
-a Transmission server, which authenticates with a password, and a Prowlarr
-instance, which authenticates with an API key. The password is read from a
-hidden, non-echoing prompt (with confirmation) or, for scripting, from standard
-input with
-.BR \-\-password\-stdin ;
-an API key is read from a hidden prompt asked
-.I once
-\(em an API key is pasted, not typed, so a confirmation step catches nothing \(em
-or from standard input with
-.BR \-\-api\-key\-stdin .
+Add or update a named Transmission server. Its URL and username are stored in
+the config file under the server's alias and its password in a secret store, by
+default the OS keyring. The password is read from a hidden, non-echoing prompt
+(with confirmation) or, for scripting, from standard input with
+.BR \-\-password\-stdin .
 An empty password is a valid choice (a server with authentication disabled)
-and stores no secret; an empty API key is accepted too, with a note on standard
-error that search commands will fail unless
-.B SNATCHER_API_KEY
-is set. When the alias's URL or its secret store changes, the
-secret it used to keep is deleted from the store that held it, so no password
-is left behind in a store the server no longer uses. The first server of each
-type registered when that type has no default becomes it \(em the Transmission
-default and the Prowlarr default are separate, so registering one never
-repoints the other. Re-adding an existing
-alias with a different type is refused unless
-.B \-\-type
-is passed explicitly, so an omitted flag cannot silently turn a registered
-Prowlarr instance into a Transmission server and strand its API key. Options:
+and stores no secret. When the alias's URL or its secret store changes, the
+password it used to keep is deleted from the store that held it, so no password
+is left behind in a store the server no longer uses. The first server
+registered when no default is set becomes the default. Options:
 .RS
 .TP
 .BR \-\-name " " \fIalias\fR
@@ -283,38 +238,18 @@ Alias the server is stored under. When omitted it defaults to the lowercased
 URL host (including the port).
 .TP
 .BR \-\-url " " \fIurl\fR
-Server URL: a Transmission RPC URL, e.g.\&
-.IR http://host:9091/transmission/rpc ,
-or a Prowlarr base URL, e.g.\&
-.IR http://host:9696 .
-Required. Must be an absolute http or https URL with no embedded credentials,
-whichever type is being registered.
-.TP
-.BR \-\-type " " \fIname\fR
-Kind of server this alias names, one of
-.BR transmission " (the default) or " prowlarr ,
-matched case-insensitively. A Transmission server records no type at all, so a
-config file written before the option existed round-trips unchanged. An
-unrecognized value is an error naming the valid ones, never a silent fallback.
+Transmission RPC URL, e.g.\&
+.IR http://host:9091/transmission/rpc .
+Required. Must be an absolute http or https URL with no embedded credentials.
 .TP
 .BR \-\-username " " \fIname\fR
-Username for HTTP Basic Auth. Transmission only; it is rejected with
-.BR "\-\-type prowlarr" ,
-which authenticates with an API key and no user.
+Username for HTTP Basic Auth.
 .TP
 .B \-\-password\-stdin
-Read the password from standard input instead of prompting. Transmission only;
-it is rejected with
-.BR "\-\-type prowlarr" .
-.TP
-.B \-\-api\-key\-stdin
-Read the Prowlarr API key from standard input instead of prompting. Prowlarr
-only; it is rejected without
-.BR "\-\-type prowlarr" .
+Read the password from standard input instead of prompting.
 .TP
 .BR \-\-store " " \fIname\fR
-Secret store this server's secret \(em its password, or its Prowlarr API key
-\(em lives in, one of
+Secret store this server's password lives in, one of
 .BR keyring ", " file ", or " none .
 .B keyring
 is the default: the operating system keyring, and only the keyring \(em it
@@ -342,21 +277,11 @@ which is the one place it does; see
 .RE
 .TP
 .B snatcher server list \fR[\fIoptions\fR]
-List every configured server, sorted by alias, showing its name, type, URL,
-username, whether a secret is stored, and whether it is the default. The columns
-are
-.BR NAME " " TYPE " " URL " " USERNAME " " SECRET " " DEFAULT .
-.B TYPE
-is
-.BR transmission " or " prowlarr ;
-a server registered before the type existed reports
-.BR transmission ,
-never an empty column. Because each type has its own default, the
-.B DEFAULT
-column is true when the alias is the default
-.I for its own type
-\(em a Transmission server and a Prowlarr instance can both be marked default
-at once. Secret status is
+List every configured server, sorted by alias, showing its name, URL,
+username, whether a password is stored, and whether it is the default. The
+columns are
+.BR NAME " " URL " " USERNAME " " SECRET " " DEFAULT .
+Secret status is
 read from the store each server itself names
 .RB ( secret_store ),
 not the one
@@ -372,17 +297,11 @@ Accepts
 .BR \-\-json " and " \-\-jq .
 .TP
 .B snatcher server default \fIalias\fR \fR[\fIoptions\fR]
-Set the default server to the existing alias
+Set the default server
+.RB ( default_server )
+to the existing alias
 .IR alias .
-Which default it sets is inferred from the alias, with no flag: a Transmission
-server becomes
-.BR default_server ,
-a Prowlarr instance becomes
-.BR default_prowlarr_server ,
-and setting one never repoints the other. The confirmation line names which of
-the two was set
-.RB ( "Default server set to \(dqx\(dq" " or " "Default Prowlarr server set to \(dqx\(dq" ).
-The default is used by every command that connects to a server of that type when
+The default is used by every command that connects to a server when
 .B \-\-server
 and
 .B SNATCHER_SERVER
@@ -394,8 +313,10 @@ Show everything about a server: its local connection settings (name, URL,
 username, resolved config path, whether a secret is stored, whether it is
 the default), its live identity (version, RPC semver, negotiated protocol), and
 every session setting. Shows the named server
-.IR alias ,
-or the configured default when the alias is omitted. The secret value itself is
+.IR alias ;
+when the alias is omitted it shows the server
+.B SNATCHER_SERVER
+names, or else the configured default. The secret value itself is
 never revealed, and whether one is stored is read from the store the server
 itself names, as in
 .BR "snatcher server list" .
@@ -459,42 +380,31 @@ its canonical order \(em has no effect on
 .RE
 .TP
 .B snatcher server ping \fR[\fIalias\fR] \fR[\fIoptions\fR]
-Dial a server and perform a real round-trip, reporting what it found. Pings the
-named server
-.IR alias ,
-or the configured default when the alias is omitted. Exits non-zero on failure.
+Dial a server and perform a real round-trip, reporting its connection status,
+version, negotiated protocol, and RPC semver. Pings the named server
+.IR alias ;
+when the alias is omitted it pings the server
+.B SNATCHER_SERVER
+names, or else the configured default. Exits non-zero on failure.
 Accepts
 .B \-\-json .
-.IP
-The round-trip depends on the resolved server's type. A Transmission server
-reports its connection status, type, version, negotiated protocol, and RPC
-semver; a Prowlarr instance is asked for its system status and reports its
-connection status, type, version, and application name. An omitted alias falls
-back to the
-.I Transmission
-default, which is what every invocation resolved to before Prowlarr servers
-could be registered; ping a Prowlarr instance by naming it, or through
-.BR SNATCHER_SERVER .
 .TP
 .B snatcher server remove \fR[\fIalias\fR] \fR[\fIoptions\fR]
-Remove a configured server: delete its stored secret, drop its entry from the
+Remove a configured server: delete its stored password, drop its entry from the
 config file, and persist. Removes the named server
-.IR alias ,
-or the configured default when the alias is omitted. The secret is deleted from
+.IR alias ;
+when the alias is omitted it removes the server
+.B SNATCHER_SERVER
+names, or else the configured default. The password is deleted from
 the store the server itself names
 .RB ( secret_store ),
 not the one
 .B SNATCHER_SECRET_STORE
 selects for this invocation, so an exported override cannot leave a password
 behind in a store nothing points at any more. When the removed server was
-the default, only the default belonging to
-.I its own type
-moves: it is repointed to the sole remaining server of that type if exactly one
-remains, otherwise it is cleared. Removing a Prowlarr instance therefore never
-touches
-.BR default_server ,
-and no default is ever repointed at a server of the other type. An unknown alias
-is rejected. It takes no options of its own.
+the default, the default is repointed to the sole remaining server if exactly
+one remains, otherwise it is cleared. An unknown alias is rejected. It takes
+no options of its own.
 .TP
 .B snatcher server stats \fR[\fIoptions\fR]
 Show session statistics: torrent counts, current download and upload speeds,
@@ -1991,335 +1901,9 @@ whether it draws Nerd Font glyphs or their ASCII fallbacks,
 how often it refreshes server data, and
 .B client.mouse
 whether it answers the mouse.
-.SS "search"
-.B snatcher search
-.RI [ options "] [" query ]
-.br
-Search the indexers a configured Prowlarr instance knows about. This is the one
-command group that talks to Prowlarr rather than to Transmission, so its
-.B \-\-server
-names a configured
-.B prowlarr
-alias (see
-.BR "snatcher server add \-\-type" );
-with it omitted the configured
-.B default_prowlarr_server
-is used, and its API key is read from that server's secret store or from
-.BR SNATCHER_API_KEY .
-.PP
-The query is a positional argument, or
-.B \-\-query
-for the same thing. Supplying both is an error, and supplying neither is an
-error naming both forms.
-.PP
-.B search
-is the only group that both runs an action of its own and carries subcommands,
-so a subcommand name wins over a bare positional query:
-.B "snatcher search indexers"
-runs the subcommand rather than searching for the word
-.IR indexers ,
-and the same holds for
-.BR grab ", " download ", and " categories .
-That is deliberate \(em it keeps the common case,
-.BR "snatcher search ubuntu" ,
-the shortest thing to type \(em and
-.B \-\-query
-is the complete escape:
-.B "snatcher search \-\-query indexers"
-searches for the literal word. The subcommands are listed under
-.B "snatcher search \-\-help"
-with the same note.
-.PP
-Results are rendered in Prowlarr's own order across the indexers it queried;
-snatcher does not sort, filter, or de-duplicate them. On a terminal the output
-is an aligned table with the columns
-.RB ( # ", " AGE ", " TITLE ", " INDEXER ", " SIZE ", " GRABS ", " SEEDERS ", " LEECHERS );
-when piped (or when
-.B NO_COLOR
-is set) it is tab-separated, full-value rows with no header \(em a stable
-scripting contract. A search that matches nothing prints
-.B "No results."
-on a terminal, nothing when piped, and
-.B []
-with
-.BR \-\-json ,
-exiting 0 in all three cases.
-.PP
-.B AGE
-is whole days since the release was published, and
-.BR GRABS ", " SEEDERS ", and " LEECHERS
-render as a dash when the indexer does not publish the count \(em a usenet
-release has no seeders \(em which is distinct from a published zero. The
-leading
-.B #
-column numbers the rendered order from 1 and is present as the
-.B index
-field in
-.BR \-\-json / \-\-jq
-output, so a human reading the table and a script reading JSON name a release
-the same way.
-.PP
-Prowlarr hands back a
-.B download_url
-that proxies through Prowlarr itself and carries the API key as a query
-parameter, because a torrent client fetching that url has nowhere to put a
-header; an indexer may build
-.BR info_url " or " comment_url
-the same way. The value of any
-.B apikey
-parameter is therefore replaced with
-.B REDACTED
-in the
-.BR \-\-json / \-\-jq
-output of
-.B search
-and
-.BR "search grab" ,
-so a filtered result can be logged or pasted without leaking the key. The
-rewrite is made on the way out only:
-.B "snatcher search download"
-fetches the url Prowlarr gave it, and
-.B "snatcher search grab"
-hands Prowlarr back the exact release resource it received. Besides the common
-options:
-.RS
-.TP
-.BR \-\-query " " \fIterm\fR
-The search query, the flag form of the positional argument.
-.TP
-.BR \-\-indexer " " \fIid\fR
-Restrict the search to the indexer with this numeric id, as Prowlarr numbers
-its configured indexers. Repeatable.
-.TP
-.BR \-\-category " " \fIid\fR
-Restrict the search to this torznab category id. Repeatable.
-.TP
-.BR \-\-limit " " \fIn\fR
-Maximum results to request per page. Always sent, so paging steps a
-deterministic offset. Default:
-.BR 100 .
-.TP
-.BR \-\-offset " " \fIn\fR
-Results to skip before the first page. Default:
-.BR 0 .
-.TP
-.BR \-\-pages " " \fIn\fR
-Request
-.I n
-sequential pages, each stepping the offset by
-.BR \-\-limit ,
-concatenating the results in order. A page returning fewer results than it
-asked for ends the walk, so the remaining pages cost no round trips. Default:
-.BR 1 .
-.TP
-.BR \-\-search\-type " " \fItype\fR
-The torznab search type: one of
-.BR search ", " tvsearch ", " movie ", " music ", or " book .
-An indexer may implement only some of the typed searches. Default:
-.BR search .
-.RE
-.TP
-.B snatcher search grab \fR[\fIoptions\fR] [\fIquery\fR] [\fIn\fR]
-Hand one release from a search back to Prowlarr to grab.
-.IP
-A grab is handed to Prowlarr's
-.I own
-configured download client, which is not necessarily the Transmission server
-snatcher is pointed at. It means \(lqtell Prowlarr to grab it\(rq, not \(lqadd
-it to this server\(rq. To add a release to the server snatcher is pointed at,
-feed its download or magnet url to
-.BR "snatcher torrent add" .
-.IP
-The release is named in one of two mutually exclusive ways.
-.B "snatcher search grab \(dqubuntu\(dq 3"
-re-runs the search and resolves the 1-based result number \(em the
-.B #
-column \(em from the fresh results; snatcher caches no result state between
-invocations. That number therefore names the release that was on screen only
-when the same
-.BR \-\-indexer ", " \-\-category ", " \-\-limit ", " \-\-offset ", " \-\-pages ", and " \-\-search\-type
-are passed, and only while the results have not shifted underneath it. A number
-below 1, or past the end of the results, is an error naming the number and how
-many results came back.
-.IP
-.B "snatcher search grab \-\-guid \fIguid\fB \-\-indexer \fIid\fR"
-is the exact form: it names the release outright and re-runs nothing, so
-neither caveat applies. Every
-.B guid
-appears in
-.B "snatcher search \-\-json"
-output for exactly this reason, which makes it the form a script should use.
-.IP
-The resolved release's title and indexer are printed to standard error before
-the grab is issued, so what is being acted on is on screen in every output mode
-and a shifted result set is visible rather than silent. A single named release
-is never prompted for. On success the plaintext path prints a confirmation line
-naming the release Prowlarr accepted, while
-.BR \-\-json " and " \-\-jq
-emit the grabbed release object instead. Titles and indexer names are
-server-derived and are neutralized of terminal control sequences on the
-plaintext paths only. Besides the common options and the search filters listed
-above:
-.RS
-.TP
-.BR \-\-guid " " \fIguid\fR
-Name the release exactly by the guid its indexer assigned it, instead of by
-position in a re-run. Requires exactly one
-.BR \-\-indexer ,
-naming the indexer that issued the guid, since a guid is unique only within one
-indexer; zero or more than one is an error. Takes no positional arguments.
-.RE
-.TP
-.B snatcher search download \fR[\fIoptions\fR] [\fIquery\fR] [\fIn\fR]
-Write one release's .torrent file to disk.
-.IP
-This is the local counterpart of
-.BR "snatcher search grab" :
-nothing is handed to a download client, the bytes simply land on this machine,
-ready for
-.B "snatcher torrent add"
-or anywhere else. The release is named by position in a re-run of the search,
-exactly as
-.B grab
-names it, and the resolved release is echoed to standard error before it is
-fetched \(em with
-.B "\-\-output \-"
-that echo is the only thing that says what the bytes are.
-.IP
-.B \-\-guid
-is accepted for symmetry with
-.BR grab ,
-but it cannot download: a guid names a release without describing one, and
-Prowlarr resolves it only when grabbing, so there is no download url on it to
-fetch. The error says so and points at the positional form.
-.IP
-The bytes come from the release's own download url, which may be served by
-Prowlarr or straight by the indexer; the Prowlarr API key travels only when
-that url is on the Prowlarr instance's own origin, and is dropped again at any
-redirect that leaves it. A release publishing only a
-.B magnet_url
-has no file to write, and the error hands over the
-.B \-\-jq
-expression that extracts the link. Besides the common options and the search
-filters listed above:
-.RS
-.TP
-.BR \-o ", " \-\-output " " \fIpath\fR
-Write to
-.I path
-instead of to a derived filename, or to standard output when
-.I path
-is
-.BR \- .
-Writing to standard output prints nothing else \(em not the confirmation line,
-not
-.BR \-\-json .
-.TP
-.BR \-\-guid " " \fIguid\fR
-Accepted as it is by
-.BR "snatcher search grab" ,
-and always an error here; see above.
-.RE
-.IP
-With no
-.BR \-\-output ,
-the filename is derived from the release
-.I title
-and written to the current directory. It is never taken from the response's
-.B Content\-Disposition
-header, which is a server-controlled string naming a file on this machine. The
-title is reduced to a single safe filename \(em path separators, leading dots,
-and control bytes are removed, and the name is bounded in length \(em with a
-.B .torrent
-extension, so an indexer can neither write outside the current directory nor
-put an escape sequence into a name every
-.B ls
-will echo back.
-.IP
-An existing file is never replaced: that is an error naming the path and
-suggesting
-.BR \-\-output ,
-and there is deliberately no
-.B \-\-force
-to override it. The file is created at mode 0600 \(em a private tracker's
-.B .torrent
-embeds a passkey \(em and written atomically, through a temporary file in the
-destination directory that is renamed into place, so an interrupted download
-leaves no partial
-.B .torrent
-behind. On success the plaintext path prints the written path and size, while
-.BR \-\-json " and " \-\-jq
-emit
-.BR path ", " bytes ", " title ", and " guid .
-.TP
-.B snatcher search indexers \fR[\fIoptions\fR]
-List the indexers the Prowlarr instance is configured with, in the server's own
-order, as
-.BR ID ", " NAME ", " PROTOCOL ", " PRIVACY ", " ENABLED ", and " PRIORITY .
-.B ID
-is the number
-.B \-\-indexer
-takes, which is what this listing is for: Prowlarr's web UI names indexers, and
-nothing else in snatcher maps a name to an id.
-.B ENABLED
-and
-.B PRIORITY
-explain a search's results \(em a disabled indexer contributes nothing to a
-search that does not name it, and priority is how Prowlarr breaks ties. On a
-terminal the output is an aligned table with a header; when piped (or when
-.B NO_COLOR
-is set) it is tab-separated, full-value rows with no header. An instance with no
-indexers prints
-.B "No indexers configured."
-on a terminal, nothing when piped, and
-.B []
-with
-.BR \-\-json .
-Names, protocols, and privacy levels come from the server, so they are
-neutralized of terminal control sequences in the plaintext output;
-.BR \-\-json " and " \-\-jq
-emit them verbatim. A private indexer's settings hold its passkey or API key;
-those fields are never decoded, so no output mode can print them. Accepts
-.BR \-\-server ", " \-\-json ", and " \-\-jq .
-.TP
-.B snatcher search categories \fR[\fIoptions\fR]
-List the torznab categories the Prowlarr instance knows about as
-.BR ID " and " NAME ,
-where
-.B ID
-is the number
-.B \-\-category
-takes. Prowlarr returns the categories as a tree; the listing flattens it
-depth-first in the server's own order, so a parent is always the row above its
-first child. On a terminal a sub-category is indented under its parent; when
-piped the name is the server's own, undecorated \(em the piped rows are a
-full-value scripting contract, and a torznab category name already spells its
-parent
-.RB ( Movies/HD " under " Movies ).
-With
-.BR \-\-json " or " \-\-jq
-each row carries
-.BR id ", " name ", " description ", and " parent_id ,
-the last being
-.B null
-for a top-level category; the nested tree itself is not emitted, since every
-child is already its own row. The full default tree is listed, not only the
-categories the configured indexers happen to support. An instance with no
-categories prints
-.B "No categories."
-on a terminal, nothing when piped, and
-.B []
-with
-.BR \-\-json .
-Category names are server-derived and are neutralized of terminal control
-sequences in the plaintext output only. Accepts
-.BR \-\-server ", " \-\-json ", and " \-\-jq .
 .SS "api"
 .B snatcher api
 .RI [ options "] " method
-.br
-.B snatcher api \-\-prowlarr
-.RI [ options "] " path
 .br
 Power-user escape hatch, modeled on
 .BR "gh api" ,
@@ -2331,40 +1915,8 @@ and prints a normalized response envelope that is identical whether the server
 speaks the bespoke dialect (Transmission 4.0 and earlier) or JSON-RPC 2.0
 (4.1 and later). snatcher translates the method name only; it never rewrites
 argument keys or values, which are not portable across dialect versions. An
-RPC-level failure still prints the envelope, then exits non-zero.
-.PP
-With
-.B \-\-prowlarr
-the positional is a Prowlarr REST
-.I path
-instead, issued against the configured Prowlarr server. A
-.I path
-beginning with
-.B /
-is used verbatim against that server's base URL; a bare one is expanded to
-.IB /api/v1/ path \fR,
-where every documented endpoint lives. This is how the parts of Prowlarr's API
-.B "snatcher search"
-does not model \(em history, statistics, notifications, indexer management \(em
-stay reachable. Options:
+RPC-level failure still prints the envelope, then exits non-zero. Options:
 .RS
-.TP
-.B \-\-prowlarr
-Treat the positional as a Prowlarr REST path and call the configured Prowlarr
-server.
-.B \-\-server
-must then name a
-.B prowlarr
-alias.
-.TP
-.BR \-X ", " \-\-method " " \fIverb\fR
-HTTP method for
-.BR \-\-prowlarr :
-one of
-.BR GET " (default), " HEAD ", " POST ", " PUT ", " PATCH ", " DELETE ", or " OPTIONS ,
-matched case-insensitively. It is an error without
-.BR \-\-prowlarr ,
-since a Transmission RPC call is always a POST of the method name.
 .TP
 .BR \-F ", " \-\-field " " \fIkey=value\fR
 Add a type-inferred argument field:
@@ -2398,64 +1950,9 @@ command also accepts
 .BR \-\-jq ;
 it has no
 .B \-\-json
-flag, since the normalized envelope is already JSON.
-.PP
-.B "The two modes print different shapes."
-A Transmission call prints the normalized
-.BR result / arguments / tag
-envelope, so a
+flag, since the normalized envelope is already JSON. A
 .B \-\-jq
 expression addresses the payload as \fI.arguments\fR.
-A Prowlarr call has no envelope to normalize \(em its REST API answers with the
-resource itself \(em so the response body is printed as indented JSON exactly as
-the server sent it, and a
-.B \-\-jq
-expression addresses that body directly
-.RI ( .[].name ", not " .arguments.[].name ).
-.B \-\-raw
-prints the exact response bytes in both modes \(em save for the API-key
-substitution described below.
-A body that is not JSON at all (an HTML page from a reverse proxy, or the empty
-body of a successful
-.BR DELETE )
-has nothing to indent or filter, so the body itself is the output; on the
-default path it is sanitized like any other server-derived text, and only
-.B \-\-raw
-writes its escape sequences through untouched.
-.PP
-Under
-.B \-\-prowlarr
-the field flags follow the verb.
-.BR \-f ", " \-F ", and " \-\-input
-become
-.B "query parameters"
-for
-.BR GET " and " DELETE
-\(em a repeated key stays repeated, which is how Prowlarr binds an array
-parameter such as
-.IR indexerIds ,
-and an
-.B \-\-input
-document must be a JSON object, whose top-level keys become the parameters.
-For every other verb they become a
-.B "JSON request body"
-instead, with
-.B \-\-input
-supplying that body verbatim. A non-2xx response prints the server's own body,
-then exits non-zero, mirroring how the Transmission mode prints its envelope
-before failing. The Prowlarr API key travels as a header and never reaches the
-output, including under
-.BR \-\-raw :
-an instance hands its own key back in ordinary answers \(em a release's
-.I downloadUrl
-is a proxy link carrying
-.BR apikey= ,
-and
-.B config/host
-reports the key in a field \(em so the configured key is replaced with
-.B REDACTED
-wherever it appears in the response body. A body that does not carry it is
-printed byte for byte.
 .SS "version, completion, help"
 .B snatcher version
 prints version information.
@@ -2473,20 +1970,6 @@ The
 field tags on the underlying types are a stable scripting surface; treat them
 as an API. Human and plaintext output passes server-derived strings through a
 terminal sanitizer; JSON and jq output does not, as it is a machine contract.
-.PP
-Tab-separated plaintext is part of that contract too, and it grew once, on
-purpose:
-.B "snatcher server list"
-gained a
-.B TYPE
-column in position 2
-.RB ( "NAME TYPE URL USERNAME SECRET DEFAULT" )
-when Prowlarr servers became registrable, so a script splitting those rows on
-tabs reads one more field than it used to. Its
-.B \-\-json
-counterpart gained the same value as an additive
-.B type
-key, which is the form to prefer in a script.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -2498,9 +1981,9 @@ selectors matched no torrents, a confirmation was refused, or at least one
 .B add
 source failed.
 .SH SECRETS
-A Transmission server's password and a Prowlarr instance's API key are the only
-secrets snatcher holds, and neither ever goes in the config file. Each server
-names the store its secret lives in, chosen with
+A server's Transmission password is the only secret snatcher holds, and it
+never goes in the config file. Each server names the store its password lives
+in, chosen with
 .B \-\-store
 at
 .B "snatcher server add"
@@ -2508,12 +1991,6 @@ time, saved as
 .B secret_store
 in the config file, and overridable for one invocation with
 .BR SNATCHER_SECRET_STORE .
-Everything below is written in terms of a password; a Prowlarr API key is
-stored, read, reported, warned about, and deleted through exactly the same
-paths, with
-.B SNATCHER_API_KEY
-standing in for
-.BR SNATCHER_PASSWORD .
 .TP
 .B keyring
 The operating system keyring (macOS Keychain, or the Secret Service on Linux),
@@ -2828,31 +2305,10 @@ Selects the configured server alias to connect to, equivalent to passing
 .BR \-\-server .
 The
 .B \-\-server
-flag takes precedence; when neither is set, the configured default server for
-the type the command needs is used.
-.IP
-It applies to Transmission and Prowlarr commands alike. Unlike
-.BR SNATCHER_PASSWORD " and " SNATCHER_API_KEY ,
-which are each scoped to one server type, this variable names one alias for
-every command, so an alias of the wrong type is an error rather than a silent
-fallback. A Transmission command that resolves a Prowlarr alias \(em or a
-.B search
-command, or
-.B "snatcher api"
-with
-.BR \-\-prowlarr ,
-that resolves a Transmission one \(em fails naming the alias, its actual type,
-the type the command needs, and the fact that the alias came from
-.BR SNATCHER_SERVER ,
-instead of falling back to
-.BR default_server " or " default_prowlarr_server .
-.IP
-That is a deliberate choice, not an oversight: quietly ignoring an exported
-variable would leave no way to tell which server a command actually reached. To
-run a command of the other type, pass
-.B \-\-server
-to override the variable for that invocation, or unset it and let the per-type
-default apply.
+flag takes precedence; when neither is set, the configured default server
+.RB ( default_server )
+is used.
+
 .TP
 .B SNATCHER_SECRET_STORE
 Selects the secret store passwords are read from and written to, for every
@@ -2908,30 +2364,6 @@ running as the same user can read it (for example
 it is inherited by every child process snatcher spawns, and it is commonly
 captured in shell history and CI logs. Prefer the OS keyring where one is
 available.
-.IP
-It applies to Transmission servers only. A Prowlarr instance takes its
-credential from
-.B SNATCHER_API_KEY
-instead, and neither variable is ever consulted for the other type.
-.TP
-.B SNATCHER_API_KEY
-Supplies the Prowlarr API key for this invocation, ahead of every secret store.
-It is the Prowlarr counterpart to
-.B SNATCHER_PASSWORD
-and behaves identically: a non-empty value means no store is read at all,
-whatever
-.B SNATCHER_SECRET_STORE
-or the server's
-.B secret_store
-names;
-.B "snatcher server add"
-never stores its value; and an empty or unset value defers to the resolved
-store. It applies only to servers registered with
-.BR "\-\-type prowlarr" ,
-and
-.B SNATCHER_PASSWORD
-is not consulted for those. The same warning about the privacy of a process
-environment applies.
 .TP
 .B SNATCHER_THEME
 Selects the color theme the TUI draws with for this invocation, equivalent to
@@ -3025,29 +2457,14 @@ map of named server aliases, each with a
 a
 .BR username ,
 and an optional
-.B type
-of
-.B transmission
-or
-.BR prowlarr ;
+.BR secret_store ;
 a
 .B default_server
-alias and a
-.B default_prowlarr_server
-alias, one default per type; and a
+alias; and a
 .B client
 object holding snatcher's own settings \(em see
 .BR "snatcher config" ),
-created with mode 0600 under a 0700 directory. Both Prowlarr keys are written
-only when they are needed: an absent
-.B type
-means
-.BR transmission ,
-and
-.B default_prowlarr_server
-appears only once a Prowlarr instance is registered, so a config file written
-before Prowlarr support round-trips through a save unchanged. The file is
-operator-owned and
+created with mode 0600 under a 0700 directory. The file is operator-owned and
 hand-editable: keys snatcher does not recognize, at either level, survive a
 rewrite untouched. Every write is atomic \(em the new content goes to a
 temporary file created with mode 0600 in the same directory, which is then
@@ -3062,8 +2479,8 @@ or any other command that saves. Falls back to
 .I ~/.config/snatcher/config.json
 when
 .B XDG_CONFIG_HOME
-is unset. Neither a server password nor a Prowlarr API key is ever written to
-this file; it holds only the name of the store each server's secret lives in
+is unset. A server password is never written to this file; it holds only the
+name of the store each server's password lives in
 .RB ( secret_store ).
 .TP
 .I $XDG_CONFIG_HOME/snatcher/themes/*.theme
@@ -3081,7 +2498,7 @@ config file, its contents are operator-owned input.
 .I $XDG_STATE_HOME/snatcher/secrets.json
 The
 .B file
-secret store: server passwords and Prowlarr API keys in
+secret store: server passwords in
 .BR plaintext ,
 as a JSON object keyed by server URL. Written atomically with mode 0600 under a
 0700 directory. Falls back to
@@ -3255,47 +2672,6 @@ $ snatcher torrent list \-\-sort queue
 # override an appearance setting for one invocation, without editing the file
 $ snatcher config list \-\-theme nord
 $ SNATCHER_NO_NERD_FONT=1 snatcher config get client.nerd_font
-.EE
-.SS "Search with Prowlarr"
-.EX
-# register a Prowlarr instance beside your Transmission server
-# (prompts once, hidden, for the API key)
-$ snatcher server add \-\-name prowlarr \-\-type prowlarr \(rs
-    \-\-url http://localhost:9696
-
-# read the API key from stdin instead of a prompt (scripting)
-$ printf '%s' "$PROWLARR_API_KEY" | snatcher server add \-\-name prowlarr \(rs
-    \-\-type prowlarr \-\-url http://localhost:9696 \-\-api\-key\-stdin
-
-# confirm it answers, and see both servers with their types
-$ snatcher server ping prowlarr
-$ snatcher server list
-
-# the indexer and category ids the filters below take
-$ snatcher search indexers
-$ snatcher search categories
-
-# search two indexers and one category, three pages deep
-$ snatcher search 'ubuntu 24.04' \-\-indexer 3 \-\-indexer 7 \(rs
-    \-\-category 2000 \-\-pages 3
-
-# every result's number, guid, and indexer id \(em the guid is what the exact
-# grab form below takes
-$ snatcher search 'ubuntu 24.04' \-\-jq '.[] | {index, guid, indexer_id}'
-
-# hand one release to Prowlarr's own download client, named exactly, with no
-# re-run of the search
-$ snatcher search grab \-\-guid 'abc123' \-\-indexer 3
-
-# ... or by the # the table showed, re-running the same query and filters
-$ snatcher search grab 'ubuntu 24.04' 2 \-\-indexer 3
-
-# write result 2's .torrent here instead, and add it to this server yourself
-$ snatcher search download 'ubuntu 24.04' 2 \-o ubuntu.torrent
-$ snatcher torrent add ubuntu.torrent
-
-# raw REST call, for anything the typed commands do not cover
-$ snatcher api \-\-prowlarr indexer \-\-jq '.[] | select(.enable) | .name'
 .EE
 .SS "Raw RPC calls"
 .EX

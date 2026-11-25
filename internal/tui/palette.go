@@ -305,18 +305,16 @@ func (m Model) paletteSubmit(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	return e.run(m, msg)
 }
 
-// paletteContexts is a pane stack with each chord context the palette lists
+// paletteContexts is a pane stack with the chord context the palette lists
 // inserted after the context whose key starts the chord.
 func paletteContexts(stack []Context) []Context {
-	out := make([]Context, 0, len(stack)+len(paletteChords))
+	out := make([]Context, 0, len(stack)+1)
 
 	for _, ctx := range stack {
 		out = append(out, ctx)
 
-		for _, c := range paletteChords {
-			if c.after == ctx {
-				out = append(out, c.ctx)
-			}
+		if ctx == paletteChord.after {
+			out = append(out, paletteChord.ctx)
 		}
 	}
 
@@ -363,10 +361,8 @@ func paletteEntries(stack []Context) []paletteEntry {
 
 // chordPrefixes are the label and key prefixes a chord context's entries carry.
 func chordPrefixes(ctx Context) (label, keys string) {
-	for _, c := range paletteChords {
-		if c.ctx == ctx {
-			return c.labelPrefix, c.keyPrefix
-		}
+	if ctx == paletteChord.ctx {
+		return paletteChord.labelPrefix, paletteChord.keyPrefix
 	}
 
 	return "", ""

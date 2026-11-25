@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/itspriddle/snatcher/internal/config"
 	"github.com/itspriddle/snatcher/internal/output"
 	"github.com/itspriddle/snatcher/internal/transmission"
 )
@@ -80,8 +79,9 @@ var serverShowFields = []serverShowField{
 // server: its local connection settings (name, URL, username, resolved config
 // path, whether a secret is stored, whether it is the default), its live
 // identity (version, rpc semver, negotiated protocol), and every live session
-// setting. It shows the named server, or the configured default when the alias is
-// omitted. It never reveals the secret value.
+// setting. It shows the named server or, when the alias is omitted, the one
+// SNATCHER_SERVER names, else the configured default. It never reveals the
+// secret value.
 //
 // Identity and settings both project from a single session-get, so the whole view
 // costs one round-trip. --local skips it entirely for offline use, and an
@@ -104,8 +104,9 @@ func newServerShowCmd() *cobra.Command {
 		Short: "Show a server's connection and settings",
 		Long: "Show everything about a server: its local connection settings, its " +
 			"version and negotiated RPC protocol, and every session setting.\n\n" +
-			"Shows the named server alias, or the configured default when the alias " +
-			"is omitted. The stored password is never revealed, only whether one " +
+			"Shows the named server alias; when the alias is omitted it shows the " +
+			"server SNATCHER_SERVER names, or else the configured default. The " +
+			"stored password is never revealed, only whether one " +
 			"exists. Use --local to print just the connection settings without " +
 			"contacting the server.\n\n" +
 			"--category and --search filter the settings in every output mode. " +
@@ -199,9 +200,10 @@ func newServerShowCmd() *cobra.Command {
 }
 
 // loadServerShowResult reads the local connection settings for the named alias
-// (or the configured default). It reports whether a server is configured at all;
-// on a first run with no servers it returns an empty, unconfigured result rather
-// than a resolve error, so "server show" stays informative before setup.
+// (or, when it is empty, SNATCHER_SERVER's or the configured default; see
+// resolveServer). It reports whether a server is configured at all; on a first
+// run with no servers it returns an empty, unconfigured result rather than a
+// resolve error, so "server show" stays informative before setup.
 //
 // Whether a secret is stored is asked of the store the server itself names (see
 // serverSecretStored). An unreachable one does not fail the read: secret_stored
@@ -223,9 +225,9 @@ func loadServerShowResult(cmd *cobra.Command, alias string) (serverShowResult, b
 		return serverShowResult{ConfigPath: resolvedPath, Configured: configured}, false, nil
 	}
 
-	name, srv, err := config.Resolve(cfg, alias)
+	name, srv, err := resolveServer(cfg, alias)
 	if err != nil {
-		return serverShowResult{}, false, resolveServerError(cfg, alias, err)
+		return serverShowResult{}, false, err
 	}
 
 	secretStored, storeUnavailable, err := serverSecretStored(srv)

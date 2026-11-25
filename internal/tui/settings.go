@@ -956,8 +956,6 @@ func (m Model) blurInput() Model {
 	case ownerPalette:
 		// The palette's query is the overlay, as a prompt's draft is: closing
 		// it is what releases the input.
-	case ownerQuery:
-		m = m.queryBlur()
 	case ownerNone, ownerSettings:
 		m = m.settingsBlur()
 	}
@@ -1035,8 +1033,6 @@ func (m Model) forwardToInput(msg tea.Msg) (Model, tea.Cmd) {
 		return m.formForward(msg)
 	case ownerPalette:
 		return m.paletteForward(msg)
-	case ownerQuery:
-		return m.queryForward(msg)
 	case ownerNone, ownerSettings:
 	}
 

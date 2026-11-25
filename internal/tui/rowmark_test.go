@@ -178,13 +178,10 @@ func sgrOpen(s lipgloss.Style) string {
 // TestRenderEmitsNoMarkers checks no marker reaches the terminal, in every
 // window and with an overlay composited over the rows.
 func TestRenderEmitsNoMarkers(t *testing.T) {
-	_, results := searchModel(t, 120, 40)
-
 	frames := map[string]Model{
 		"torrents":      newTestModel(120, 40),
 		"detail files":  staticFiles(),
 		"under overlay": newTestModel(120, 40).push(torrentMenu(1)),
-		"prowlarr":      results,
 	}
 
 	for name, m := range frames {

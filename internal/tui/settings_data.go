@@ -428,15 +428,11 @@ func (m Model) reloadSettings() (Model, tea.Cmd) {
 	return m.startLoad()
 }
 
-// refreshHandler is R: re-read the settings in the settings window, resubmit the
-// search in the Prowlarr window, and poll now in the torrents window.
+// refreshHandler is R: re-read the settings in the settings window, and poll
+// now in the torrents window.
 func refreshHandler(m Model, _ tea.KeyPressMsg) (Model, tea.Cmd) {
-	switch m.window {
-	case windowProwlarr:
-		return m.resubmitSearch()
-	case windowTorrents:
+	if m.window == windowTorrents {
 		return m.refreshNow()
-	case windowSettings:
 	}
 
 	m, cmd := m.refreshSettings()

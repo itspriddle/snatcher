@@ -7,10 +7,10 @@ document is authoritative for the TUI's **library stack, architecture, and
 build order**; `vision.md` remains authoritative for the **UX surface**.
 
 The TUI is pure UI-layer work: the `*transmission.Client`
-(`internal/transmission`) already exposes every method the TUI needs short of
-Prowlarr — `Stats`, `GetSession`/`SetSession`, `ListTorrents`, and the full
-mutation set (start/stop/verify/reannounce/queue/remove/move/set/add). No
-client changes are required until step 6.
+(`internal/transmission`) already exposes every method the TUI needs —
+`Stats`, `GetSession`/`SetSession`, `ListTorrents`, and the full mutation set
+(start/stop/verify/reannounce/queue/remove/move/set/add). No client changes
+are required.
 
 ## Library stack
 
@@ -302,11 +302,6 @@ mutations through the refresh pattern from step 3. Reuses everything above.
 
 **5b. Detail pane tabs.** Overview/files/trackers/peers/labels in a
 `viewport`, reusing the tab pattern proven in the settings page.
-
-### 6. Prowlarr
-
-Last — needs a new Prowlarr (torznab) backend that does not yet exist. The
-search window reuses the established window/pane/table/detail patterns.
 
 ## Open / deferred
 

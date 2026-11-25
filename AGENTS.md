@@ -35,59 +35,47 @@ internal/cli/             # root command wiring + Execute()
 internal/commands/        # one cobra command group per file (server, torrent, …)
 internal/transmission/    # domain model (types, Selector, transforms, sentinels) + concrete Client
 internal/transmission/rpc # typed Transmission RPC client (Client→Protocol→Transport)
-internal/prowlarr/        # typed Prowlarr REST client (Transport→Client→domain types)
-internal/config/          # non-secret config (named servers + types, JSON, XDG path)
+internal/config/          # non-secret config (named servers, client settings, JSON, XDG path)
 internal/theme/           # .theme file parser, embedded builtins, user theme registry
-internal/secrets/         # passwords and Prowlarr API keys (OS keyring, or file store)
+internal/secrets/         # server passwords (OS keyring, or file store)
 internal/clipboard/       # native clipboard writer (pbcopy/wl-copy/xclip/xsel) for TUI yanks
-internal/browser/         # native URL opener (open/xdg-open, http(s) only) for the TUI's O and P
 internal/output/          # JSON / jq / human formatters + terminal sanitizer
 internal/tui/             # terminal UI: layout, focus router, keymap registry
 internal/surface/         # CLI surface snapshot generator
 internal/version/         # ldflags-injected build info
 .surface                  # committed CLI surface snapshot (regression guard)
-docs/                     # vision, plans, prompts, Transmission RPC + Prowlarr/torznab specs
+docs/                     # vision, plans, prompts, Transmission RPC specs
 ```
 
 ## Architecture
 
-snatcher talks to exactly two backends: **Transmission RPC**, for everything
-that manages torrents on a server, and **Prowlarr's v1 REST API**, for finding
-one. `internal/transmission` and `internal/prowlarr` each own their own domain
-model and concrete `Client`; commands talk to those clients directly. Neither
-package imports the other — the command layer is the only place they meet.
+snatcher talks to exactly one backend: **Transmission RPC**.
+`internal/transmission` owns the domain model and the concrete `Client`;
+commands talk to that client directly.
 
 Layers, outermost to innermost:
 
 - **`internal/cli`** — builds the root cobra command and wires subcommands.
 - **`internal/commands`** — one command group per file. Depends on
-  `*transmission.Client` and `*prowlarr.Client` plus `config`/`secrets`/`output`.
-  `commands.dial()` and `commands.dialProwlarr()` (in `server_registry.go`) are
-  where a command *constructs* a client: each resolves an alias, refuses a
-  server whose `type` does not match, reads that server's secret from the store,
-  and returns the matching client. That same file holds the named-server
-  registry subcommands (`server add`/`list`/`default`/`show`/`ping`/`remove`),
-  which are type-aware. The power-user `api` escape hatch (`api.go`) calls
-  `client.CallAPI(...)` directly on either backend — `--prowlarr` switches its
-  positional from an RPC method to a REST path, and its output from the
-  Transmission envelope to the raw response body. `tui.go` holds the seams
-  `internal/cli` hands the TUI: `Dialer`, whose `DialResult` carries the
-  resolved alias and any unavailable-store warning (captured, never written to
-  stderr under the alt screen); `ProwlarrDialer` and its `ProwlarrDialResult`,
-  the same for a named Prowlarr alias (the two share one error-writer swap, so
-  the TUI never runs them at once); `Servers` and `ProwlarrServers`, each
-  type's aliases for the server picker; `ResolveClientSettings`; and
-  `ClientConfigStore`, which reads and writes client settings through the same
+  `*transmission.Client` plus `config`/`secrets`/`output`. `commands.dial()`
+  (in `server_registry.go`) is where a command *constructs* a client: it
+  resolves an alias, reads that server's password from the store, and returns
+  the client. That same file holds the named-server registry subcommands
+  (`server add`/`list`/`default`/`show`/`ping`/`remove`). The power-user `api`
+  escape hatch (`api.go`) calls `client.CallAPI(...)` directly with an
+  arbitrary RPC method. `tui.go` holds the seams `internal/cli` hands the TUI:
+  `Dialer`, whose `DialResult` carries the resolved alias and any
+  unavailable-store warning (captured, never written to stderr under the alt
+  screen); `Servers`, the configured aliases for the server picker;
+  `ResolveClientSettings`; and `ClientConfigStore`, which reads and writes client settings through the same
   functions `config list` and `config set` use.
 - **`internal/tui`** — the terminal UI, launched by `internal/cli` when
   `snatcher` is run bare on a terminal. It depends on `transmission`,
-  `prowlarr`, `output`, and `theme` and **never imports `commands`**:
-  everything it needs arrives through `tui.Deps`, built from the `commands.Dialer` /
-  `commands.ProwlarrDialer` / `commands.Servers` / `commands.ProwlarrServers` /
-  `commands.ResolveClientSettings` / `commands.ClientConfigStore` seam — the
-  pickers' lists as `Deps.Servers` and `Deps.ProwlarrServers`, the Prowlarr
-  dialer as `Deps.DialProwlarr`, the native clipboard and browser as
-  `Deps.Clipboard` and `Deps.OpenURL` (both nil over SSH), the config store as
+  `output`, and `theme` and **never imports `commands`**: everything it needs
+  arrives through `tui.Deps`, built from the `commands.Dialer` /
+  `commands.Servers` / `commands.ResolveClientSettings` /
+  `commands.ClientConfigStore` seam — the picker's list as `Deps.Servers`,
+  the native clipboard as `Deps.Clipboard` (nil over SSH), the config store as
   `Deps.Config`, the theme lookup (`commands.ThemeLookup`) as `Deps.Themes`,
   the `tui.ClientConfig` store the settings window reads and
   writes client settings through (adapted in `internal/cli`, since neither
@@ -121,13 +109,7 @@ Layers, outermost to innermost:
   no actions: `mouse.go` routes clicks and the wheel in the same precedence
   shape as `handleKey`, and `hit.go` resolves a point from `layout()` plus the
   zero-width row markers (`rowmark.go`) the tables carry, then calls the same
-  transitions the keys do. The Prowlarr
-  window (`prowlarr.go`) dials lazily on first `ctrl+p` and owns its own client
-  and generation, apart from the refresh spine; its search replies are dropped
-  by sequence and generation the same way. Its results columns, the `.torrent`
-  filename and write rules, and `releaseLabel` mirror `internal/commands`'
-  search files under pinning tests, and every Prowlarr URL it draws, yanks, or
-  opens goes through `client.Redact` first.
+  transitions the keys do.
 - **`internal/transmission`** — the domain model and the client. It owns the
   `Torrent`/`Stats`/`ServerInfo` types (aliased to the `rpc` wire structs), the
   `Selector` (id/hash/`--all` parsing for mutation commands), the in-memory list
@@ -141,26 +123,6 @@ Layers, outermost to innermost:
 - **`internal/transmission/rpc`** — typed Transmission client. `Transport` POSTs
   JSON and transparently handles the `X-Transmission-Session-Id` CSRF 409 retry
   and Basic Auth. `Client` probes once, then dispatches through a `Protocol`.
-- **`internal/prowlarr`** — the second backend, and a peer of
-  `internal/transmission`, not a layer under it. It mirrors the *layering* of
-  `rpc` (`Transport` → `Client` → domain types) and gets none of its `Protocol`
-  machinery: Prowlarr's v1 REST API is single-dialect, so there is nothing to
-  negotiate. `Client` covers `SystemStatus`, `Search`, `Indexers`, `Categories`,
-  `Grab`, `Download`, and the raw `CallAPI` seam behind `api --prowlarr`. It
-  declares its **own** `ErrAuth`/`ErrUnreachable`/`ErrServer` sentinels rather
-  than sharing Transmission's, and must never import `internal/transmission` or
-  `internal/transmission/rpc` (nor they it). See the API-key rules below.
-
-**Prowlarr API keys never leave the origin.** The key travels in the `X-Api-Key`
-header, never as an `?apikey=` query parameter. `net/http` copies a custom
-header across a cross-host redirect, so every HTTP client in the package carries
-a `CheckRedirect`: an API request refuses an off-origin hop outright, and a
-release `download_url` fetch follows it with the key deleted. The key is also
-scrubbed from every error message, and stripped from the `download_url` /
-`info_url` / `comment_url` snatcher emits under `--json`/`--jq` (Prowlarr builds
-those as proxy links carrying the key). Redaction happens at the render boundary
-only — the release a command *acts* on, and the raw bytes `Grab` re-POSTs, stay
-byte-exact.
 
 **RPC protocol auto-detection.** Transmission speaks two wire schemes. On first
 use `rpc.Client` runs the CSRF handshake, reads `rpc-version-semver` off the 409,
@@ -197,23 +159,18 @@ header-less rows when piped or when `NO_COLOR` is set.
 `$XDG_CONFIG_HOME/snatcher/config.json`, read and written directly by
 `internal/config` (no viper — it lowercases map keys, which would corrupt
 case-sensitive aliases). The file holds a `servers` map of named aliases (each
-with a `url`, a `username`, and an optional `type` of `transmission` or
-`prowlarr`) plus one default per type, `default_server` and
-`default_prowlarr_server` — the only schema the config package knows. An absent
-`type` resolves to `transmission` and an empty `default_prowlarr_server` is
-omitted from the file, so a config written before Prowlarr existed still
-round-trips byte-identically. The config package no longer reads env vars.
-Server selection precedence (`--server` flag > `SNATCHER_SERVER` env > the
-default *for the type the command needs*) is resolved at the command layer by
-`dial`/`dialProwlarr` over `config.Resolve`/`config.ResolveProwlarr`, not in the
-config package.
+with a `url`, a `username`, and an optional `secret_store`), a
+`default_server`, and a `client` block of snatcher's own settings — the only
+schema the config package knows. The config package does not read env vars.
+Server selection precedence (`--server` flag > `SNATCHER_SERVER` env >
+`default_server`) is resolved at the command layer by `dial` over
+`config.Resolve`, not in the config package; `server show` and `server remove`
+resolve their default alias the same way.
 
-The secret — a Transmission password or a Prowlarr API key, one per server —
-lives only in a secret store (`internal/secrets`: the OS keyring by default, or
-an opt-in plaintext file), keyed by server URL, never in `config.json`. The
-per-invocation override is type-scoped: `SNATCHER_PASSWORD` applies only to a
-Transmission server and `SNATCHER_API_KEY` only to a Prowlarr one, and neither
-is ever consulted for the other.
+The secret — the server's Transmission password, one per server — lives only
+in a secret store (`internal/secrets`: the OS keyring by default, or an opt-in
+plaintext file), keyed by server URL, never in `config.json`.
+`SNATCHER_PASSWORD` is a per-invocation override for the server being dialed.
 
 `config.json` is trusted, operator-owned input, and so are the `themes/*.theme`
 files beside it (`internal/theme`, a leaf package both `commands` and `tui`

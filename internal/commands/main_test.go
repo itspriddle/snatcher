@@ -28,10 +28,9 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 // TestMain isolates this package from the environment the suite happens to run
 // in, before any test observes it.
 //
-// Four variables redirect what these commands do with secrets:
-// SNATCHER_SECRET_STORE picks a different store, SNATCHER_PASSWORD and
-// SNATCHER_API_KEY supply a Transmission password and a Prowlarr API key
-// without one, and SNATCHER_SERVER selects a different alias. A
+// Three variables redirect what these commands do with passwords:
+// SNATCHER_SECRET_STORE picks a different store, SNATCHER_PASSWORD supplies a
+// password without one, and SNATCHER_SERVER selects a different alias. A
 // developer with SNATCHER_SECRET_STORE=file exported would otherwise have the
 // "server add" tests write a plaintext password into their real
 // ~/.local/state/snatcher/secrets.json, and every result here would depend on
@@ -59,7 +58,7 @@ func dialCmd(t *testing.T, path string) *cobra.Command {
 // keyring state still call keyring.MockInit or mockStoreUnavailable themselves;
 // this only decides what an unprepared test gets.
 func TestMain(m *testing.M) {
-	for _, key := range []string{envSecretStore, envPassword, envAPIKey, envServer, envTheme, envNoNerdFont, envColorDepth, envNoColor} {
+	for _, key := range []string{envSecretStore, envPassword, envServer, envTheme, envNoNerdFont, envColorDepth, envNoColor} {
 		if err := os.Unsetenv(key); err != nil {
 			fmt.Fprintf(os.Stderr, "commands: unsetting %s: %v\n", key, err)
 			os.Exit(1)

@@ -83,8 +83,6 @@ func (m Model) clickKeepsInput(h hit) bool {
 	switch m.owner {
 	case ownerSearch:
 		return h.kind == hitFooter
-	case ownerQuery:
-		return h.kind == hitSearch
 	case ownerSettings:
 		return h.kind == hitSettingsRow && h.index == m.settings.tabs[m.settings.tab].cursor
 	case ownerNone, ownerPrompt, ownerForm, ownerPalette:
@@ -134,34 +132,16 @@ func (m Model) clickTarget(h hit, right bool) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	return m.clickOtherWindows(h, right)
-}
-
-// clickOtherWindows runs a click on a target in the Prowlarr or settings
-// window.
-func (m Model) clickOtherWindows(h hit, right bool) (Model, tea.Cmd) {
-	switch h.kind {
-	case hitSearch:
-		if right {
-			return m.setFocus(paneSearch), nil
-		}
-
-		return m.beginQuery()
-	case hitResultRow:
-		return m.clickResultRow(h.index, right)
-	case hitResultHeader:
-		m = m.setFocus(paneResults)
-		if right {
-			return m, nil
-		}
-
-		return m.sortReleasesByColumn(h.index), nil
-	}
-
 	if right {
 		return m, nil
 	}
 
+	return m.clickSettings(h)
+}
+
+// clickSettings runs a left click on a target in the settings window, where a
+// right click does nothing.
+func (m Model) clickSettings(h hit) (Model, tea.Cmd) {
 	switch h.kind {
 	case hitSettingsTab:
 		return runSettings(m, func(m Model) (Model, tea.Cmd) {
@@ -213,24 +193,6 @@ func (m Model) clickListRow(i int, right bool) (Model, tea.Cmd) {
 		return m.dispatch(actionMenuOpen, tea.KeyPressMsg{})
 	case again:
 		return m.openDetail(), nil
-	}
-
-	return m, nil
-}
-
-// clickResultRow is clickListRow for a release.
-func (m Model) clickResultRow(i int, right bool) (Model, tea.Cmd) {
-	again := m.focusedPane() == paneResults && i == m.prowlarr.table.Cursor()
-
-	m = m.setFocus(paneResults)
-	m.prowlarr.table = pointTable(m.prowlarr.table, i)
-	m.prowlarr = m.prowlarr.syncCursor()
-
-	switch {
-	case right:
-		return m.dispatch(actionReleaseMenu, tea.KeyPressMsg{})
-	case again:
-		return m.openReleaseDetail(), nil
 	}
 
 	return m, nil
@@ -336,18 +298,12 @@ func (m Model) mouseWheel(ev tea.Mouse) (Model, tea.Cmd) {
 		m.torrents.filter = m.torrents.filter.move(delta)
 	case paneDetail:
 		m.torrents.detail = m.torrents.detail.wheel(delta)
-	case paneResults:
-		m.prowlarr.table = wheelTable(m.prowlarr.table, delta)
-		m.prowlarr = m.prowlarr.syncCursor()
-	case paneResultDetail:
-		m.prowlarr.detail = m.prowlarr.detail.wheel(delta)
 	case paneSettings:
 		return runSettings(m, func(m Model) (Model, tea.Cmd) {
 			m.settings = m.settings.wheel(delta)
 
 			return m, nil
 		})
-	case paneSearch:
 	}
 
 	return m, nil

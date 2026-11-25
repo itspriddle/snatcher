@@ -32,14 +32,6 @@ const (
 	hitDetailTab
 	hitDetailRow
 
-	// hitResultRow and hitResultHeader are a release row and a results column
-	// heading.
-	hitResultRow
-	hitResultHeader
-
-	// hitSearch is the Prowlarr search pane.
-	hitSearch
-
 	// hitSettingsTab, hitSettingsRow, hitSettingsOption, and hitSettingsButton
 	// are a settings tab, a field row, an open dropdown's option, and the Save
 	// (index 0) or Revert (index 1) button.
@@ -84,8 +76,6 @@ func (m Model) hitTest(x, y int) hit {
 	switch m.window {
 	case windowSettings:
 		return m.hitSettings(l, x, y)
-	case windowProwlarr:
-		return m.hitProwlarr(l, x, y)
 	case windowTorrents:
 	}
 
@@ -111,24 +101,6 @@ func (m Model) hitTorrents(l layout, x, y int) hit {
 		return tableHit(w.list.table, m.styles, inner, x, line, paneList, hitListHeader, hitListRow)
 	case w.detailOpen && l.detail.in(x, y):
 		return w.detail.hit(m.styles, l.detail, x, y)
-	}
-
-	return hit{}
-}
-
-// hitProwlarr resolves a point in the Prowlarr window.
-func (m Model) hitProwlarr(l layout, x, y int) hit {
-	w := m.prowlarr
-
-	switch {
-	case l.search.in(x, y):
-		return hit{kind: hitSearch, pane: paneSearch}
-	case l.list.in(x, y):
-		inner := l.list.inner()
-
-		return tableHit(w.table, m.styles, inner, x, y-inner.y, paneResults, hitResultHeader, hitResultRow)
-	case w.detailOpen && l.detail.in(x, y):
-		return hit{kind: hitPane, pane: paneResultDetail}
 	}
 
 	return hit{}

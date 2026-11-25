@@ -488,6 +488,39 @@ func TestServerShowNamedServer(t *testing.T) {
 	assert.True(t, result.Configured)
 }
 
+func TestServerShowOmittedAliasHonorsSnatcherServer(t *testing.T) {
+	keyring.MockInit()
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	require.NoError(t, config.Save(config.Config{
+		Servers: map[string]config.Server{
+			"local":   {URL: "http://local:9091/rpc", Username: "alice"},
+			"seedbox": {URL: "http://seedbox:9091/rpc", Username: "bob"},
+		},
+		DefaultServer: "local",
+	}, cfgPath))
+
+	// An omitted alias resolves the way dial does: SNATCHER_SERVER outranks the
+	// default, so the connection block describes the server the settings come
+	// from.
+	t.Setenv(envServer, "seedbox")
+
+	out, _, err := runServer(t, "", "show", "--config", cfgPath, "--local", "--json")
+	require.NoError(t, err)
+
+	var result serverShowResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Equal(t, "seedbox", result.Name)
+	assert.Equal(t, "http://seedbox:9091/rpc", result.ServerURL)
+	assert.False(t, result.IsDefault)
+
+	// A positional alias still outranks the variable.
+	out, _, err = runServer(t, "", "show", "local", "--config", cfgPath, "--local", "--json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Equal(t, "local", result.Name)
+}
+
 func TestServerShowUnknownAlias(t *testing.T) {
 	keyring.MockInit()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")

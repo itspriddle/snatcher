@@ -70,13 +70,9 @@ var ladder = []rung{
 		},
 	},
 	{
-		// A blurred search pane is not a pane esc returns from: vision.md has
-		// esc there leave the window, which is the rung below.
-		name: "focus main pane",
-		applies: func(m Model) bool {
-			return m.focusedPane() != m.mainPane() && m.focusedPane() != paneSearch
-		},
-		apply: func(m Model) Model { return m.setFocus(m.mainPane()) },
+		name:    "focus main pane",
+		applies: func(m Model) bool { return m.focusedPane() != m.mainPane() },
+		apply:   func(m Model) Model { return m.setFocus(m.mainPane()) },
 	},
 	{
 		name:    "clear search",

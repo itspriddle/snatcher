@@ -190,27 +190,11 @@ func TestPaletteEntriesAreUnique(t *testing.T) {
 	}
 }
 
-// TestMenuLeavesAreBoundOrUnbound checks every action menu leaf can be reached by
-// name too: it is bound in its pane's stack or a chord that starts there, or it
-// is an unbound action of that pane.
+// TestMenuLeavesAreBoundOrUnbound checks every torrent action menu leaf can be
+// reached by name too: it is bound in the list pane's stack or a chord that
+// starts there, or it is an unbound action of that pane.
 func TestMenuLeavesAreBoundOrUnbound(t *testing.T) {
-	for _, tc := range []struct {
-		menu menuOverlay
-		pane Pane
-	}{
-		{torrentMenu(1), paneList},
-		{releaseMenu(), paneResults},
-	} {
-		t.Run(tc.menu.title, func(t *testing.T) {
-			assertMenuLeavesReachable(t, tc.menu, tc.pane)
-		})
-	}
-}
-
-// assertMenuLeavesReachable walks a menu, checking each leaf against a pane.
-func assertMenuLeavesReachable(t *testing.T, menu menuOverlay, pane Pane) {
-	t.Helper()
-
+	menu, pane := torrentMenu(1), paneList
 	stack := paneContexts(pane)
 	live := paletteContexts(stack)
 
@@ -240,23 +224,6 @@ func assertMenuLeavesReachable(t *testing.T, menu menuOverlay, pane Pane) {
 	}
 
 	walk(menu.items)
-}
-
-// TestPaletteListsReleaseYanks checks the Prowlarr results palette flattens its
-// own y chord, and leaves the torrent verbs out.
-func TestPaletteListsReleaseYanks(t *testing.T) {
-	entries := paletteEntries(paneContexts(paneResults))
-
-	e, ok := entryFor(entries, actionYankDownloadURL)
-	require.True(t, ok)
-	assert.Equal(t, "yank download URL", e.label)
-	assert.Equal(t, "y d", e.keys)
-
-	_, ok = entryFor(entries, actionTorrentStart)
-	assert.False(t, ok)
-
-	_, ok = entryFor(entries, actionReleaseGrab)
-	assert.True(t, ok)
 }
 
 // TestPaletteFiltersAndResetsTheCursor checks typing refilters, best match
